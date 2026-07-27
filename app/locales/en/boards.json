@@ -1,0 +1,68 @@
+{
+  "eyebrow": "Boards",
+  "title": "Your boards",
+  "subtitle": "A board is a split-flap display you leave open on a TV and drive from your phone — type your own message, or let the AI write one.",
+  "back": "Dashboard",
+  "list": {
+    "title": "On this account"
+  },
+  "empty": {
+    "title": "No boards yet",
+    "body": "A board is a split-flap display you open on your TV and drive from your phone — type your own message, or let the AI write one."
+  },
+  "create": {
+    "title": "New board",
+    "description": "Give it a name so you can tell your boards apart. Blank is fine.",
+    "name_label": "Board name",
+    "name_placeholder": "Kitchen",
+    "name_hint": "Optional — a blank name becomes \"flappyboard\".",
+    "submit": "Create board",
+    "first_submit": "Create your first board",
+    "submitting": "Creating…",
+    "error": {
+      "name_too_long": "That name is too long — keep it to {{max}} characters.",
+      "create_failed": "The board wasn't created. Try again."
+    }
+  },
+  "card": {
+    "new": "Just created",
+    "revision": "Revision {{revision}}",
+    "never_written": "Nothing on it yet",
+    "created": "Created {{date}}",
+    "tv_label": "Type this into your TV's browser",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copy_manual": "Selected — copy it with your keyboard",
+    "open": "Open display",
+    "control": "Control from phone",
+    "rename": "Rename",
+    "delete": "Delete"
+  },
+  "rename": {
+    "title": "Rename board",
+    "description": "Give this board a new name. It won't change its address or its history.",
+    "submit": "Save name",
+    "submitting": "Saving…",
+    "error": {
+      "name_too_long": "That name is too long — keep it to {{max}} characters.",
+      "name_empty": "Give the board a name.",
+      "rename_failed": "The board wasn't renamed. Try again."
+    }
+  },
+  "delete": {
+    "title": "Delete \"{{name}}\"?",
+    "description": "This deletes the board and everything it has ever shown — every past message is gone with it. This can't be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete board",
+    "deleting": "Deleting…",
+    "error": {
+      "delete_failed": "The board wasn't deleted. Try again."
+    }
+  },
+  "dashboard": {
+    "nav": "Boards",
+    "title": "Your boards",
+    "description": "Create a split-flap board, open its address on a TV, and drive it from your phone.",
+    "cta": "Open boards"
+  }
+}

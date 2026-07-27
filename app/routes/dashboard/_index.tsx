@@ -8,6 +8,7 @@ import {
   IconSparkles,
   IconBook,
   IconBrandGithub,
+  IconDeviceTv,
 } from "@tabler/icons-react";
 
 import {
@@ -23,10 +24,14 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { FeatureCard } from "@/components/feature-card";
 
-export const handle = { i18n: ["dashboard"] };
+// `boards` alongside `dashboard`: the board entry point below is the only copy
+// on this page that belongs to the boards feature, so it reads its own namespace
+// rather than duplicating strings into `dashboard.json`.
+export const handle = { i18n: ["dashboard", "boards"] };
 
 export default function DashboardIndex() {
   const { t } = useTranslation("dashboard");
+  const { t: tBoards } = useTranslation("boards");
   const { user } = useOutletContext<{ user: { name: string; role?: string | null } }>();
   const isAdmin = user.role === "admin";
 
@@ -65,6 +70,32 @@ export default function DashboardIndex() {
           <ThemeToggle />
         </div>
       </header>
+
+      {/* Boards — the product itself, not part of the boilerplate tour below */}
+      <section className="mb-12">
+        <Card data-testid="dashboard-boards-panel" className="border-primary/30">
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground">
+                <IconDeviceTv className="size-5" />
+              </span>
+              <div className="flex flex-col gap-1">
+                <h2 className="text-base font-semibold tracking-tight">
+                  {tBoards("dashboard.title")}
+                </h2>
+                <p className="max-w-md text-sm text-muted-foreground">
+                  {tBoards("dashboard.description")}
+                </p>
+              </div>
+            </div>
+            <Button asChild size="sm" className="sm:shrink-0">
+              <Link to="/boards" data-testid="dashboard-boards-cta">
+                {tBoards("dashboard.cta")}
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
 
       {/* Educational grid */}
       <section className="mb-12">
