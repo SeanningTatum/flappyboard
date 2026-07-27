@@ -8,3 +8,22 @@
 #   cp .dev.vars.example .dev.vars
 
 BETTER_AUTH_SECRET=change-me-openssl-rand-hex-16
+
+# Anthropic API key for the walkie-talkie board agent (feature: llm-board-agent).
+# The board's LLM path uses `claude-sonnet-5` with schema-enforced structured
+# output. Without a key the agent's unit tests still pass (they run against a
+# stubbed client), but the live generation path cannot run.
+#
+# EITHER FILE WORKS for local dev: this wrangler version also loads `.env`, and
+# `bun run cf-typegen` proves which vars actually reach the Worker — the key shows
+# up in BOTH `Cloudflare.Env` and `Cloudflare.PreviewEnv` in
+# `worker-configuration.d.ts`. Read it through the `CloudflareEnv` tag, never
+# `process.env` (non-negotiable #5).
+#
+# DEPLOYS ARE SEPARATE: `.env` / `.dev.vars` are local-only and gitignored, so
+# production and preview need the secret pushed explicitly:
+#     wrangler secret put ANTHROPIC_API_KEY
+#     wrangler secret put ANTHROPIC_API_KEY --env preview
+#
+# Get one at https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY=sk-ant-...
