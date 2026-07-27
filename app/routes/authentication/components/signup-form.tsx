@@ -72,7 +72,17 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" data-testid="signup-form">
+            {/*
+              `method="post"` is a security control — see the note in
+              login-form.tsx. A GET fallback on an unhydrated page would put the
+              new account's password in the URL and browser history.
+            */}
+            <form
+              method="post"
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-6"
+              data-testid="signup-form"
+            >
               <FormField
                 control={form.control}
                 name="name"
