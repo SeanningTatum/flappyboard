@@ -35,6 +35,19 @@ The argument shape becomes readonly fields on the instance. Discriminate via `_t
 | `ConfigurationError` | `service`, `field?` | `INTERNAL_SERVER_ERROR` |
 | `ExternalServiceError` | `service`, `cause?` | `BAD_GATEWAY` |
 
+### Board (`app/models/errors/board.ts`)
+
+| Error | Fields | TRPC code |
+|-------|--------|-----------|
+| `PairingTokenInvalidError` | `reason` (`malformed` \| `bad-signature` \| `expired` \| `spent`) | `UNAUTHORIZED` |
+| `BoardGenerationError` | `stage` (`request` \| `empty`), `cause?` | `INTERNAL_SERVER_ERROR` |
+| `LlmRefusedError` | — | `BAD_REQUEST` |
+| `TranscriptionFailedError` | `reason`, `cause?` | `BAD_REQUEST` |
+
+`TranscriptionFailedError.reason` **is** echoed to the client (write it user-facing, e.g. "the recording was empty"); its `cause` is not. That is the opposite of `PairingTokenInvalidError`, where the reason is an oracle and stays server-side — the difference is that a transcription failure is the user's own audio, while a pairing failure is a credential.
+
+**The `reason` is for the server log only.** `tagToTRPC` maps every reason to one generic "rescan the code on the board" message, because telling a caller *which* way their token failed hands them an oracle. A test asserts the reason never reaches the client — keep it that way when adding a reason.
+
 ### Bucket (`app/models/errors/bucket.ts`)
 
 | Error | Fields | TRPC code |

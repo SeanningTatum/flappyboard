@@ -2,15 +2,49 @@
 
 ## tRPC routes
 
-Mounted at `/api/trpc/*`. The top-level router (`app/trpc/router.ts`) composes three sub-routers:
+Mounted at `/api/trpc/*`. The top-level router (`app/trpc/router.ts`) composes four sub-routers:
 
 | Router | File | Procedures |
 |--------|------|------------|
 | `user` | `app/trpc/router.ts` | `getUsers` (protected, safe projection), `deleteUser`, `createWorkflow` |
+| `board` | `app/trpc/routes/board.ts` | `create`, `list`, `get`, `rename`, `delete` (**owner-only**) · `setMessage`, `history`, `updateSettings`, `generate` (owner **or** controller grant) · `pair` (**public** — the phone has no session yet), `claim` |
 | `admin` | `app/trpc/routes/admin.ts` | `getUsers`, `getUser`, `updateUser`, `banUser`, `unbanUser`, `deleteUser`, `bulkBanUsers`, `bulkDeleteUsers`, `bulkUpdateUserRoles` |
 | `analytics` | `app/trpc/routes/analytics.ts` | `getUserStats`, `getUserGrowth`, `getRoleDistribution`, `getVerificationDistribution`, `getRecentSignupsCount` |
 
 Read the route files directly for current input schemas — they're authoritative.
+
+### Board routes — four rules that are easy to break
+
+0. **`rename` and `delete` use `requireOwnedBoard`, never `requireBoardAccess`.** The two guards are not interchangeable: `requireBoardAccess` also accepts a controller-grant cookie, so reusing it on a destructive operation would let anyone who ever scanned the QR destroy the board **and its entire snapshot history** (`board_snapshot.boardId` is `onDelete: "cascade"`). A grant authorises writing *to* a board, never destroying it. Deletion also orphans that board's Durable Object storage — harmless, since an idle DO hibernates at no cost and board ids are UUIDs, so a deleted id is never re-addressable.
+
+
+1. **A board owned by someone else fails as `NotFoundError`, never `FORBIDDEN`.** A `FORBIDDEN` would confirm the id is real and make boards enumerable. `requireOwnedBoard` in `app/trpc/routes/board.ts` is the single gate; the WebSocket route `app/routes/api/board-ws.ts` applies the same rule.
+2. **`get` reads live state from the `BoardRoom` Durable Object, not from the latest D1 snapshot.** The snapshot table is history; the room is truth.
+3. **Writes go only through the room** (`setMessage` → DO), which compiles, assigns the revision, broadcasts, and persists. Never write a snapshot from a route — one write path is what keeps a stored snapshot from disagreeing with what the TV is showing. Note that WebSocket writes bypass tRPC entirely, so anything that must happen per-write belongs in the DO, not in a procedure.
+
+### Pairing — how a phone with no account drives a board
+
+Two tokens, one primitive (`app/lib/board/pairing.ts`, HMAC-SHA256 over `crypto.subtle`, keyed with `BETTER_AUTH_SECRET`):
+
+1. **Pairing token** — minted by the display (which holds the owner's session), printed as the QR, ~120s TTL, **single-use**. Proves "the owner's screen told you about this board, just now".
+2. **Controller grant** — issued when a pairing token is redeemed, carried in an `HttpOnly` per-board cookie, ~12h. Proves "you may write to board X" and nothing else.
+
+Things that are load-bearing and easy to break:
+
+- **The signed message is `prefix|boardId.length|boardId|payload`.** The prefix authenticates *purpose*, so a grant can never be replayed as a pairing token (it fails `malformed` before the key is consulted). The board id is a **MAC audience**, so a token for board A simply fails to verify for board B — there is no "compare the ids afterwards" step to forget. Length framing keeps the encoding injective.
+- **Verify order is structure → signature → claims.** Nothing in the payload is trusted — not even enough to say "expired" — until the MAC matches.
+- **Single-use is enforced in the board's Durable Object**, not in the request worker: `POST /spend-nonce` does the check-and-set inside `blockConcurrencyWhile`, so in a single-threaded per-board object exactly one of N concurrent redemptions wins. It was originally the Workers Cache API, which is per-colo, evictable, and **a no-op under `wrangler dev`** — replay protection was effectively absent locally. Do not move it back.
+- **A grant is not a session.** `create`/`list`/`get` stay owner-only; only `setMessage`/`updateSettings`/`history` accept a grant, via `requireBoardAccess`.
+- **`Path=/` on the grant cookie is deliberate** — writes go to `/api/trpc`, so a board-scoped path would send the cookie to the page and withhold it from every mutation. Scoping comes from the per-board cookie *name* plus the board id inside the MAC.
+- **The QR is re-minted every ~40s** (TTL/3) by the display, on an interval plus `visibilitychange`. Without it a TV left on the wall for three minutes shows a dead code.
+
+### Settings never bump the revision
+
+`updateSettings` writes D1 first (durable record), then pushes the row it read back into the room, which broadcasts a `state` frame **at the same revision** and writes no snapshot row — history is a log of *grids*, and a mute is not a grid. The display's `shouldApplyState` applies equal revisions precisely so these frames land. Do not "fix" either half.
+
+### Live board socket
+
+`GET /api/board-ws?boardId=<id>` (resource route, `app/routes/api/board-ws.ts`) is the browser's door into a board's Durable Object — tRPC cannot carry a protocol upgrade. It authenticates, checks ownership, then returns the DO's `101` Response **untouched** (wrapping or copying it drops the socket). Non-upgrade requests get `426`. Wire protocol: [`app/lib/board/protocol.ts`](../../app/lib/board/protocol.ts).
 
 ### Example procedure (current pattern)
 

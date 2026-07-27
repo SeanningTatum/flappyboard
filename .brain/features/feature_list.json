@@ -1,6 +1,6 @@
 {
   "$schema": "Machine-readable feature state tracker. Source of truth for status; per-feature MD docs are source of truth for design/runtime.",
-  "updated": "2026-07-13",
+  "updated": "2026-07-27",
   "policy": {
     "one_in_progress_at_a_time": true,
     "definition_of_done": "implementation complete + verify-done passed + feature MD updated + brain coherent"
@@ -15,7 +15,9 @@
       "dependencies": [],
       "status": "shipped",
       "evidence": "shipped 2026-05-07; tests: app/repositories/__tests__/user.test.ts; e2e gap noted",
-      "owners": ["sean"]
+      "owners": [
+        "sean"
+      ]
     },
     {
       "id": "feat-002",
@@ -23,10 +25,14 @@
       "slug": "admin-dashboard",
       "doc": ".brain/features/admin-dashboard/admin-dashboard.md",
       "description": "Admin-only area at /admin/* for user management and analytics; data-side gating via adminProcedure.",
-      "dependencies": ["feat-001"],
+      "dependencies": [
+        "feat-001"
+      ],
       "status": "shipped",
       "evidence": "shipped 2026-05-07; known gap: layout has no loader auth gate (data-side only)",
-      "owners": ["sean"]
+      "owners": [
+        "sean"
+      ]
     },
     {
       "id": "feat-003",
@@ -36,8 +42,10 @@
       "description": "Server-side multipart upload to Cloudflare R2 via /api/upload-file using BucketRepository.",
       "dependencies": [],
       "status": "shipped",
-      "evidence": "shipped 2026-05-07; tests: app/repositories/__tests__/bucket.test.ts",
-      "owners": ["sean"]
+      "evidence": "shipped 2026-05-07; tests: app/repositories/__tests__/bucket.test.ts. KNOWN GAP (2026-07-27): bun setup provisioned no r2_buckets in wrangler.jsonc, so Env has no BUCKET and this feature cannot run — BucketLive fails with BucketBindingError at runtime. Code deliberately kept, not deleted (decision 2026-07-27); app/services/bucket.ts and its test both widen Env locally with { BUCKET?: R2Bucket }. Re-add the binding to both the default and preview env, then drop those two widenings, when R2 is needed.",
+      "owners": [
+        "sean"
+      ]
     },
     {
       "id": "feat-004",
@@ -45,10 +53,15 @@
       "slug": "analytics",
       "doc": ".brain/features/analytics/analytics.md",
       "description": "Read-only admin analytics at /admin: user growth, role + verification distribution, recent signups.",
-      "dependencies": ["feat-001", "feat-002"],
+      "dependencies": [
+        "feat-001",
+        "feat-002"
+      ],
       "status": "shipped",
       "evidence": "shipped 2026-05-07; AnalyticsRepository runs queries with Effect.all unbounded concurrency",
-      "owners": ["sean"]
+      "owners": [
+        "sean"
+      ]
     },
     {
       "id": "feat-005",
@@ -59,7 +72,9 @@
       "dependencies": [],
       "status": "shipped",
       "evidence": "shipped 2026-07-11; live-verified: per-PR D1 (pr-999 binding test), alias URL auth signup 200 on pr-test, prod signup 200; run note .brain/features/preview-deployments/runs/2026-07-10-preview-deployments.md; workflows .github/workflows/preview.yml + preview-cleanup.yml",
-      "owners": ["sean"]
+      "owners": [
+        "sean"
+      ]
     },
     {
       "id": "feat-006",
@@ -67,10 +82,58 @@
       "slug": "feature-verification",
       "doc": ".brain/features/feature-verification/feature-verification.md",
       "description": "feature-verifier sub-agent drives the live app via the Playwright CLI (throwaway headless script), screenshots the golden + one error path, and writes a per-feature verdict doc. Replaces per-feature e2e specs; thin CI smoke specs remain the regression net.",
-      "dependencies": ["feat-001"],
+      "dependencies": [
+        "feat-001"
+      ],
       "status": "shipped",
       "evidence": "shipped 2026-07-13; self-verified: .brain/features/authentication/verifications/2026-07-13.md (PASS); harness-check 11/11; hardened clean-browser launch after dry-run extension artifact; agent .claude/agents/feature-verifier.md",
-      "owners": ["sean"]
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-007",
+      "name": "Split-Flap Board",
+      "slug": "split-flap-board",
+      "doc": ".brain/features/split-flap-board/split-flap-board.md",
+      "description": "6x24 split-flap board: BoardMessage/BoardGrid Effect Schema + deterministic layout compiler + repair pass, D1 board/board_snapshot, BoardRoom Durable Object (WS hibernation, one per board, revision-ordered writes), and the full-screen TV display route /b/:boardId targeting the Samsung TV browser.",
+      "dependencies": [],
+      "status": "shipped",
+      "evidence": "Phases 1-3 complete. feature-verifier verdict PASS (.brain/features/split-flap-board/verifications/2026-07-27.md), 8 screenshots. flap-tile count exactly 144, grid 24x6, board 1280x640 in a 1280x720 viewport, scrollable=false, zero jsErrors across all 7 steps. Flip measured by in-page rAF sampling: first tile 117ms, peak 42 faces at 267ms, settled by 449ms, mid-flip rotateX ~17.3deg. Settled text read from data-char = HELLO TV / FLAPPYBOARD with 8 yellow + 11 green from data-color. Live two-client sync 1.5ms vs a <300ms bar; board isolation and socket-path D1 persistence proven (board.revision=4 matching snapshots 1-4). Unknown board = true HTTP 404, now with a themed dark kiosk boundary. Gate: typecheck exit 0, Tests 460 passed (460) across 32 files, build exit 0 with the BOARD durable_objects binding + new_sqlite_classes migration present in the emitted build/server/wrangler.json. Fixed en route: a merged Effect layer builds every member so a missing R2 binding was 500ing every request (Bucket moved out of the global runtime); the DO never bumped board.revision; the wire silently relabelled an automation source as manual; and login/signup forms defaulted to GET, putting passwords in the URL when unhydrated.",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-008",
+      "name": "Phone Control",
+      "slug": "phone-control",
+      "doc": ".brain/features/phone-control/phone-control.md",
+      "description": "Scan-to-pair phone controller at /b/:boardId/c: short-TTL single-use HMAC pairing token from the TV's QR exchanged for a DO-scoped controller grant (no phone login), manual row/color editor with live preview, history re-flip, and board sound-pack/mute settings.",
+      "dependencies": [
+        "feat-007"
+      ],
+      "status": "shipped",
+      "evidence": "Phase 4 complete and verified. feature-verifier verdict PASS (.brain/features/phone-control/verifications/2026-07-27.md) with 10 screenshots; golden path 6/6, error paths 2/2, zero jsErrors, zero networkErrors. Core claim proven not assumed: a fresh 390x844 context asserted to hold ZERO cookies redeemed the QR token, ended holding exactly one HttpOnly fb_grant_seed-board cookie and NO auth session cookie, final URL stripped of t=, control-root data-access=grant, and from that state it sent a message, changed sound pack, muted, and re-flipped history. Revision semantics measured from the TVs own WebSocket frames: grid writes 41->42->43 and history re-flip 43->44, while mute plus sound-pack held 42->42 with a byte-identical grid and a captured frame reading revision=42 muted=true. Security: HMAC-SHA256 over crypto.subtle, signed message prefix|boardId.length|boardId|payload giving domain separation plus MAC-audience binding, verify order structure->signature->claims, constant-time compare, 512-char ceiling before crypto, injected clock. Single-use enforced in the board Durable Object under blockConcurrencyWhile: 6 concurrent redemptions of one token returned 200 401 401 401 401 401, and a replay after a full dev-server restart was still refused, proving it is storage-backed. Authorisation matrix on /api/board-ws: no session+no grant on a real board 404, invented board 404, unrelated cookie 404, forged grant 401, real-board grant for an invented board 404, valid grant with no session 101, owner session 101 — so non-enumerability depends only on what the caller sent. Gate: typecheck exit 0 with 0 error TS lines, Tests 538 passed (538) across 34 files, build exit 0. NOT PROVEN: the final mute->silence hop (playerRef.setMuted) is Web Audio and not observable headlessly; frame delivery at an unchanged revision is proven, the audible result is not. ALSO OUTSTANDING: the controller UI is functional but unstyled relative to the board, and its white/black colour swatches are visually identical — both tracked as follow-up work, neither affecting the verified behaviour.",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-009",
+      "name": "LLM Board Agent",
+      "slug": "llm-board-agent",
+      "doc": ".brain/features/llm-board-agent/llm-board-agent.md",
+      "description": "Walkie-talkie board generation: MediaRecorder audio -> Workers AI Whisper transcript -> claude-sonnet-5 structured output -> Effect Schema decode with retry-twice-then-repair, so the board always lands on a valid 6x24 grid. One shot per press, no conversation state.",
+      "dependencies": [
+        "feat-007",
+        "feat-008"
+      ],
+      "status": "in-progress",
+      "evidence": "planned 2026-07-27 from approved plan plans/2026-07-27-flappyboard-mvp.html (round 2); phases 5-6",
+      "owners": [
+        "sean"
+      ]
     }
   ]
 }

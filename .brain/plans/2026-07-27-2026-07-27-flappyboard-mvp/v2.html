@@ -1,0 +1,1249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>flappyboard MVP — 6×24 split-flap board, phone control, LLM walkie-talkie</title>
+<style>
+  :root {
+    --bg: #faf9f5; --surface: #ffffff; --fg: #141413; --fg-secondary: #3d3d3a;
+    --muted: #73726c; --border: #dedcd1; --highlight: #fff7ca; --accent: #d97757;
+    --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-6: 40px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Helvetica, Arial, sans-serif;
+    font-size: 16px; background: var(--bg); color: var(--fg); line-height: 1.6;
+    max-width: 72ch; margin: 0 auto; padding: var(--space-6) var(--space-4);
+  }
+  h1, h2, h3 {
+    font-family: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-weight: 600; line-height: 1.25; color: var(--fg);
+  }
+  h1 { font-size: 1.75em; }
+  h2 { font-size: 1.3em; font-weight: 500; margin-top: var(--space-6);
+    border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+  h3 { font-size: 1.05em; font-weight: 500; }
+  p, li { color: var(--fg-secondary); }
+  mark, .highlight { background: var(--highlight); color: var(--fg); padding: 0 2px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88em; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 4px; }
+  pre code { border: none; background: none; padding: 0; }
+  pre.snippet { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: var(--space-3); overflow-x: auto; font-size: 0.85em;
+    line-height: 1.5; color: var(--fg-secondary); }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 0.8em; font-weight: 600; border: 1px solid var(--border); }
+  .chip-status-draft { background: var(--surface); color: var(--muted); }
+  .chip-status-in-review { background: var(--highlight); color: var(--fg);
+    border-color: var(--highlight); }
+  .chip-status-reviewed { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .chip-high { color: var(--accent); border-color: var(--accent); }
+  .chip-med { color: var(--fg-secondary); }
+  .chip-low { color: var(--muted); }
+  .decision-card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: var(--space-4); margin: var(--space-4) 0; }
+  table { width: 100%; border-collapse: collapse; margin: var(--space-3) 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid
+    var(--border); vertical-align: top; font-size: 0.95em; }
+  tr:last-child td { border-bottom: none; }
+  .tag-recommended { color: var(--accent); font-weight: 600; }
+  .btn-queue, .btn-approve, .btn-request-changes {
+    border: none; border-radius: 10px; padding: 8px 16px; font-weight: 600;
+    cursor: pointer; font-size: 0.95em;
+  }
+  .btn-queue, .btn-approve { background: var(--fg); color: #fff; }
+  .btn-request-changes { background: transparent; color: var(--fg);
+    border: 1px solid var(--border); }
+  .queue-ack { margin-left: var(--space-3); font-size: 0.9em; color: var(--muted); }
+  .checklist { list-style: none; padding: 0; }
+  .checklist li { margin: var(--space-2) 0; }
+  pre.mermaid { text-align: center; }
+  pre.mermaid svg { display: block; margin: 0 auto; }
+  .arch-diagram .box { fill: var(--surface); stroke: var(--fg-secondary); stroke-width: 2; }
+  .arch-diagram .box-label { fill: var(--fg); font-size: 14px; }
+  .arch-diagram .arrow { stroke: var(--muted); stroke-width: 2; marker-end: url(#arrow); }
+  .item-x, .item-restore, .list-add-btn { cursor: pointer; border: 1px solid var(--border);
+    background: var(--surface); border-radius: 6px; font-size: 0.85em; padding: 1px 8px;
+    color: var(--fg-secondary); }
+  [data-item-text] { cursor: text; }
+  .item-removed { opacity: 0.5; }
+  .item-removed [data-item-text] { text-decoration: line-through; }
+  .item-edited [data-item-text] { border-bottom: 2px dotted var(--accent); }
+  .item-badge { font-size: 0.75em; color: var(--muted); margin-left: 6px; font-style: italic; }
+  .item-badge-proposed { color: var(--accent); }
+  .item-proposed { border-left: 2px dashed var(--accent); padding-left: 6px; }
+  .list-add-row { display: flex; gap: 8px; margin-top: var(--space-2); }
+  .list-add-input { flex: 1; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface); color: var(--fg); }
+  header .meta { color: var(--muted); font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>flappyboard MVP</h1>
+  <div class="meta">
+    <span>2026-07-27</span> ·
+    <span>features: split-flap-board, phone-control, llm-board-agent</span> ·
+    <span class="chip chip-status-in-review">in-review</span> ·
+    <span>round 1</span>
+  </div>
+</header>
+
+<section id="tldr">
+  <h2>TL;DR</h2>
+  <p>A 6×24 split-flap board renders full-screen on the TV and is driven live from a phone
+  that pairs by scanning a QR code — no login on the phone. State lives in one Durable Object
+  per board and pushes over WebSockets, so a flip on the phone lands on the TV in well under
+  a second. The headline feature is walkie-talkie mode: hold to talk, Whisper transcribes,
+  <code>claude-sonnet-5</code> returns a <mark>schema-constrained</mark> board message, and an
+  Effect Schema decode plus deterministic repair pass guarantees a renderable 6×24 grid every
+  time — the board never breaks because the model got creative.</p>
+  <p><strong>Round 1:</strong> all six decisions are answered and all six open questions are
+  closed — see <a href="#decisions">Decisions</a> and <a href="#resolved">Resolved</a>. The
+  three changes that rippled into the plan: the TV is a <mark>Samsung Tizen browser</mark> (so
+  conservative CSS, an audio-unlock gesture, and wake-resync are now acceptance criteria), flap
+  SFX ship as a <mark>selectable sound pack with a mute toggle on the phone</mark>, and the
+  schema is <mark>multi-board from day one</mark> while the UI ships a single board.</p>
+</section>
+
+<section id="context">
+  <h2>Context</h2>
+  <p>This repo is one commit old — <code>80e73a8 Initial commit</code>, scaffolded from
+  <code>cf-saas-starter-react-router</code> and just through <code>bun setup</code>
+  (real D1 IDs are already written into <code>wrangler.jsonc</code>). Per
+  <code>brain features</code>, all six existing features are the starter's own and are
+  <code>shipped</code>: authentication, admin-dashboard, file-upload, analytics,
+  preview-deployments, feature-verification. <strong>Nothing is in-progress</strong>, so the
+  one-in-progress-at-a-time policy is wide open. <code>brain plans</code> returns
+  <em>"0 plans in this brain"</em> — this is the first plan here.</p>
+  <p>The last checkpoint (2026-07-23) is starter-template work, not product work: <em>"Harness
+  adopts brain-axi CLI as primary interface (hybrid): slash commands + harness-check.sh wrap
+  brain check/ship/progress"</em>, with <code>next: create-pr-with-review</code>. So the
+  harness is ready and this plan is the first feature work on flappyboard itself.</p>
+  <p>Two facts from the current bindings shape the plan. <code>wrangler.jsonc</code> already
+  declares the <code>AI</code> binding (Workers AI — <code>rules/cloudflare.md</code> notes
+  "binding present, no consumers yet"), which is what makes Whisper transcription free of new
+  infrastructure. But there is <strong>no <code>r2_buckets</code> and no
+  <code>durable_objects</code> block</strong>, even though <code>rules/cloudflare.md</code>
+  lists <code>BUCKET</code> as available and file-upload is marked shipped — the R2 binding was
+  evidently not provisioned by setup. flappyboard needs no R2, so that gap is noted and left
+  alone; the Durable Object binding is new work in Phase 2.</p>
+</section>
+
+<section id="big-picture">
+  <h2>Big picture</h2>
+  <pre class="mermaid">
+flowchart TD
+  TV["Samsung TV browser<br/>/b/:id (display)"]
+  Phone["Phone browser<br/>/b/:id/c (controller)"]
+  Worker["Worker<br/>React Router + tRPC"]
+  DO["BoardRoom Durable Object<br/>authoritative grid + WS fanout"]
+  D1["D1<br/>board, board_snapshot"]
+  AI["Workers AI<br/>whisper transcription"]
+  Claude["Anthropic API<br/>claude-sonnet-5 structured output"]
+
+  TV -->|"WebSocket subscribe"| DO
+  Phone -->|"scan QR, exchange pairing token"| Worker
+  Phone -->|"WebSocket commands"| DO
+  Phone -->|"hold-to-talk audio blob"| Worker
+  Worker --> AI
+  Worker -->|"transcript + board schema"| Claude
+  Claude -->|"BoardMessage JSON"| Worker
+  Worker -->|"validated grid"| DO
+  DO -->|"push grid to every client"| TV
+  DO -->|"snapshot on change"| D1
+  Worker -->|"cold read fallback"| D1
+  </pre>
+  <p>The Durable Object is the only writer of live state; D1 is the durable snapshot and
+  history. The Worker never holds board state in memory — it validates, then hands the grid
+  to the DO.</p>
+</section>
+
+<section id="decisions">
+  <h2>Decisions needed</h2>
+  <p>All six are <span class="chip chip-status-reviewed">answered in round 1</span> — the chosen
+  option stays pre-selected on each card. Re-queue any card to change your mind.</p>
+
+  <div class="decision-card" id="decision-transport" data-brain-action>
+    <p><strong>1. How do the TV and phone stay in sync?</strong>
+      <span class="chip chip-status-reviewed">Durable Object + WS</span> The TV is a passive display;
+    the phone is the writer. Both need the same grid within a moment of any change.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-transport" id="opt-do-ws"
+            value="Durable Object + WebSocket hibernation" checked data-brain-action></td>
+          <td><label for="opt-do-ws">Durable Object + WebSocket hibernation
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Single authoritative writer, sub-100ms push, no polling cost, hibernation means an
+            idle board costs nothing; SQLite-backed DOs are on the Workers free plan</td>
+          <td>New binding + a <code>migrations</code> block in <code>wrangler.jsonc</code>;
+            one more runtime concept in the codebase</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-transport" id="opt-poll"
+            value="D1 + TV polls every second" data-brain-action></td>
+          <td><label for="opt-poll">D1 + TV polls every second</label></td>
+          <td>Zero new bindings, works with the tRPC layer exactly as it exists today</td>
+          <td>Up to 1s of visible lag on every flip, ~86k reads/day per idle board, and
+            manual-edit feedback feels laggy on the phone</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-transport" id="opt-sse"
+            value="SSE from the Worker" data-brain-action></td>
+          <td><label for="opt-sse">SSE from the Worker</label></td>
+          <td>One-way push, no DO</td>
+          <td>Doesn't actually work — each request may hit a different isolate, so there's no
+            shared fanout point to broadcast from</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-transport','How do the TV and phone stay in sync?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-transport"></span>
+  </div>
+
+  <div class="decision-card" id="decision-model-shape" data-brain-action>
+    <p><strong>2. What shape is the board data the LLM produces?</strong>
+      <span class="chip chip-status-reviewed">semantic segments</span> This is the single
+    highest-leverage decision in the plan — it determines how often the model can produce
+    something unrenderable. 6×24 = 144 cells.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-model-shape" id="opt-segments"
+            value="Semantic rows of colored segments, compiled to cells" checked data-brain-action></td>
+          <td><label for="opt-segments">Semantic rows of colored segments → deterministic
+            compiler <span class="tag-recommended">(recommended)</span></label></td>
+          <td>~10× smaller output, so far fewer tokens and far fewer ways to be wrong; the
+            compiler owns wrapping, centering, charset legality and the 6×24 invariant, so
+            <em>the grid is correct by construction</em>; still gives per-word and per-block
+            color</td>
+          <td>Can't express arbitrary per-cell pixel art</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-model-shape" id="opt-raw"
+            value="Raw 6x24 grid of cells" data-brain-action></td>
+          <td><label for="opt-raw">Raw 6×24 grid of <code>{char, color}</code></label></td>
+          <td>Total control, per-cell color, pixel art possible</td>
+          <td>144 objects per response; the model must count to 24 six times — the most common
+            structural failure mode, and the expensive one to retry</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-model-shape" id="opt-both"
+            value="Segments by default, raw cells as an escape hatch" data-brain-action></td>
+          <td><label for="opt-both">Segments by default, raw <code>cells</code> as an optional
+            escape hatch</label></td>
+          <td>Covers art/patterns later without giving up the safe default path</td>
+          <td>Two code paths and two validators to test from day one</td>
+        </tr>
+      </tbody>
+    </table>
+    <details>
+      <summary>What "rows of colored segments" looks like</summary>
+      <pre class="snippet"><code>{ "rows": [
+    { "align": "center", "segments": [ { "text": "GOOD MORNING", "color": "yellow" } ] },
+    { "align": "center", "segments": [ { "text": "SEAN", "color": "white" } ] },
+    { "align": "left",   "segments": [ { "text": "  ", "color": "red" },
+                                       { "text": " 3 MEETINGS TODAY", "color": "white" } ] }
+  ] }</code></pre>
+      <p>A segment of pure spaces with a color is how you get solid color tiles — same
+      primitive as a real Vestaboard's color chips. The compiler word-wraps each row to 24,
+      applies alignment, upper-cases, maps unsupported characters, and emits exactly
+      6 × 24 cells. Rows omitted by the model become blank rows.</p>
+    </details>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-model-shape','What shape is the board data the LLM produces?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-model-shape"></span>
+  </div>
+
+  <div class="decision-card" id="decision-llm" data-brain-action>
+    <p><strong>3. Which model generates the board?</strong>
+      <span class="chip chip-status-reviewed">claude-sonnet-5</span> The task is small (a
+    transcript in, a few rows of witty copy out) but it must respect a JSON schema and be fun to
+    read. <strong>You picked Sonnet 5</strong> over the recommended Opus 5 — noted and applied
+    everywhere below; the row is marked so the tradeoff stays visible.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-llm" id="opt-sonnet"
+            value="Anthropic claude-sonnet-5 with structured outputs" checked data-brain-action></td>
+          <td><label for="opt-sonnet">Anthropic <code>claude-sonnet-5</code> + structured outputs
+            <span class="chip chip-status-reviewed">chosen</span></label></td>
+          <td>Same schema-enforced <code>output_config.format</code> path as Opus; near-Opus
+            quality on this kind of short constrained copy; $3/$15 per MTok
+            (intro $2/$10 through 2026-08-31) and noticeably faster time-to-flip, which matters
+            when you're standing in front of the TV waiting for it</td>
+          <td>Slightly less flair than Opus on open-ended "be witty" prompts</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-llm" id="opt-opus"
+            value="Anthropic claude-opus-5" data-brain-action></td>
+          <td><label for="opt-opus">Anthropic <code>claude-opus-5</code>
+            <span class="tag-recommended">(was recommended)</span></label></td>
+          <td>Best copywriting of the three</td>
+          <td>$5/$25 per MTok and a slower round trip for a job Sonnet handles well</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-llm" id="opt-workers-ai"
+            value="Workers AI llama-3.3-70b" data-brain-action></td>
+          <td><label for="opt-workers-ai">Workers AI <code>@cf/meta/llama-3.3-70b-instruct-fp8-fast</code></label></td>
+          <td>Binding already exists, no key, no egress, cheapest</td>
+          <td>Weakest instruction-following of the three — the retry/repair loop would earn its
+            keep more often</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Two implementation notes that follow from picking Sonnet 5. It needs
+    <code>ANTHROPIC_API_KEY</code> as a Worker secret (documented in
+    <code>.dev.vars.example</code>, set via <code>wrangler secret put</code> — never
+    <code>process.env</code>, per non-negotiable #5). And the model id is the bare string
+    <code>claude-sonnet-5</code> with <strong>no date suffix</strong> — it rejects
+    <code>temperature</code>/<code>top_p</code> outright, so board "variety" comes from the
+    prompt, not a sampling knob. The retry-and-repair loop in decision 4 stays regardless:
+    schema enforcement stops malformed JSON, not a model that writes a 40-character line.</p>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-llm','Which model generates the board?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-llm"></span>
+  </div>
+
+  <div class="decision-card" id="decision-invalid" data-brain-action>
+    <p><strong>4. What happens when the model's output still doesn't fit?</strong>
+      <span class="chip chip-status-reviewed">retry ×2 → repair</span> You asked for
+    a validator that retries until valid. The open question is what the last resort is.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-invalid" id="opt-repair"
+            value="Retry twice with the decode error, then deterministic repair" checked data-brain-action></td>
+          <td><label for="opt-repair">Retry ×2 with the decode error fed back, then
+            deterministic repair <span class="tag-recommended">(recommended)</span></label></td>
+          <td>The board <em>always</em> updates — bounded latency, bounded cost, and a repair
+            pass (clip to 24, drop rows past 6, unknown colour → white) that is pure,
+            synchronous and unit-testable</td>
+          <td>A pathological response can render as clipped text rather than an error</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-invalid" id="opt-strict"
+            value="Retry until valid, then fail loudly" data-brain-action></td>
+          <td><label for="opt-strict">Retry until valid, then fail loudly</label></td>
+          <td>Never shows a degraded board; failures are visible instead of silently absorbed</td>
+          <td>Unbounded retries on a bad prompt, and a walkie-talkie that sometimes just does
+            nothing is the worst possible UX for this product</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-invalid" id="opt-repair-only"
+            value="Repair immediately, no retries" data-brain-action></td>
+          <td><label for="opt-repair-only">Repair immediately, no retries</label></td>
+          <td>Fastest and cheapest — one call, always</td>
+          <td>Gives up the model's chance to fix its own mistake, so more clipped boards</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>In all three options the retry is <code>Effect.retry</code> with
+    <code>Schedule.recurs</code>, the schema is Effect Schema (never Zod), and the failure is a
+    tagged <code>BoardGenerationError</code> mapped in <code>tagToTRPC</code>. The repair pass
+    also gets a fuzz test: a corpus of adversarial model outputs must all produce a valid
+    6×24 grid.</p>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-invalid','What happens when model output still does not fit?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-invalid"></span>
+  </div>
+
+  <div class="decision-card" id="decision-pairing" data-brain-action>
+    <p><strong>5. How does the phone earn the right to drive the board?</strong>
+      <span class="chip chip-status-reviewed">signed pairing token</span> The QR code is
+    on a TV in a room — treat anything on screen as public.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-pairing" id="opt-token"
+            value="Signed short-TTL pairing token in the QR, exchanged for a controller grant" checked data-brain-action></td>
+          <td><label for="opt-token">Signed short-TTL pairing token in the QR → exchanged for a
+            controller grant <span class="tag-recommended">(recommended)</span></label></td>
+          <td>No login on the phone (the whole point of scanning); token is HMAC-signed with
+            <code>BETTER_AUTH_SECRET</code>, single-use, ~2 min TTL and rotates on the display;
+            the grant is a scoped cookie the DO recognises, revocable from the TV</td>
+          <td>One more token type to implement and test</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-pairing" id="opt-login"
+            value="Better Auth login on the phone too" data-brain-action></td>
+          <td><label for="opt-login">Better Auth login on the phone too</label></td>
+          <td>Real identity per controller, reuses the shipped auth feature as-is</td>
+          <td>Typing a password on a phone to change the words on your own TV; kills the
+            scan-and-go experience</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-pairing" id="opt-open"
+            value="Unguessable board URL, no token" data-brain-action></td>
+          <td><label for="opt-open">Unguessable board URL, no token</label></td>
+          <td>Simplest thing that could work; fine for a board in your own living room</td>
+          <td>The URL is <em>displayed on a TV</em> — anyone who photographs it controls the
+            board forever, with no way to revoke</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-pairing','How does the phone earn the right to drive the board?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-pairing"></span>
+  </div>
+
+  <div class="decision-card" id="decision-voice" data-brain-action>
+    <p><strong>6. How does hold-to-talk become text?</strong>
+      <span class="chip chip-status-reviewed">Whisper upload</span> Walkie-talkie is the headline
+    feature, so this path has to work on the phone you actually own — iOS Safari.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-voice" id="opt-whisper"
+            value="MediaRecorder upload to Workers AI Whisper" checked data-brain-action></td>
+          <td><label for="opt-whisper">MediaRecorder → upload → Workers AI Whisper
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Uses the <code>AI</code> binding that's already declared and has no consumers
+            yet; identical behaviour on every browser; the audio blob is a fixture you can
+            replay in tests</td>
+          <td>Round-trip latency after release (upload + transcribe) instead of live text</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-voice" id="opt-webspeech"
+            value="Browser Web Speech API" data-brain-action></td>
+          <td><label for="opt-webspeech">Browser Web Speech API</label></td>
+          <td>Free, no upload, live interim transcript while you hold the button</td>
+          <td>Support and quality vary by browser and OS version; nothing to replay in a test,
+            so the feature-verifier can't drive it headlessly</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-voice" id="opt-voice-both"
+            value="Web Speech when available, Whisper fallback" data-brain-action></td>
+          <td><label for="opt-voice-both">Web Speech when available, Whisper fallback</label></td>
+          <td>Best latency where supported, correctness everywhere else</td>
+          <td>Two transcription paths in the MVP — more surface than the first version needs</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-voice','How does hold-to-talk become text?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-voice"></span>
+  </div>
+
+  <div class="decision-card" id="decision-tv-runtime" data-brain-action>
+    <p><strong>7. What runs the display — new in round 1.</strong>
+      <span class="chip chip-status-in-review">needs your answer</span> You asked whether the
+    Samsung TV's own browser is the right call or whether there's a better way. Short answer:
+    <strong>start with the TV browser</strong>. It's zero hardware, it proves the product
+    tonight, and Tizen's browser handles WebSockets and CSS transforms fine. The friction is
+    operational, not technical — it won't auto-launch on power-on, the TV's power-saving can
+    blank or suspend the tab, there's no remote way to reload it, and the engine trails desktop
+    Chrome by a while. A cheap kiosk device fixes all four. My recommendation is to plan for the
+    escape hatch rather than buy hardware up front.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-tv-runtime" id="opt-tizen-first"
+            value="Samsung browser now, keep the display kiosk-friendly for a Pi later" checked data-brain-action></td>
+          <td><label for="opt-tizen-first">Samsung browser now, keep the display kiosk-friendly
+            for a Pi later <span class="tag-recommended">(recommended)</span></label></td>
+          <td>No hardware, no setup, working board today; the conservative-CSS and wake-resync
+            constraints already in Phase 3 are exactly what a kiosk device would want anyway, so
+            switching later costs nothing</td>
+          <td>Manual relaunch after the TV powers off; you may find the power-save blanking
+            annoying</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-tv-runtime" id="opt-pi"
+            value="Raspberry Pi or Android TV stick in kiosk Chrome from the start" data-brain-action></td>
+          <td><label for="opt-pi">Raspberry Pi / Android TV stick in kiosk Chrome from the
+            start</label></td>
+          <td>Auto-launches on power, never sleeps, a guaranteed modern engine, remotely
+            manageable — the way a real always-on board should work</td>
+          <td>~$35–60 and an evening of setup before you see a single flip</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-tv-runtime" id="opt-tizen-app"
+            value="Native Tizen app" data-brain-action></td>
+          <td><label for="opt-tizen-app">Native Tizen app</label></td>
+          <td>Proper autostart, no browser chrome at all</td>
+          <td>A whole second toolchain and a Samsung developer account to render a web page you
+            already have</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-tv-runtime','What runs the display?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-tv-runtime"></span>
+  </div>
+</section>
+
+<section id="resolved">
+  <h2>Resolved in round 1</h2>
+  <p>Every question from the first draft, with your answer and what it changed.</p>
+  <table>
+    <thead><tr><th>Question</th><th>Your answer</th><th>Effect on the plan</th></tr></thead>
+    <tbody>
+      <tr><td>Does the board ever act on its own?</td>
+        <td>Room for it later as "automations", behind auth / paywall</td>
+        <td>Out of MVP scope. Two seams left in: <code>BoardAgent</code> is callable from a
+          Workflow or Cron Trigger, and <code>board_snapshot.source</code> already has an
+          <code>automation</code> variant</td></tr>
+      <tr><td>One board or several?</td>
+        <td>One suffices, but think about several</td>
+        <td>Schema and DO are per-board from day one (<code>ownerId</code> + <code>name</code>);
+          only the picker UI is deferred, so no migration later</td></tr>
+      <tr><td>Multi-turn walkie-talkie?</td>
+        <td>One shot</td>
+        <td><code>board.generate</code> is stateless — no conversation store, no eviction
+          policy; a follow-up is a new prompt with the current board as context</td></tr>
+      <tr><td>What runs the TV?</td>
+        <td>Samsung TV browser</td>
+        <td>Phase 3 gains three acceptance criteria: conservative CSS, a one-time audio-unlock
+          tap, and wake-resync by revision. Escape hatch raised as decision 7 above</td></tr>
+      <tr><td>Flap sound effect?</td>
+        <td>Fine — an array of SFX, with a mute option on the phone</td>
+        <td>New <code>app/lib/board/sfx.ts</code> registry + packs under <code>public/sfx/</code>;
+          the phone owns pack selection and mute, pushed to the TV over the same socket</td></tr>
+      <tr><td>Fix the missing R2 binding?</td>
+        <td>No need for R2 in this app</td>
+        <td>Agreed — boards are tiny JSON and SFX are static assets. Left as a documented starter
+          gap; not touched by this plan</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="plan-of-record" data-brain-section="plan-of-record">
+  <h2>Plan of record</h2>
+  <p>Six phases, three brain features. The scope policy allows one in-progress feature at a
+  time, so they ship in order: <code>split-flap-board</code> (phases 1–3) →
+  <code>phone-control</code> (phase 4) → <code>llm-board-agent</code> (phases 5–6).
+  Every phase ends green on <code>bun run typecheck && bun run test</code>; the user-visible
+  ones also need a <code>feature-verifier</code> PASS doc.</p>
+  <ol>
+    <template>
+      <li data-brain-item>
+        <strong>Phase — </strong><span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0">
+      <strong>Phase 1 — domain core, no UI and no network.</strong>
+      <span data-item-text data-brain-action>Effect Schema for BoardMessage (rows of colored
+      segments) and BoardGrid (6×24 cells), the charset table, the layout compiler
+      (upper-case, word-wrap to 24, align, map unsupported chars), and the repair pass.
+      Acceptance: unit tests cover compiler and repair; a fuzz corpus of adversarial model
+      outputs all produce a structurally valid 6×24 grid; no Zod anywhere.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="1">
+      <strong>Phase 2 — persistence and the realtime room.</strong>
+      <span data-item-text data-brain-action>D1 tables board + board_snapshot with a Drizzle
+      migration and an Effect.Service BoardRepository — board carries ownerId and a name so
+      several boards per account are a data reality from day one, even though the UI ships one;
+      the BoardRoom Durable Object with WebSocket hibernation, one DO per boardId, and
+      last-write-wins on a monotonic revision; BOARD binding plus a migrations tag in
+      wrangler.jsonc for both the default and preview env; tRPC board.get / board.setMessage /
+      board.history. Acceptance: two browser tabs on the same board, a write in one appears in
+      the other in under 300ms; two different boardIds stay fully isolated; repository
+      unit-tested; bun run build passes (catches Workers-compat breakage).</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="2">
+      <strong>Phase 3 — the TV display.</strong>
+      <span data-item-text data-brain-action>Route /b/:boardId renders 144 flap tiles at
+      full-bleed with a CSS flip animation and per-cell color, subscribes over WebSocket, plays
+      a flap SFX from the selected sound pack, and overlays a QR code that encodes the current
+      pairing token. Targets the Samsung TV browser: CSS transform/transition only (no
+      container queries, no :has, no view transitions), a one-time "tap to enable sound" gesture
+      to unlock audio autoplay, and a visibilitychange handler that reconnects and resyncs by
+      revision when the TV wakes. Acceptance: feature-verifier PASS doc with screenshots of an
+      idle board, a mid-flip transition, the QR overlay and the audio-unlock prompt; a manual
+      pass on the actual Samsung TV; zero console errors.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="3">
+      <strong>Phase 4 — the phone controller.</strong>
+      <span data-item-text data-brain-action>Route /b/:boardId/c exchanges the pairing token
+      for a controller grant, then offers a manual editor: six row inputs, a color picker per
+      segment, a live mini-preview and a Send button, plus a history strip to re-flip a past
+      snapshot. Also owns the board's sound settings — pick a sound pack from the SFX array or
+      mute entirely; the setting rides on the board record so the TV picks it up over the same
+      WebSocket push. Acceptance: feature-verifier PASS on the golden path (scan → pair → type →
+      board flips) and on one error path (expired token → "rescan the QR", no state change);
+      mute from the phone silences the next flip on the display.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="4">
+      <strong>Phase 5 — the LLM agent.</strong>
+      <span data-item-text data-brain-action>BoardAgent Effect service on claude-sonnet-5:
+      system prompt that teaches the model the 6×24 constraint and the palette,
+      structured-output call via output_config.format, Effect Schema decode, retry with the
+      decode error fed back, then the Phase 1 repair pass; ANTHROPIC_API_KEY read through the
+      CloudflareEnv tag, never process.env; tagged errors BoardGenerationError and
+      LlmRefusedError mapped in tagToTRPC; tRPC board.generate takes a text prompt plus the
+      current grid as context and is stateless — one shot per call, no conversation history.
+      Acceptance: a 20-prompt eval script yields 20 valid grids; refusal and timeout paths each
+      covered by a unit test with a stubbed client.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="5">
+      <strong>Phase 6 — walkie-talkie.</strong>
+      <span data-item-text data-brain-action>Hold-to-talk button on the controller records with
+      MediaRecorder, POSTs the blob to /api/transcribe, Workers AI Whisper returns a
+      transcript, the transcript flows into board.generate and the board flips. Acceptance:
+      feature-verifier PASS driving the flow with a pre-recorded audio fixture; empty
+      transcript shows "didn't catch that" and leaves the board untouched.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+  </ol>
+  <div class="list-add-row" data-brain-section-add="plan-of-record">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a phase..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+  <details>
+    <summary>Explicitly out of scope for the MVP — but the seams are left in</summary>
+    <p><strong>Automations</strong> (a cron that refreshes the board each morning with weather or
+    calendar) are a paid feature, per round 1 — not built now, but nothing in the design blocks
+    them. Two seams make it cheap later: <code>BoardAgent</code> is a plain Effect service that
+    takes a prompt and returns a grid, so a Cloudflare Workflow or a Cron Trigger can call it
+    with no HTTP request in play; and <code>board_snapshot.source</code> is an enum from day one
+    (<code>manual | llm | automation</code>) so automated flips are distinguishable in history
+    without a migration. Gating goes on the existing Better Auth role/plan check — the same
+    <code>adminProcedure</code> pattern the admin dashboard already uses.</p>
+    <p><strong>Multi-board UI</strong> — a board picker and a "new board" flow. The schema and
+    the DO are already per-board, so this is UI-only work, not a data migration.</p>
+    <p><strong>R2</strong> — not needed. Boards are tiny JSON, and SFX ship as static assets
+    under <code>public/</code> through the existing <code>ASSETS</code> binding. The missing
+    <code>r2_buckets</code> block in <code>wrangler.jsonc</code> stays a known starter gap for
+    whenever file-upload is actually exercised.</p>
+  </details>
+</section>
+
+<section id="files-changed">
+  <h2>Files that change</h2>
+  <table>
+    <thead><tr><th>Path</th><th>Change</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>app/lib/schemas/board.ts</code></td><td>new</td>
+        <td>Effect Schema for <code>BoardMessage</code>, <code>BoardGrid</code>, palette and charset</td></tr>
+      <tr><td><code>app/lib/board/compile.ts</code></td><td>new</td>
+        <td>Pure segments → 6×24 cells compiler (wrap, align, charset mapping)</td></tr>
+      <tr><td><code>app/lib/board/repair.ts</code></td><td>new</td>
+        <td>Last-resort clamp so a grid always renders</td></tr>
+      <tr><td><code>app/lib/board/__tests__/*.test.ts</code></td><td>new</td>
+        <td>Non-negotiable #4 — unit + fuzz coverage for both helpers</td></tr>
+      <tr><td><code>app/db/schema.ts</code></td><td>edit</td>
+        <td><code>board</code> and <code>board_snapshot</code> tables</td></tr>
+      <tr><td><code>drizzle/00XX_board.sql</code></td><td>new (generated)</td>
+        <td><code>bun run db:generate</code> output</td></tr>
+      <tr><td><code>app/repositories/board.ts</code> + test</td><td>new</td>
+        <td><code>Effect.Service</code> repo for boards, snapshots, history</td></tr>
+      <tr><td><code>workers/board-room.ts</code></td><td>new</td>
+        <td><code>BoardRoom</code> Durable Object — authoritative grid, WS hibernation, fanout</td></tr>
+      <tr><td><code>workers/app.ts</code></td><td>edit</td>
+        <td>Export the DO class alongside <code>ExampleWorkflow</code></td></tr>
+      <tr><td><code>wrangler.jsonc</code></td><td>edit</td>
+        <td><code>durable_objects</code> binding + <code>migrations</code> tag, for both default and <code>preview</code> env</td></tr>
+      <tr><td><code>app/services/board-room.ts</code></td><td>new</td>
+        <td>Effect service wrapping the DO stub (no raw <code>env</code> access in routes)</td></tr>
+      <tr><td><code>app/services/board-agent.ts</code></td><td>new</td>
+        <td><code>claude-sonnet-5</code> structured-output call + decode + retry + repair
+          (one shot, no conversation state)</td></tr>
+      <tr><td><code>app/services/transcription.ts</code></td><td>new</td>
+        <td>Workers AI Whisper wrapper</td></tr>
+      <tr><td><code>app/models/errors/board.ts</code></td><td>new</td>
+        <td><code>BoardNotFoundError</code>, <code>PairingTokenInvalidError</code>, <code>BoardGenerationError</code>, <code>LlmRefusedError</code>, <code>TranscriptionFailedError</code></td></tr>
+      <tr><td><code>app/lib/effect-trpc.ts</code></td><td>edit</td>
+        <td>Map every new tagged error in <code>tagToTRPC</code> (non-negotiable #3)</td></tr>
+      <tr><td><code>app/trpc/routes/board.ts</code></td><td>new</td>
+        <td><code>get</code>, <code>setMessage</code>, <code>generate</code>, <code>history</code>, <code>pair</code></td></tr>
+      <tr><td><code>app/trpc/router.ts</code></td><td>edit</td>
+        <td>Mount the board router</td></tr>
+      <tr><td><code>app/routes/board/display.tsx</code></td><td>new</td>
+        <td>TV route <code>/b/:boardId</code></td></tr>
+      <tr><td><code>app/routes/board/control.tsx</code></td><td>new</td>
+        <td>Phone route <code>/b/:boardId/c</code></td></tr>
+      <tr><td><code>app/routes/api/transcribe.ts</code></td><td>new</td>
+        <td>Audio blob → Whisper → transcript</td></tr>
+      <tr><td><code>app/components/board/*</code></td><td>new</td>
+        <td><code>FlapTile</code>, <code>BoardGridView</code>, <code>PushToTalkButton</code>,
+          <code>QrOverlay</code>, <code>SoundUnlockPrompt</code>, <code>SoundPackPicker</code></td></tr>
+      <tr><td><code>app/lib/board/sfx.ts</code> + test</td><td>new</td>
+        <td>Sound-pack registry (the SFX array), mute state, and the audio-unlock gate for the
+          Samsung TV browser</td></tr>
+      <tr><td><code>public/sfx/&lt;pack&gt;/*.mp3</code></td><td>new</td>
+        <td>Flap sound packs, served through the existing <code>ASSETS</code> binding — no R2</td></tr>
+      <tr><td><code>app/lib/board/pairing.ts</code> + test</td><td>new</td>
+        <td>HMAC sign/verify for the short-TTL, single-use pairing token</td></tr>
+      <tr><td><code>app/locales/en/board.json</code></td><td>new</td>
+        <td>i18n namespace; register in <code>app/i18n/i18n.d.ts</code></td></tr>
+      <tr><td><code>scripts/seed-preview.ts</code></td><td>edit</td>
+        <td>Seed a demo board so preview deploys have something to show</td></tr>
+      <tr><td><code>.dev.vars.example</code></td><td>edit</td>
+        <td>Document <code>ANTHROPIC_API_KEY</code></td></tr>
+      <tr><td><code>.brain/features/*</code>, <code>.brain/CHANGELOG.md</code></td><td>edit</td>
+        <td>Three feature docs + tracker rows, data-models, architecture, cloudflare, api, errors</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="golden-path">
+  <h2>Golden path</h2>
+  <p>Walkie-talkie, end to end — the flow that has to feel like magic.</p>
+  <pre class="mermaid">
+sequenceDiagram
+  participant P as Phone (controller)
+  participant W as Worker
+  participant AI as Workers AI (whisper)
+  participant C as claude-sonnet-5
+  participant DO as BoardRoom DO
+  participant TV as TV (display)
+
+  TV->>DO: WS subscribe (board 42)
+  P->>W: POST /api/transcribe (audio blob)
+  W->>AI: transcribe
+  AI-->>W: "put up something nice for dinner guests"
+  P->>W: board.generate(transcript)
+  W->>C: prompt + BoardMessage json_schema
+  C-->>W: BoardMessage JSON
+  W->>W: Effect Schema decode -> compile -> 6x24 grid
+  W->>DO: setGrid(grid, rev+1)
+  DO->>DO: persist snapshot to D1
+  DO-->>TV: push grid
+  DO-->>P: ack + echo grid
+  TV->>TV: flap animation + SFX, row by row
+  </pre>
+  <p>One-shot by design (decision from round 1): each press of the button is an independent
+  generation. No conversation history is carried between presses, so there is no per-board chat
+  state to store or evict — a follow-up like "make it funnier" is simply a new prompt that
+  includes the current board as context.</p>
+</section>
+
+<section id="error-paths">
+  <h2>Error paths</h2>
+  <table>
+    <thead><tr><th>Failure</th><th>Detected by</th><th>Handled by</th><th>User sees</th></tr></thead>
+    <tbody data-brain-section="error-paths">
+      <template>
+        <tr data-brain-item>
+          <td colspan="4"><span data-item-text data-brain-action></span>
+            <span class="item-controls">
+              <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+              <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+            </span></td>
+        </tr>
+      </template>
+      <tr data-brain-item="0">
+        <td><span data-item-text data-brain-action>Model output fails schema decode</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Effect Schema decode failure in <code>BoardAgent</code></td>
+        <td>Retry ×2 with the decode error appended, then the deterministic repair pass</td>
+        <td>Board still flips; a small "trimmed to fit" toast on the phone</td>
+      </tr>
+      <tr data-brain-item="1">
+        <td><span data-item-text data-brain-action>Model declines the request</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td><code>stop_reason === "refusal"</code> checked before reading content</td>
+        <td><code>LlmRefusedError</code> → <code>tagToTRPC</code> → <code>BAD_REQUEST</code></td>
+        <td>"Can't put that on the board" — board unchanged</td>
+      </tr>
+      <tr data-brain-item="2">
+        <td><span data-item-text data-brain-action>WebSocket drops on the TV</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td><code>onclose</code> on the client</td>
+        <td>Exponential-backoff reconnect, then a full snapshot fetch to resync by revision</td>
+        <td>Board keeps showing the last grid; a faint "reconnecting" dot in the corner</td>
+      </tr>
+      <tr data-brain-item="3">
+        <td><span data-item-text data-brain-action>Pairing token expired or already used</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>HMAC / TTL / single-use check in <code>board.pair</code></td>
+        <td><code>PairingTokenInvalidError</code> → <code>UNAUTHORIZED</code>; the display rotates its token</td>
+        <td>"That code expired — rescan the QR on the TV"</td>
+      </tr>
+      <tr data-brain-item="4">
+        <td><span data-item-text data-brain-action>Whisper returns an empty transcript</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Empty/whitespace text from the AI binding</td>
+        <td><code>TranscriptionFailedError</code>; no LLM call is made</td>
+        <td>"Didn't catch that — hold and try again"; board untouched</td>
+      </tr>
+      <tr data-brain-item="5">
+        <td><span data-item-text data-brain-action>Two controllers write at once</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Stale revision number on the incoming command</td>
+        <td>DO serialises writes; last write wins and the loser gets the new grid echoed back</td>
+        <td>Both phones converge on the same board; the loser's editor refreshes</td>
+      </tr>
+      <tr data-brain-item="6">
+        <td><span data-item-text data-brain-action>Durable Object unreachable</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Failed stub fetch in <code>BoardRoomService</code></td>
+        <td>Read path falls back to the latest D1 snapshot; write path returns a tagged error</td>
+        <td>TV renders the last known board; phone shows controls disabled</td>
+      </tr>
+      <tr data-brain-item="7">
+        <td><span data-item-text data-brain-action>TV sleeps or the browser backgrounds the tab,
+          silently killing the socket</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td><code>visibilitychange</code> to visible, plus a heartbeat that has stopped arriving</td>
+        <td>Reconnect, then compare revision and fetch the full grid if behind</td>
+        <td>Board is correct within a second of the TV waking — never a stale board from
+          yesterday</td>
+      </tr>
+      <tr data-brain-item="8">
+        <td><span data-item-text data-brain-action>Flap SFX blocked by autoplay policy</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Rejected <code>play()</code> promise on the first flip</td>
+        <td>Audio stays disarmed until a one-time tap on the display; flips still animate</td>
+        <td>A small "tap for sound" hint on the TV; silent-but-working board until then</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="list-add-row" data-brain-section-add="error-paths">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a failure mode..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="testing-plan" data-brain-section="testing-plan">
+  <h2>Testing plan</h2>
+  <ul class="checklist">
+    <template>
+      <li data-brain-item>
+        <label><input type="checkbox"> <span data-item-text data-brain-action></span></label>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <!-- Double-clicking label text toggles the checkbox twice on the way into edit
+         mode; it nets back to its original state. Do not "fix" this with
+         preventDefault — that would break click-to-check. -->
+    <li data-brain-item="0">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Unit: compiler
+        emits exactly 6×24 cells for every input, including empty, over-long and
+        emoji-laden rows</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="1">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Unit: fuzz corpus
+        of adversarial model outputs (7 rows, 40-char lines, unknown colors, null segments,
+        nested junk) all repair to a valid grid</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="2">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Unit:
+        BoardRepository create / latest snapshot / history ordering</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="3">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Unit: BoardAgent
+        with a stubbed client — happy path, decode failure then retry success, refusal,
+        exhausted retries falling through to repair</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="4">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Unit: pairing token
+        sign / verify, expiry, tamper and replay all rejected</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="5">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Verification
+        (feature-verifier): golden path scan → pair → manual send → TV flips, with
+        screenshots</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="6">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Verification: voice
+        path with a pre-recorded fixture, plus the empty-transcript error path</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="7">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>E2E smoke (thin, in
+        e2e/): display route renders 144 tiles and an unpaired controller is refused</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="8">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Regression:
+        existing auth and admin e2e specs still pass; bun run build succeeds with the DO
+        binding added</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="9">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Unit: sound-pack
+        registry resolves every pack, falls back to silence on an unknown pack name, and
+        respects the muted flag</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="10">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Verification:
+        mute from the phone silences the next flip on the display; switching sound pack takes
+        effect without a reload</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="11">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Verification: drop
+        the socket mid-session, send two flips while disconnected, then restore — the display
+        resyncs to the latest revision (proxy for the TV waking from sleep)</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="12">
+      <label><input type="checkbox"> <span data-item-text data-brain-action>Manual: open the
+        display on the actual Samsung TV browser — tiles legible at viewing distance, flip
+        animation smooth, audio unlocks on tap, socket survives 30 minutes idle</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="testing-plan">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a test..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="open-questions" data-brain-section="open-questions">
+  <h2>Open questions</h2>
+  <ul>
+    <template>
+      <li data-brain-item>
+        <span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0">
+      <span data-item-text data-brain-action>How does a board get created in the first place —
+      auto-create one on first login, or a "new board" screen in the dashboard? Phase 2 needs
+      some answer, even if it's a seed row.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="1">
+      <span data-item-text data-brain-action>Does a paired phone stay paired indefinitely, or
+      should the grant expire (a day? a week?) and need a rescan?</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="2">
+      <span data-item-text data-brain-action>How does the board animate a change — all 144 tiles
+      at once, a left-to-right cascade, or row by row? Real Vestaboards cascade, and it's most of
+      the charm, but it costs animation-timing work in Phase 3.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="3">
+      <span data-item-text data-brain-action>Should the LLM be allowed to see anything about you
+      — time of day, the previous board, who's paired — or is the transcript the whole input?</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="4">
+      <span data-item-text data-brain-action>How many sound packs at launch, and where do the
+      audio files come from — recorded, bought, or generated?</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="open-questions">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add an open question..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="verdict">
+  <h2>Verdict</h2>
+  <p>Answer the six decision cards above, then approve — or annotate anything and request
+  changes.</p>
+  <div>
+    <button type="button" class="btn-approve" data-brain-action
+      onclick="queueVerdict('approve')">Approve plan</button>
+    <button type="button" class="btn-request-changes" data-brain-action
+      onclick="queueVerdict('request-changes')">Request changes</button>
+  </div>
+</section>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+</script>
+
+<script>
+  function queueDecision(cardId, question) {
+    var card = document.getElementById(cardId);
+    var checked = card.querySelector('input[type="radio"]:checked');
+    if (!checked) return;
+    var choice = checked.value;
+    if (window.brain && typeof window.brain.queuePrompt === "function") {
+      window.brain.queuePrompt({
+        tag: "decision",
+        queueKey: cardId,
+        prompt: question + ": " + choice,
+        target: { type: "decision", question: question, choice: choice }
+      });
+    }
+    var ack = document.getElementById("ack-" + cardId);
+    if (ack) ack.textContent = "Queued: " + choice;
+  }
+
+  function queueVerdict(verdict) {
+    if (!(window.brain && typeof window.brain.queuePrompt === "function")) return;
+    window.brain.queuePrompt({
+      tag: "message",
+      queueKey: "verdict",
+      prompt: verdict === "approve"
+        ? "Plan approved as written."
+        : "Requesting changes — see annotations."
+    });
+  }
+</script>
+
+<script>
+  (function () {
+    function queueList(section, queueKey, prompt, action, item, index) {
+      if (window.brain && typeof window.brain.queuePrompt === "function") {
+        window.brain.queuePrompt({
+          tag: "list-edit",
+          queueKey: queueKey,
+          prompt: prompt,
+          target: { type: "list-edit", section: section, action: action, item: item, index: index }
+        });
+      }
+    }
+
+    function slugify(s) {
+      return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "").slice(0, 60) || "item";
+    }
+
+    function itemText(el) {
+      var t = el.querySelector("[data-item-text]");
+      return (t || el).textContent.trim();
+    }
+
+    function addBadge(el, cls, label) {
+      var badge = el.querySelector("." + cls);
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "item-badge " + cls;
+        el.appendChild(badge);
+      }
+      badge.textContent = label;
+    }
+
+    function toggleRemoved(item, section) {
+      var index = Number(item.getAttribute("data-brain-item"));
+      var text = itemText(item);
+      var removed = item.classList.toggle("item-removed");
+      var xBtn = item.querySelector(".item-x");
+      var restoreBtn = item.querySelector(".item-restore");
+      if (xBtn) xBtn.hidden = removed;
+      if (restoreBtn) restoreBtn.hidden = !removed;
+      var key = section + ":remove:" + index;
+      if (removed) {
+        queueList(section, key, "Remove from " + section + ": \"" + text + "\"", "remove", text, index);
+      } else {
+        queueList(section, key, "Cancelled: keep \"" + text + "\" in " + section, "edit", text, index);
+      }
+    }
+
+    function startEdit(item, section) {
+      if (item.classList.contains("item-removed")) return;
+      var span = item.querySelector("[data-item-text]");
+      if (!span || span.isContentEditable) return;
+      var before = span.textContent;
+      span.setAttribute("contenteditable", "true");
+      span.focus();
+
+      function commit() {
+        span.removeAttribute("contenteditable");
+        span.removeEventListener("blur", commit);
+        span.removeEventListener("keydown", onKey);
+        var text = span.textContent.trim();
+        if (!text || text === before.trim()) { span.textContent = before; return; }
+        var index = Number(item.getAttribute("data-brain-item"));
+        addBadge(item, "item-badge-edited", "edited");
+        queueList(section, section + ":edit:" + index,
+          "Edit " + section + " item " + index + ": \"" + text + "\"", "edit", text, index);
+      }
+      function onKey(ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); span.blur(); }
+        else if (ev.key === "Escape") { span.textContent = before; ev.preventDefault(); span.blur(); }
+      }
+      span.addEventListener("blur", commit);
+      span.addEventListener("keydown", onKey);
+    }
+
+    function commitAdd(addRow) {
+      var section = addRow.getAttribute("data-brain-section-add");
+      var input = addRow.querySelector(".list-add-input");
+      var text = input.value.trim();
+      if (!text) return;
+      var list = document.querySelector("[data-brain-section=\"" + section + "\"]");
+      var tpl = list && list.querySelector("template");
+      if (!list || !tpl) return;
+      var node = document.importNode(tpl.content, true);
+      var item = node.querySelector("[data-brain-item]") || node.firstElementChild;
+      item.setAttribute("data-brain-item", "new");
+      var span = item.querySelector("[data-item-text]");
+      if (span) span.textContent = text;
+      item.classList.add("item-proposed");
+      addBadge(item, "item-badge-proposed", "proposed");
+      list.insertBefore(node, tpl.nextSibling);
+      input.value = "";
+      queueList(section, section + ":add:" + slugify(text),
+        "Add to " + section + ": \"" + text + "\"", "add", text, null);
+    }
+
+    document.addEventListener("click", function (ev) {
+      var xBtn = ev.target.closest(".item-x");
+      var restoreBtn = ev.target.closest(".item-restore");
+      if (xBtn || restoreBtn) {
+        var item = ev.target.closest("[data-brain-item]");
+        var section = ev.target.closest("[data-brain-section]");
+        if (item && section) toggleRemoved(item, section.getAttribute("data-brain-section"));
+        return;
+      }
+      var addBtn = ev.target.closest(".list-add-btn");
+      if (addBtn) {
+        var addRow = ev.target.closest("[data-brain-section-add]");
+        if (addRow) commitAdd(addRow);
+      }
+    });
+
+    document.addEventListener("dblclick", function (ev) {
+      var item = ev.target.closest("[data-brain-item]");
+      if (!item) return;
+      var section = item.closest("[data-brain-section]");
+      if (section) startEdit(item, section.getAttribute("data-brain-section"));
+    });
+
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
+      var addRow = ev.target.closest("[data-brain-section-add]");
+      if (addRow && ev.target.classList.contains("list-add-input")) {
+        ev.preventDefault();
+        commitAdd(addRow);
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>

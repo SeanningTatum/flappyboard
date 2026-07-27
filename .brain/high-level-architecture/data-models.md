@@ -12,8 +12,17 @@
 | `session` | Active sessions (Better Auth) | `userId → user.id` (cascade), `impersonatedBy` (admin user id, no FK) |
 | `account` | Credential / OAuth accounts | `userId → user.id` (cascade) |
 | `verification` | Email verification tokens | Linked logically by `identifier` (email) |
+| `board` | One split-flap board: owner, name, `soundPack`, `muted`, `revision` | `ownerId → user.id` (cascade) |
+| `board_snapshot` | Immutable history — one row per applied write | `boardId → board.id` (cascade); unique `(board_id, revision)` |
 
-All four tables are owned by Better Auth's drizzle adapter. There are no app-specific business tables yet — features that need their own data add new tables here.
+The first four tables are owned by Better Auth's drizzle adapter. `board` / `board_snapshot` are the first app-owned business tables (feature `split-flap-board`, phase 2).
+
+### Board tables — what to know before touching them
+
+- **`board.revision` is a cache, not the source of truth.** The authoritative live revision lives in the `BoardRoom` Durable Object; the column exists so a cold read (or a future automation) can tell how far a board has advanced without waking the room. It is bumped **monotonically** (`WHERE revision < :new`) in both `BoardRepository.saveSnapshot` and the DO's own persist path, so a late-arriving older write can never move it backwards.
+- **`board_snapshot.cells` is untrusted on read.** It's a `JSON.stringify(BoardGrid)` blob that may have been written by an older or newer deploy, so parse *and* re-validate the 6×24 invariant — `parseSnapshotCells` in `app/repositories/board.ts` returns `null` rather than throwing.
+- **`source` accepts `manual | llm | automation`.** Nothing writes `automation` yet; it exists so the deferred paid automations feature needs no migration. The wire protocol accepts all three deliberately — narrowing it would silently relabel an automation write as `manual`.
+- The unique `(board_id, revision)` index turns a duplicate revision into a `CreationError` instead of silently corrupting history.
 
 ## Entity relationships
 

@@ -4,7 +4,9 @@
 
 ## Overview
 
-SaaS starter on **Cloudflare Workers + React Router v7 + tRPC + D1/Drizzle + Better Auth + Effect TS + ShadCN/Tailwind**. Email/password auth, admin dashboard, file upload (R2), analytics, i18n, dark mode.
+**flappyboard** — a split-flap message board for your TV, driven from your phone: type your own text or let an LLM decide what the board says.
+
+Built on the Cloudflare SaaS stack: **Cloudflare Workers + React Router v7 + tRPC + D1/Drizzle + Better Auth + Effect TS + ShadCN/Tailwind**.
 
 > **Retrieval over recall.** Query the brain before any task. Do not rely on training data for project-specific patterns.
 
