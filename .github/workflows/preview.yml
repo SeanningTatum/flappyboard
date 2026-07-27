@@ -17,6 +17,43 @@
 # deleted on close by preview-cleanup.yml). `bun run setup` provisions the
 # rest of the `preview` environment (R2 + Worker) — see wrangler.jsonc's
 # `env.preview` block.
+#
+# Two owner-run one-offs are NOT automated here, deliberately:
+#
+#   a. Each time a NEW Durable Object class is added to wrangler.jsonc, the
+#      `preview` worker needs one real deploy — `bun run deploy:preview` —
+#      before per-PR versions can be uploaded onto it. Cloudflare's docs are
+#      explicit (https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/):
+#        "Uploading a version that changes Durable Object class lifecycle is
+#         not supported. This applies to both the declarative exports field and
+#         the legacy migrations array - any change that creates, deletes,
+#         renames, or transfers a Durable Object class must be applied through
+#         wrangler deploy."
+#      The reason is atomicity: a lifecycle change cannot be rolled back to a
+#      version that predates it, so it cannot ride in an unactivated version.
+#      The same page's "First upload" limit means a worker that has never been
+#      deployed at all also cannot be created by `versions upload` — the one
+#      bootstrap deploy below satisfies both limits at once.
+#      THIS IS NOT A PERMANENT BREAK. It is one deploy per new DO class, not a
+#      cost per PR. Wrangler only sends a `migrations` key while the deployed
+#      script's migration tag is behind the config's last tag; once `v1` is
+#      applied, `versions upload` sends nothing and every PR preview works
+#      again — until someone adds a new migration tag, which needs another real
+#      deploy. Do not conclude from a red preview job that previews are broken.
+#      Note: `wrangler versions upload --dry-run` CANNOT catch this. Wrangler
+#      resolves migrations only when not dry-running, and the rejection comes
+#      from the API, so a green dry run proves nothing here.
+#      The upload step below detects the failure and prints the remediation.
+#   b. `ANTHROPIC_API_KEY` is a Worker SECRET, not a wrangler.jsonc binding, so
+#      CI cannot set it (and should not — it would have to pass a key through a
+#      workflow). Set it once per environment:
+#        wrangler secret put ANTHROPIC_API_KEY --env preview
+#      Its absence never breaks a deploy: BoardAgent constructs fine without a
+#      key and only `board.generate` fails, with a typed ConfigurationError
+#      (see app/services/board-agent.ts's `unconfiguredBoardAgent`).
+#
+# D1 migrations, by contrast, ARE automated — the "Migrate per-PR D1" step
+# below runs the same command as `bun run db:migrate:preview`.
 name: Preview Deploy
 
 on:
@@ -74,11 +111,79 @@ jobs:
           CLOUDFLARE_ENV: preview
         run: bun run build
 
+      # No `--env preview` here on purpose: the build step above emits a
+      # *redirected* config (`.wrangler/deploy/config.json` →
+      # `build/server/wrangler.json`) in which CLOUDFLARE_ENV=preview has
+      # already been flattened to the top level — worker `<name>-preview`, the
+      # per-PR D1 patched in by setup-preview-db.ts, and the `migrations` list.
+      # Passing `--env preview` would look for an `env.preview` key that the
+      # flattened config no longer has.
       - name: Upload preview version
         id: upload
         run: |
+          # The step used to run under `set -e` with the wrangler call inside a
+          # command substitution, so a non-zero wrangler exit killed the step at
+          # the assignment and `echo "$OUT"` never ran — every failure surfaced
+          # as a bare "Process completed with exit code 1" with wrangler's real
+          # error discarded. Capture the status, then echo BEFORE anything that
+          # can exit.
+          set +e
           OUT=$(bunx wrangler versions upload --preview-alias "pr-${{ github.event.number }}" 2>&1)
+          STATUS=$?
+          set -e
           echo "$OUT"
+
+          if [ "$STATUS" -ne 0 ]; then
+            # A brand-new Durable Object class cannot be created by `versions
+            # upload`: an uploaded version is deliberately NOT activated, and
+            # Cloudflare only applies Durable Object migrations as part of a
+            # real deploy. The preview worker therefore needs exactly one
+            # bootstrap deploy before per-PR versions can be uploaded onto it.
+            # Matched on generic tokens, deliberately: Cloudflare does not
+            # document a stable error string for the legacy `migrations` array
+            # path, and no verbatim string for THIS failure has been observed
+            # yet. (A closely related but distinct case — a DO binding with no
+            # migration configured — is reported as "...not currently configured
+            # to implement Durable Objects. Ensure a --new-class migration has
+            # been applied to it. [code: 10061]" in cloudflare/workers-sdk#10246;
+            # 10061 is included below on that basis, not as a confirmed match
+            # for this path.) Nothing here is invented: an unmatched failure
+            # still falls through to the generic branch, which prints wrangler's
+            # real output. Tighten this once a real occurrence is in a log.
+            if printf '%s' "$OUT" | grep -qiE 'migration|durable.object|new_sqlite_classes|new_classes|10061'; then
+              {
+                echo "### Preview deploy blocked: Durable Object migration"
+                echo
+                echo "'wrangler versions upload' cannot create a **new** Durable Object class."
+                echo "An uploaded version is never activated, and Cloudflare only applies"
+                echo "Durable Object migrations during a real deploy — so the 'v1' /"
+                echo "'new_sqlite_classes: [BoardRoom]' migration in wrangler.jsonc has"
+                echo "nowhere to run."
+                echo
+                echo "**One-time fix — repo owner, run locally.** This job cannot do it:"
+                echo "a real deploy against the live Cloudflare account is not CI's to make."
+                echo
+                echo '```bash'
+                echo "bun run deploy:preview   # unblocks THIS job (applies tag v1 to flappyboard-preview)"
+                echo "bun run deploy           # production worker — or just let deploy.yml do it on merge to main"
+                echo '```'
+                echo
+                echo "After that single bootstrap, every PR's 'versions upload' succeeds:"
+                echo "the DO class already exists on the worker, so wrangler sends no"
+                echo "'migrations' key at all. **One-time cost per new DO class, not a"
+                echo "per-PR cost** — a new migration tag would need another real deploy."
+                echo
+                echo "Reference: https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/"
+                echo
+                echo "Wrangler's full output is in the job log."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::This Worker has a pending Durable Object migration (tag v1, new_sqlite_classes: BoardRoom) and 'wrangler versions upload' cannot apply one — DO lifecycle changes are atomic, so they only apply via a real deploy. Fix ONCE: run 'bun run deploy:preview' (and 'bun run deploy' for production, or let deploy.yml do it on merge). Preview deploys then work normally until a new migration tag is added — this is not permanently broken. Docs: https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/ — wrangler's full output is above."
+            else
+              echo "::error::'wrangler versions upload' failed with exit status $STATUS. Wrangler's full output is above."
+            fi
+            exit "$STATUS"
+          fi
+
           ALIAS_URL=$(printf '%s' "$OUT" | grep -oE 'Version Preview Alias URL: https://\S+' | awk '{print $NF}')
           VERSION_URL=$(printf '%s' "$OUT" | grep -oE 'Version Preview URL: https://\S+' | awk '{print $NF}')
           if [ -z "$ALIAS_URL" ] || [ -z "$VERSION_URL" ]; then
