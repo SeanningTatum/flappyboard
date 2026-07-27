@@ -1,0 +1,47 @@
+.DS_Store
+.env
+/node_modules/
+*.tsbuildinfo
+
+# React Router
+/.react-router/
+/build/
+
+# Cloudflare
+.mf
+.wrangler
+.dev.vars*
+worker-configuration.d.ts
+
+!.dev.vars.example
+!.env.example
+!.cursor/mcp.template.json
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/e2e/**/*.png
+
+# Manual Playwright MCP screenshots (transient, not checked in)
+/.playwright-mcp/
+/*-light.png
+/*-dark.png
+/*-user.png
+/*-v2.png
+/home-*.png
+/login-*.png
+/signup-*.png
+/dashboard-*.png
+
+# Claude Code (per-machine config + secrets)
+.claude/settings.local.json
+.claude/.credentials*
+.claude/state/
+.claude/cache/
+
+# Editor agent caches
+.cursor/
+
+# feature-verifier throwaway Playwright scripts (see .claude/agents/feature-verifier.md)
+tmp/

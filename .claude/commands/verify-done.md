@@ -1,0 +1,33 @@
+---
+description: Run the project's verify-done checklist before declaring a task complete
+---
+
+Walk the [`/Users/sean/Desktop/personal-projects/cf-saas-starter-react-router/.brain/recipes/99-verify-done.md`](.brain/recipes/99-verify-done.md) checklist on the current change set. Do not skip steps.
+
+Steps:
+
+1. Run `bun run typecheck` — paste tail of output, mark pass/fail.
+2. Run `bun run test` — paste tail, mark pass/fail.
+3. If diff touches any of `app/routes/`, `app/trpc/routes/`, `app/repositories/`, `app/auth/`, or migrations — run `bun run test:e2e` (smoke specs / CI regression net). If skipped, justify why in one sentence.
+4. If diff touches `wrangler.jsonc`, `workers/`, `workflows/`, `app/runtime.ts`, or any binding wiring — run `bun run build`. If skipped, justify why.
+5. If diff touches a UI feature flow (`app/components/`, `app/routes/*.tsx`) — spawn the `feature-verifier` sub-agent (slug + golden path + one error path) and report its verdict + the `.brain/features/<slug>/verifications/<date>.md` path. For a trivial tweak, state plainly whether you walked it in a browser. Do not claim UI works without a browser walk.
+6. Run `git diff --stat` and for each changed path, name the brain doc that owns it (table in `99-verify-done.md`). Flag any path whose owning doc was not updated.
+7. Grep the diff for the five non-negotiables: `throw` outside `Effect.tryPromise.catch`, `process.env`, `from "zod"`, bare `try {}`. Quote any hit.
+8. Run `./scripts/harness-check.sh` (wraps `brain check` + repo supplement). Must exit zero. Quote any violation.
+9. If a run note was opened for this task — `brain runs append <slug> --step "verify-done" --observed "<result tails>"` (or append+close the flat run note), then `brain progress add --summary "..." --next "..."`.
+
+Output a final summary table:
+
+| Check | Result |
+|-------|--------|
+| typecheck | ✅ / ❌ |
+| test | ✅ / ❌ |
+| test:e2e smoke | ✅ / ❌ / N/A (reason) |
+| build | ✅ / ❌ / N/A (reason) |
+| feature verification (doc path) | ✅ PASS / ❌ / N/A |
+| brain coherence | ✅ / paths missing docs: ... |
+| non-negotiables clean | ✅ / hits: ... |
+| harness-check (brain check + supplement) | ✅ / ❌ (violation) |
+| run note closed | ✅ / N/A |
+
+Only if every row is ✅ or justified-N/A: tell the user the task is done. Otherwise list what is blocking.
