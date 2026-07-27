@@ -139,18 +139,19 @@ jobs:
             # Cloudflare only applies Durable Object migrations as part of a
             # real deploy. The preview worker therefore needs exactly one
             # bootstrap deploy before per-PR versions can be uploaded onto it.
-            # Matched on generic tokens, deliberately: Cloudflare does not
-            # document a stable error string for the legacy `migrations` array
-            # path, and no verbatim string for THIS failure has been observed
-            # yet. (A closely related but distinct case — a DO binding with no
-            # migration configured — is reported as "...not currently configured
-            # to implement Durable Objects. Ensure a --new-class migration has
-            # been applied to it. [code: 10061]" in cloudflare/workers-sdk#10246;
-            # 10061 is included below on that basis, not as a confirmed match
-            # for this path.) Nothing here is invented: an unmatched failure
-            # still falls through to the generic branch, which prints wrangler's
-            # real output. Tighten this once a real occurrence is in a log.
-            if printf '%s' "$OUT" | grep -qiE 'migration|durable.object|new_sqlite_classes|new_classes|10061'; then
+            # The observed error, verbatim from the Cloudflare API on this repo's
+            # run 30312668942 (job 90131510735):
+            #
+            #   Version upload failed. You attempted to upload a version of a
+            #   Worker that includes a Durable Object migration, but migrations
+            #   must be fully applied via a non-versioned deployment. Refer to
+            #   the documentation for more information. [code: 10211]
+            #
+            # `10211` is therefore the precise signal. The word-level patterns
+            # are kept alongside it as a hedge in case Cloudflare rewords or
+            # renumbers; an unmatched failure still falls through to the generic
+            # branch below, which prints wrangler's real output either way.
+            if printf '%s' "$OUT" | grep -qiE '10211|migration|durable.object|new_sqlite_classes|new_classes'; then
               {
                 echo "### Preview deploy blocked: Durable Object migration"
                 echo
@@ -177,7 +178,7 @@ jobs:
                 echo
                 echo "Wrangler's full output is in the job log."
               } >> "$GITHUB_STEP_SUMMARY"
-              echo "::error::This Worker has a pending Durable Object migration (tag v1, new_sqlite_classes: BoardRoom) and 'wrangler versions upload' cannot apply one — DO lifecycle changes are atomic, so they only apply via a real deploy. Fix ONCE: run 'bun run deploy:preview' (and 'bun run deploy' for production, or let deploy.yml do it on merge). Preview deploys then work normally until a new migration tag is added — this is not permanently broken. Docs: https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/ — wrangler's full output is above."
+              echo "::error::[code 10211] This Worker has a pending Durable Object migration (tag v1, new_sqlite_classes: BoardRoom) and 'wrangler versions upload' cannot apply one — DO lifecycle changes are atomic, so they only apply via a real deploy. Fix ONCE: run 'bun run deploy:preview' (and 'bun run deploy' for production, or let deploy.yml do it on merge). Preview deploys then work normally until a new migration tag is added — this is not permanently broken. Docs: https://developers.cloudflare.com/workers/versions-and-deployments/deployment-management/ — wrangler's full output is above."
             else
               echo "::error::'wrangler versions upload' failed with exit status $STATUS. Wrangler's full output is above."
             fi
