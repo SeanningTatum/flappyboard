@@ -183,6 +183,25 @@ export const GetHistoryInput = Schema.Struct({
 });
 export type GetHistoryInput = typeof GetHistoryInput.Type;
 
+/**
+ * What the **repository** is asked for: `GetHistoryInput` plus `since`, a floor
+ * on `createdAt` in epoch ms.
+ *
+ * `since` is deliberately absent from `GetHistoryInput`, which is the schema the
+ * client's input is decoded against. It is derived on the server from the
+ * caller's own grant (`grantHistoryFloor` in `app/lib/board/pairing.ts`), so
+ * there is no field a caller could set, widen, or omit — a separate type is the
+ * cheapest way to make "the client cannot reach this" true by construction
+ * rather than by remembering to overwrite it.
+ */
+export const GetHistoryQuery = Schema.Struct({
+  ...GetHistoryInput.fields,
+  since: Schema.optional(
+    Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0))
+  ),
+});
+export type GetHistoryQuery = typeof GetHistoryQuery.Type;
+
 export const UpdateBoardSettingsInput = Schema.Struct({
   boardId: BoardId,
   soundPack: Schema.optional(SoundPack),
@@ -206,6 +225,17 @@ export const RenameBoardInput = Schema.Struct({
   name: BoardName,
 });
 export type RenameBoardInput = typeof RenameBoardInput.Type;
+
+/**
+ * Revoke every controller for one board. Owner-only and, like `delete`, takes
+ * nothing but the id — there is no "revoke this one phone", because a grant
+ * carries no device identity by design (see `app/lib/board/pairing.ts`). The
+ * board's `grantEpoch` is the only thing that moves.
+ */
+export const RevokeControllersInput = Schema.Struct({
+  boardId: BoardId,
+});
+export type RevokeControllersInput = typeof RevokeControllersInput.Type;
 
 /**
  * A write from a client. `baseRevision` is the revision the writer believed it
@@ -255,10 +285,6 @@ export const GenerateBoardMessageInput = Schema.Struct({
 });
 export type GenerateBoardMessageInput = typeof GenerateBoardMessageInput.Type;
 
-export const decodeGenerateBoardMessageInput = Schema.decodeUnknownEither(
-  GenerateBoardMessageInput
-);
-
 export const CreateBoardRouteInput = Schema.Struct({
   name: Schema.optionalWith(BoardName, { default: () => DEFAULT_BOARD_NAME }),
 });
@@ -267,3 +293,4 @@ export type CreateBoardRouteInput = typeof CreateBoardRouteInput.Type;
 export const decodeCreateBoardInput = Schema.decodeUnknownEither(CreateBoardInput);
 export const decodeSaveSnapshotInput = Schema.decodeUnknownEither(SaveSnapshotInput);
 export const decodeGetHistoryInput = Schema.decodeUnknownEither(GetHistoryInput);
+export const decodeGetHistoryQuery = Schema.decodeUnknownEither(GetHistoryQuery);

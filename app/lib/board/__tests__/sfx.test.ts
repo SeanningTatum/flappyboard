@@ -155,6 +155,86 @@ describe("createFlapPlayer", () => {
     expect(player.isUnlocked()).toBe(false);
   });
 
+  /**
+   * The properties the `try`/`catch`/`finally` → `Effect.tryPromise` rewrite had
+   * to preserve exactly: one element refusing does not abort the others (some
+   * browsers unlock per-element, so the rest must still be probed), the whole
+   * unlock still reports `false`, and every element's volume comes back.
+   */
+  it("unlock() probes every element even when one refuses, and restores every volume", async () => {
+    const { factory, instances } = makePool();
+    const player = createFlapPlayer({
+      packId: "classic",
+      muted: false,
+      audioFactory: factory,
+    });
+    instances[0]!.behavior = "reject";
+
+    await expect(player.unlock()).resolves.toBe(false);
+    expect(player.isUnlocked()).toBe(false);
+    for (const audio of instances) {
+      expect(audio.playCalls).toBe(1);
+      expect(audio.volume).toBe(1);
+    }
+    // The refusing element never reached its pause; the others did.
+    expect(instances[0]!.pauseCalls).toBe(0);
+    for (const audio of instances.slice(1)) expect(audio.pauseCalls).toBe(1);
+  });
+
+  it("unlock() reports false when an element throws on pause rather than on play", async () => {
+    const { factory, instances } = makePool();
+    const player = createFlapPlayer({
+      packId: "classic",
+      muted: false,
+      audioFactory: factory,
+    });
+    const broken = instances[2]!;
+    broken.pause = () => {
+      throw new Error("element is tearing down");
+    };
+
+    await expect(player.unlock()).resolves.toBe(false);
+    // Still restored: the volume reset is the `Effect.ensuring`, not a happy path.
+    expect(broken.volume).toBe(1);
+  });
+
+  /**
+   * The one asymmetry in the rewrite, pinned deliberately.
+   *
+   * The volume/currentTime writes sit *outside* the probe's `tryPromise`, exactly
+   * as they sat outside the old `try` block — so an element whose setter throws
+   * still rejects `unlock()` rather than being folded into `false`. That holds
+   * because a throw inside `Effect.sync` is a **defect**, and `Effect.catchAll`
+   * catches failures only. Not a hypothetical distinction: if it were a failure,
+   * a broken element would silently report "the browser declined" and the sound
+   * layer would look merely muted instead of broken.
+   */
+  it("unlock() still rejects (does not report false) when a volume setter throws", async () => {
+    const throwing = (): AudioLike => {
+      const element = {
+        currentTime: 0,
+        src: "",
+        play: () => Promise.resolve(),
+        pause: () => {},
+      } as unknown as AudioLike;
+      Object.defineProperty(element, "volume", {
+        get: () => 1,
+        set: () => {
+          throw new Error("volume is not settable");
+        },
+      });
+      return element;
+    };
+    const player = createFlapPlayer({
+      packId: "classic",
+      muted: false,
+      audioFactory: throwing,
+    });
+
+    await expect(player.unlock()).rejects.toThrow(/volume is not settable/);
+    expect(player.isUnlocked()).toBe(false);
+  });
+
   it("play() stays a no-op after a failed unlock", async () => {
     const { factory, instances } = makePool();
     const player = createFlapPlayer({

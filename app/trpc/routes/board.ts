@@ -19,15 +19,17 @@ import {
   GetBoardInput,
   GetHistoryInput,
   RenameBoardInput,
+  RevokeControllersInput,
   SetBoardMessageInput,
   UpdateBoardSettingsInput,
 } from "@/lib/schemas/board";
 import {
   DEFAULT_GRANT_TTL_SECONDS,
   MAX_TOKEN_LENGTH,
+  grantHistoryFloor,
   mintControllerGrant,
-  readGrantCookie,
-  verifyControllerGrant,
+  readGrantCookies,
+  verifyControllerGrants,
   verifyPairingToken,
 } from "@/lib/board/pairing";
 
@@ -119,6 +121,8 @@ interface BoardAccess {
   readonly board: Board;
   /** Epoch ms, or `null` for an owner session (whose lifetime is Better Auth's). */
   readonly grantExpiresAt: number | null;
+  /** When the presented grant was minted; `null` for an owner session. */
+  readonly grantIssuedAt: number | null;
 }
 
 /** The slice of a procedure context authorisation needs, session or not. */
@@ -126,6 +130,20 @@ interface BoardCallerContext {
   readonly headers: Headers;
   readonly auth: { readonly user: { readonly id: string } } | null;
 }
+
+/**
+ * Read the board row, or `null` if there is no such board. A `QueryError` (the
+ * database being unreachable) still propagates — only "does not exist" is folded
+ * into the value channel, because that is the answer the authorisation branches
+ * below need without being allowed to *report* it.
+ */
+const findBoard = (boardId: string) =>
+  Effect.gen(function* () {
+    const repo = yield* BoardRepository;
+    return yield* repo
+      .getBoard({ boardId })
+      .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null)));
+  });
 
 /**
  * Owner session **or** a controller grant for this exact board.
@@ -136,40 +154,69 @@ interface BoardCallerContext {
  * stay owner-only — a grant can neither enumerate the owner's boards nor make new
  * ones.
  *
- * Failure mode preserves non-enumerability, and which failure you get depends
- * only on what the *caller sent*, never on whether the board exists:
+ * ## Non-enumerability
  *
- * - No grant cookie for this id and no owning session → `NotFoundError`, decided
- *   before any database read.
- * - A grant cookie for this id that does not verify → `PairingTokenInvalidError`
- *   (UNAUTHORIZED), so the phone knows to rescan. Anyone can fabricate that
- *   cookie for any id, so the branch reveals nothing about the id itself.
+ * Which refusal a caller gets is decided **only by what the caller sent**, and the
+ * order below is what makes that true rather than merely intended:
+ *
+ * - **No grant cookie for this id** (and no owning session) → `NotFoundError`.
+ *   Identical for an id that does not exist and for a real board owned by someone
+ *   else — including for a caller who *does* have a session, which is the case
+ *   that used to leak: the board read happened first, so a signed-in caller could
+ *   sort real ids (UNAUTHORIZED) from invented ones (NOT_FOUND) by sending one
+ *   junk cookie.
+ * - **A grant cookie for this id that does not verify** → `PairingTokenInvalidError`
+ *   (UNAUTHORIZED), so the phone knows to rescan. Also returned when the board
+ *   does not exist at all: presenting a cookie must never buy a different answer
+ *   depending on whether the id is real. Anyone can fabricate that cookie for any
+ *   id, so the branch reveals nothing.
+ *
+ * The board row is read before the grant is verified, because the grant's MAC
+ * covers the board's `grantEpoch` and that is where the epoch lives. That read is
+ * therefore unavoidable — but it is `findBoard`, whose absence verdict is
+ * *unobservable*, so it cannot become the oracle it was.
  */
 const requireBoardAccess = (ctx: BoardCallerContext, boardId: string) =>
   Effect.gen(function* () {
-    const repo = yield* BoardRepository;
+    // Read off the request, before any I/O: this decides which of the two
+    // refusals is even reachable for this caller.
+    const cookies = readGrantCookies(ctx.headers.get("cookie"), boardId);
+    const board = yield* findBoard(boardId);
 
-    if (ctx.auth !== null) {
-      const board = yield* repo.getBoard({ boardId });
-      if (board.ownerId === ctx.auth.user.id) {
-        const access: BoardAccess = { via: "owner", board, grantExpiresAt: null };
-        return access;
-      }
-      // An authenticated non-owner is not disqualified — they may still hold a
-      // grant for this board (a signed-in phone that scanned someone's QR).
+    if (
+      board !== null &&
+      ctx.auth !== null &&
+      board.ownerId === ctx.auth.user.id
+    ) {
+      const access: BoardAccess = {
+        via: "owner",
+        board,
+        grantExpiresAt: null,
+        grantIssuedAt: null,
+      };
+      return access;
     }
+    // An authenticated non-owner is not disqualified — they may still hold a
+    // grant for this board (a signed-in phone that scanned someone's QR).
 
-    const cookie = readGrantCookie(ctx.headers.get("cookie"), boardId);
-    if (cookie === null) {
+    if (cookies.length === 0) {
       return yield* Effect.fail(
         new NotFoundError({ entity: "board", identifier: boardId })
       );
     }
 
+    if (board === null) {
+      yield* logRefusal(boardId, "missing");
+      return yield* Effect.fail(
+        new PairingTokenInvalidError({ boardId, reason: "missing" })
+      );
+    }
+
     const secret = yield* pairingSecret;
-    const verdict = yield* verifyControllerGrant({
-      token: cookie,
+    const verdict = yield* verifyControllerGrants({
+      tokens: cookies,
       boardId,
+      grantEpoch: board.grantEpoch,
       secret,
       now: Date.now(),
     });
@@ -180,11 +227,11 @@ const requireBoardAccess = (ctx: BoardCallerContext, boardId: string) =>
       );
     }
 
-    const board = yield* repo.getBoard({ boardId });
     const access: BoardAccess = {
       via: "grant",
       board,
       grantExpiresAt: verdict.expiresAt,
+      grantIssuedAt: verdict.issuedAt,
     };
     return access;
   });
@@ -283,9 +330,26 @@ export const boardRouter = createTRPCRouter({
           const secret = yield* pairingSecret;
           const now = Date.now();
 
+          // The board row comes first because the token's MAC covers this
+          // board's `grantEpoch` — there is no verifying it without the row.
+          // A missing board is refused as UNAUTHORIZED, never NOT_FOUND: this
+          // procedure takes no session, so a NOT_FOUND here would let anyone
+          // enumerate board ids with a junk token.
+          const board = yield* findBoard(input.boardId);
+          if (board === null) {
+            yield* logRefusal(input.boardId, "missing");
+            return yield* Effect.fail(
+              new PairingTokenInvalidError({
+                boardId: input.boardId,
+                reason: "missing",
+              })
+            );
+          }
+
           const verdict = yield* verifyPairingToken({
             token: input.token,
             boardId: input.boardId,
+            grantEpoch: board.grantEpoch,
             secret,
             now,
           });
@@ -299,14 +363,41 @@ export const boardRouter = createTRPCRouter({
             );
           }
 
-          // Spend first, then issue. Ordering it the other way would hand out a
-          // grant and only afterwards notice the token had already been used.
-          //
+          /*
+            Everything that can fail runs *before* the nonce is spent, and the
+            spend is the last thing before the return.
+
+            The previous order spent the nonce and then did three fallible things
+            (`getBoard`, `room.getState`, `mintControllerGrant`), so a Durable
+            Object hiccup burned a single-use token and issued nothing: the phone
+            got the rescan prompt, the QR in its camera was already dead, and the
+            only recovery was walking back to the TV.
+
+            This is still replay-safe, because single-use was never about
+            *ordering* — it is about `spendNonce` being an atomic check-and-set
+            inside the room's `blockConcurrencyWhile`. Of two devices redeeming one
+            nonce, exactly one is told it won; the loser is refused here. Minting a
+            grant is a pure HMAC over values we already hold — no state, no I/O,
+            nothing to roll back — so the loser's grant is simply discarded with
+            the failed request. No response is emitted on any path that did not
+            just win the spend, so "a grant was issued" still implies "this nonce
+            was spent exactly once". What the reorder widens is only "a token may
+            be *presented* more than once", which is what makes a transient
+            failure retryable.
+          */
+          const room = yield* BoardRoom;
+          const state = yield* room.getState(input.boardId);
+          const grant = yield* mintControllerGrant({
+            boardId: input.boardId,
+            grantEpoch: board.grantEpoch,
+            secret,
+            now,
+          });
+
           // The TTL is the token's own remaining life — the ledger never has to
           // remember a nonce for longer than the token that carries it could be
           // presented. Clamped to at least 1s so a token in its final
           // milliseconds still records a spend rather than rounding to zero.
-          const room = yield* BoardRoom;
           const remainingSeconds = Math.max(
             1,
             Math.ceil((verdict.expiresAt - now) / 1000)
@@ -325,15 +416,6 @@ export const boardRouter = createTRPCRouter({
               })
             );
           }
-
-          const repo = yield* BoardRepository;
-          const board = yield* repo.getBoard({ boardId: input.boardId });
-          const state = yield* room.getState(input.boardId);
-          const grant = yield* mintControllerGrant({
-            boardId: input.boardId,
-            secret,
-            now,
-          });
 
           return {
             grant,
@@ -478,9 +560,15 @@ export const boardRouter = createTRPCRouter({
 
   /**
    * Grant-accessible as well: the phone's history strip is how a paired
-   * controller re-flips something the board showed earlier. It is a read of the
-   * one board the grant already authorises writing to, so it adds no reach — and
-   * the snapshots are literally what the TV has been displaying in the room.
+   * controller re-flips something the board showed earlier.
+   *
+   * **A grant only sees back as far as itself.** `limit` goes to 100 and the rows
+   * carry the `prompt` column, so without a floor a guest who scanned once could
+   * pull the hundred most recent grids *and the text the owner dictated before
+   * they arrived*. Driving the board tonight is not authorisation to read what it
+   * said last week. The floor is the grant's own `issuedAt`, which
+   * `verifyControllerGrant` already returns and no caller can influence — an
+   * owner session keeps the full history.
    */
   history: publicProcedure
     .input(Schema.standardSchemaV1(GetHistoryInput))
@@ -488,9 +576,12 @@ export const boardRouter = createTRPCRouter({
       runProcedure(
         ctx.runtime,
         Effect.gen(function* () {
-          yield* requireBoardAccess(ctx, input.boardId);
+          const access = yield* requireBoardAccess(ctx, input.boardId);
           const repo = yield* BoardRepository;
-          const snapshots = yield* repo.getHistory(input);
+          const snapshots = yield* repo.getHistory({
+            ...input,
+            since: grantHistoryFloor(access),
+          });
           // A snapshot written by another deploy could be unparseable; surface
           // it as grid: null instead of failing the whole history read.
           return snapshots.map((snapshot) => ({
@@ -588,6 +679,45 @@ export const boardRouter = createTRPCRouter({
           yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
           const repo = yield* BoardRepository;
           return yield* repo.renameBoard(input);
+        })
+      )
+    ),
+
+  /**
+   * Kick every paired phone off this board.
+   *
+   * Increments the board's `grantEpoch`, which is inside the signed message of
+   * every pairing token and controller grant it has ever issued — so all of them
+   * fail as `bad-signature` from the next request onwards, for **this board
+   * only**. Before this existed, the only ways to revoke a grant were deleting the
+   * board or rotating `BETTER_AUTH_SECRET`, which signs out every user of the
+   * deployment.
+   *
+   * `protectedProcedure` + `requireOwnedBoard`, never `requireBoardAccess`, and
+   * that distinction is the whole point: a grant must not be able to revoke
+   * grants. Same rule as `delete` and `rename`.
+   *
+   * The QR currently on the TV dies with everything else. The display re-mints on
+   * its own timer (`QR_REFRESH_MS`, a third of the pairing TTL) so the screen
+   * heals itself within seconds — and until it does, a code that was photographed
+   * before the revoke is worthless, which is exactly what "revoke" should mean.
+   */
+  revokeControllers: protectedProcedure
+    .input(Schema.standardSchemaV1(RevokeControllersInput))
+    .mutation(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
+          const repo = yield* BoardRepository;
+          const board = yield* repo.bumpGrantEpoch({ boardId: input.boardId });
+          yield* Effect.logInfo("Board controllers revoked").pipe(
+            Effect.annotateLogs({
+              boardId: input.boardId,
+              grantEpoch: board.grantEpoch,
+            })
+          );
+          return { id: board.id, grantEpoch: board.grantEpoch };
         })
       )
     ),

@@ -24,6 +24,7 @@ import {
   type CreateBoardFailure,
   type DeleteBoardFailure,
   type RenameBoardFailure,
+  type RevokeControllersFailure,
 } from "@/lib/schemas/boards";
 
 /**
@@ -76,6 +77,10 @@ type RenameResult =
 type DeleteResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: DeleteBoardFailure };
+/** What a revoke attempt returns to `BoardRevokeDialog`. */
+type RevokeResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: RevokeControllersFailure };
 
 /**
  * Create a board.
@@ -233,6 +238,56 @@ async function deleteBoard(
 }
 
 /**
+ * Revoke every controller grant for a board. Not destructive to any data — it
+ * increments the board's `grantEpoch`, which is inside the signed message of every
+ * grant it ever issued, so all of them stop verifying at once. Owner-only via
+ * `requireOwnedBoard` on `board.revokeControllers`, exactly like delete and
+ * rename: a grant must never be able to revoke grants.
+ */
+async function revokeControllers(
+  formData: FormData,
+  context: Route.ActionArgs["context"]
+): Promise<RevokeResult> {
+  const boardId = formData.get("boardId");
+
+  const program = Effect.gen(function* () {
+    if (typeof boardId !== "string" || boardId.length === 0) {
+      return {
+        ok: false as const,
+        error: "revoke_failed" as RevokeControllersFailure,
+      };
+    }
+
+    yield* Effect.tryPromise({
+      try: () => context.trpc.board.revokeControllers({ boardId }),
+      catch: (cause) => cause,
+    });
+
+    return { ok: true as const };
+  }).pipe(
+    Effect.tapErrorCause((cause) =>
+      Effect.logError("board.revoke_failed", cause)
+    ),
+    Effect.catchAll(() =>
+      Effect.succeed({
+        ok: false as const,
+        error: "revoke_failed" as RevokeControllersFailure,
+      })
+    )
+  );
+
+  const exit = await context.runtime.runPromiseExit(program);
+
+  return Exit.match(exit, {
+    onSuccess: (result) => result,
+    onFailure: () => ({
+      ok: false as const,
+      error: "revoke_failed" as RevokeControllersFailure,
+    }),
+  });
+}
+
+/**
  * One action for the whole `/boards` surface, dispatched by an `intent`
  * field. `create` has none (the existing `BoardCreateForm` predates this and
  * is left untouched), so a missing/unrecognised intent falls through to it —
@@ -246,6 +301,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   if (intent === "rename") return renameBoard(formData, context);
   if (intent === "delete") return deleteBoard(formData, context);
+  if (intent === "revoke") return revokeControllers(formData, context);
   return createBoard(formData, context);
 }
 

@@ -70,6 +70,12 @@ smoke: an unpaired controller is refused.
 | 2026-07-27 | feature | `updateSettings` now reaches the TV — the room broadcasts a settings frame at the **same revision**, which is what makes the plan's "mute from the phone silences the next flip" criterion achievable |
 | 2026-07-27 | feature | `/api/board-ws` accepts a controller grant, so a grant-only phone gets the live board instead of the socket being disabled |
 | 2026-07-27 | bugfix | The display re-mints the QR token every ~40s; previously a TV left on the wall for 3 minutes showed a dead code |
+| 2026-07-27 | security | **Grants are revocable.** `board.grantEpoch` (new column, migration `0002_long_deathstrike`) is inside the signed message of both tokens; owner-only `board.revokeControllers` increments it and every outstanding grant for *that* board dies. Surfaced on the `/boards` card (`board-card-revoke`) |
+| 2026-07-27 | security | `history` is floored at the grant's own `issuedAt` — a guest who scans once no longer reads back 100 grids **and the prompts** the owner dictated beforehand |
+| 2026-07-27 | security | The board-existence oracle is closed at all three grant sites: with a session plus a junk cookie, a real foreign id and an invented id now return the identical refusal |
+| 2026-07-27 | security | `readGrantCookies` reads **every** cookie of that name and accepts if any verifies — a sibling host on a parent domain could otherwise DoS pairing with one injected `fb_grant_<id>` |
+| 2026-07-27 | bugfix | `pair` mints the grant first and spends the nonce **last**, so a DO hiccup no longer burns a single-use token and issues nothing |
+| 2026-07-27 | bugfix | `/b/:id/c` clears the grant cookie only on a judged `ok: false`, never on a thrown/transient `claim` failure |
 
 ## Implemented behaviour (2026-07-27)
 
@@ -77,16 +83,18 @@ smoke: an unpaired controller is refused.
 Two tokens, both HMAC-SHA256 over `crypto.subtle` keyed with `BETTER_AUTH_SECRET`:
 
 - **Pairing token** — minted by the display, printed as the QR, ~120s, single-use.
-- **Controller grant** — issued on redemption, `HttpOnly` per-board cookie, ~12h.
+- **Controller grant** — issued on redemption, `HttpOnly` per-board cookie, ~12h, **revocable** via the board's `grantEpoch`.
 
 Properties worth not breaking:
 
-- **The signed message is `prefix|boardId.length|boardId|payload`.** The prefix gives domain separation (a grant presented as a pairing token fails `malformed` before the key is consulted); the board id is a MAC *audience*, so a board-A token fails to verify for board B with no post-hoc id comparison to forget; length framing keeps the encoding injective.
+- **The signed message is `prefix|boardId.length|boardId|grantEpoch|payload`.** The prefix gives domain separation (a grant presented as a pairing token fails `malformed` before the key is consulted); the board id is a MAC *audience*, so a board-A token fails to verify for board B with no post-hoc id comparison to forget; length framing keeps the encoding injective.
+- **`grantEpoch` is revocation, and it covers *both* tokens.** Bumping it kills every outstanding grant for one board without touching another board or rotating `BETTER_AUTH_SECRET` (which would sign out the whole deployment). Covering the pairing token too closes the ~120s hole where a QR photographed just before a revoke could still be redeemed for a grant at the *new* epoch; the cost is that the code on the TV is dead until the next re-mint tick, which is the behaviour an owner reaching for "kick everyone off" actually wants. `revokeControllers` is `protectedProcedure` + `requireOwnedBoard`, never `requireBoardAccess` — a grant must not be able to revoke grants.
 - **Verify order is structure → signature → claims** — nothing in the payload is trusted, not even to say "expired", until the MAC matches.
 - **`timingSafeEqual`** accumulates over the full length. An early-return compare would turn forging a 32-byte MAC from 2^256 work into ~32×256 work.
 - **Single-use lives in the Durable Object.** One object per board, single-threaded, check-and-set under `blockConcurrencyWhile`. Proven: 6 concurrent redemptions of one token → `200 401 401 401 401 401`; replay after a full dev-server restart still refused.
-- **A grant is not a session.** `create`/`list`/`get` remain owner-only; only `setMessage`/`updateSettings`/`history` accept one.
-- **Non-enumerability**: which failure you get depends only on what the caller *sent*. No grant + no session ⇒ 404 (decided before any DB read); a grant cookie that doesn't verify ⇒ 401. Anyone can fabricate that cookie for any id, so the branch leaks nothing.
+- **A grant is not a session.** `create`/`list`/`get`/`rename`/`delete`/`revokeControllers` remain owner-only; only `setMessage`/`generate`/`updateSettings`/`history` accept one — and `history` is additionally floored at the grant's own `issuedAt`, so a guest reads only what the board has shown since they paired.
+- **Non-enumerability**: which failure you get depends only on what the caller *sent*. No grant cookie + not the owner ⇒ 404; a grant cookie that doesn't verify ⇒ 401 — **and a board that does not exist also gives 401 once a cookie has been presented**. That last clause is load-bearing and was the bug: because the board read happened first, a caller with any valid session plus `Cookie: fb_grant_<id>=junk` got 401 for a real foreign id and 404 (`board not found: <id>`) for an invented one. The board row must still be read *before* the grant is verified — the MAC covers `grantEpoch`, which lives on the row — so the fix is that "no such board" is caught at the read and is only ever *answered*, never *raised*. Same shape at all three sites: `requireBoardAccess`, `/api/board-ws`, `/api/transcribe`.
+- **Every cookie of that name is a candidate.** Cookie *scope* is not part of a request, so a sibling worker on `*.workers.dev` or any sibling subdomain of a custom domain can set `fb_grant_<id>` on a parent domain and the browser will send it alongside the genuine one, under the same name. `readGrantCookies` returns all of them and `verifyControllerGrants` accepts if **any** verifies. Not a weakening — each still needs a valid MAC — but without it an injected cookie was a denial of service on pairing that also got the real grant deleted.
 - **`Path=/` on the cookie is required** — writes go to `/api/trpc`, so a board-scoped path would starve every mutation.
 
 ### Editor simplifications (v1)

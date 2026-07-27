@@ -21,6 +21,13 @@ import { ConfigurationError } from "@/models/errors/repository";
  * of the signed message, so a grant can never be replayed as a pairing token
  * (and vice versa) even though both are signed with the same key.
  *
+ * **Revocation** is the board's `grantEpoch` (a counter on the `board` row). It is
+ * part of the signed message for *both* token kinds, so incrementing it changes
+ * the key-independent message every outstanding token was signed over and every
+ * one of them fails as `bad-signature` — for that board and no other. See
+ * `board.revokeControllers` in `app/trpc/routes/board.ts`; the reasoning for
+ * covering the pairing token too is on `signingMessage` below.
+ *
  * This module is platform-free and total: no storage, no clock, no I/O beyond
  * WebCrypto. Expiry is judged against a caller-supplied `now`, and single-use is
  * the caller's job — this module only *exposes* the nonce, it never remembers
@@ -102,6 +109,13 @@ export type TokenVerification =
 export interface MintTokenInput {
   readonly boardId: string;
   readonly secret: string;
+  /**
+   * The board's current `grantEpoch`, read off the `board` row. Bound into the
+   * signed message, so every token minted under an older epoch is dead. Required
+   * rather than defaulted: a call site that forgot it would mint tokens that
+   * survive revocation, and that must be a compile error.
+   */
+  readonly grantEpoch: number;
   /** `Date.now()` at the call site. Passed in so minting is deterministic under test. */
   readonly now: number;
   readonly ttlSeconds?: number;
@@ -121,6 +135,12 @@ export interface VerifyTokenInput {
    * being accepted and caught later by an equality check.
    */
   readonly boardId: string;
+  /**
+   * The board's *current* `grantEpoch`. A token signed under any other epoch
+   * fails as `bad-signature` — that is the whole revocation mechanism, and it
+   * costs no extra round trip because every caller already has the board row.
+   */
+  readonly grantEpoch: number;
   readonly secret: string;
   /** Caller-supplied clock. The verify path never reads `Date.now()` itself. */
   readonly now: number;
@@ -225,7 +245,7 @@ export const decodeClaims = (payload: string): PairingClaims | null => {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The signed message. Three things matter here:
+ * The signed message. Four things matter here:
  *
  * - `prefix` is included, so purpose and format version are authenticated.
  * - `boardId` is included as an *audience*, not just as a payload field. A
@@ -236,12 +256,33 @@ export const decodeClaims = (payload: string): PairingClaims | null => {
  *   restricted charset, so plain concatenation would be ambiguous: `("a", "b.c")`
  *   and `("a.b", "c")` would otherwise produce the same message. Length framing
  *   makes the encoding injective.
+ * - `grantEpoch` is included, which is what makes revocation possible at all.
+ *   Bumping the board's epoch changes this message for every token that board
+ *   ever issued, so all of them fail as `bad-signature` — and *only* that
+ *   board's, because the id is in the same message. No key rotation, no
+ *   deployment-wide sign-out, no ledger of revoked tokens to keep.
+ *
+ * The epoch covers the **pairing token as well as the grant**, deliberately.
+ * Leaving it out of the pairing token would leave a residual hole exactly as
+ * long as `DEFAULT_PAIRING_TTL_SECONDS`: a QR photographed a minute before the
+ * owner hit revoke would still be redeemable afterwards, and the grant it minted
+ * would be issued at the *new* epoch — i.e. a revoked controller could walk
+ * straight back in. Both mint sites already hold the board row (the TV's loader
+ * reads it to prove ownership; `pair` reads it to authorise), so the epoch costs
+ * nothing there. The price is that a revoke also kills the code currently on the
+ * TV — which self-heals on the display's next re-mint tick (`QR_REFRESH_MS`, a
+ * third of the TTL) and is, for "kick everyone off my board", the answer the
+ * owner actually wants.
+ *
+ * The epoch is a non-negative integer, so its decimal form contains no `|` and
+ * needs no length framing to stay injective.
  */
 const signingMessage = (
   prefix: string,
   boardId: string,
+  grantEpoch: number,
   payload: string
-): string => `${prefix}|${boardId.length}|${boardId}|${payload}`;
+): string => `${prefix}|${boardId.length}|${boardId}|${grantEpoch}|${payload}`;
 
 /**
  * A secret is required for both minting and verifying. Absent, every token
@@ -380,7 +421,7 @@ const mintToken = (
     const payload = encodePayload(claims);
     const signature = yield* hmac(
       secret,
-      signingMessage(prefix, input.boardId, payload)
+      signingMessage(prefix, input.boardId, input.grantEpoch, payload)
     );
     return `${prefix}.${payload}.${bytesToBase64Url(signature)}`;
   });
@@ -396,11 +437,14 @@ const verifyToken = (
     if (structure === null) return malformed;
 
     // Authenticity first. Nothing inside the payload is trusted — not even
-    // enough to say "expired" — until the MAC over (prefix, boardId, payload)
-    // matches, so a forged token can never provoke a payload-shaped answer.
+    // enough to say "expired" — until the MAC over
+    // (prefix, boardId, grantEpoch, payload) matches, so a forged token can never
+    // provoke a payload-shaped answer. A revoked token lands here as
+    // `bad-signature`, indistinguishable from a forgery, which is correct: it is
+    // no longer a token we would have issued.
     const expectedSignature = yield* hmac(
       secret,
-      signingMessage(prefix, input.boardId, structure.payload)
+      signingMessage(prefix, input.boardId, input.grantEpoch, structure.payload)
     );
     if (!timingSafeEqual(expectedSignature, structure.signature)) {
       return badSignature;
@@ -506,19 +550,113 @@ export const clearGrantCookie = (boardId: string, secure: boolean): string =>
     ...(secure ? ["Secure"] : []),
   ].join("; ");
 
-/** Pull this board's grant out of a `Cookie` header. `null` when absent or empty. */
-export const readGrantCookie = (
+/**
+ * **Every** grant this header carries for this board, in the order the browser
+ * sent them. Empty when there are none.
+ *
+ * Plural, and that is the point. A `Cookie` header can legitimately contain the
+ * same name twice, because cookie *scope* is not part of a request: a cookie set
+ * on `.workers.dev` (a sibling worker on the same account) or on a parent of a
+ * custom domain (any sibling subdomain) arrives alongside our own host-set one,
+ * under the same name, and the browser gives no hint which is which. Returning
+ * only the first match handed any such neighbour a denial-of-service on pairing:
+ * inject `fb_grant_<id>=junk`, the real grant is never examined, verification
+ * fails, and the controller route then bins the genuine cookie.
+ *
+ * So this returns candidates and `verifyControllerGrants` accepts if **any** of
+ * them verifies. That is not a weakening: each candidate still has to carry a
+ * valid MAC over (prefix, board id, current epoch, payload), so an injected
+ * cookie can only ever be noise, never a credential.
+ */
+export const readGrantCookies = (
   header: string | null | undefined,
   boardId: string
-): string | null => {
-  if (typeof header !== "string" || header.length === 0) return null;
+): ReadonlyArray<string> => {
+  if (typeof header !== "string" || header.length === 0) return [];
   const wanted = grantCookieName(boardId);
+  const found: string[] = [];
   for (const part of header.split(";")) {
     const separator = part.indexOf("=");
     if (separator <= 0) continue;
     if (part.slice(0, separator).trim() !== wanted) continue;
     const value = part.slice(separator + 1).trim();
-    return value.length === 0 ? null : value;
+    // A name-only or empty-valued cookie is not a candidate — it cannot verify,
+    // and keeping it would only make "the caller presented something" true when
+    // the caller presented nothing.
+    if (value.length > 0) found.push(value);
   }
-  return null;
+  return found;
 };
+
+/** Refusals, worst-to-best. A more specific reason makes a better log line. */
+const REFUSAL_RANK: Record<PairingFailureReason, number> = {
+  malformed: 0,
+  "bad-signature": 1,
+  expired: 2,
+};
+
+export interface VerifyGrantsInput {
+  /** Candidates from `readGrantCookies`. Bounded by the header size. */
+  readonly tokens: ReadonlyArray<string>;
+  readonly boardId: string;
+  readonly grantEpoch: number;
+  readonly secret: string;
+  readonly now: number;
+}
+
+/**
+ * Verify a set of grant candidates for one board: **ok if any single one holds
+ * up**, otherwise the most specific refusal any of them produced.
+ *
+ * Every candidate is checked — no early exit on the first refusal — so a
+ * neighbour-injected cookie cannot mask the genuine one (see
+ * `readGrantCookies`). An empty list is `malformed`; callers that need to
+ * distinguish "presented nothing" from "presented junk" must check the list
+ * length themselves, because those two cases have deliberately different
+ * observable answers at the route layer.
+ */
+export const verifyControllerGrants = (
+  input: VerifyGrantsInput
+): Effect.Effect<TokenVerification, ConfigurationError> =>
+  Effect.gen(function* () {
+    let worst: TokenVerification = malformed;
+    for (const token of input.tokens) {
+      const verdict = yield* verifyControllerGrant({
+        token,
+        boardId: input.boardId,
+        grantEpoch: input.grantEpoch,
+        secret: input.secret,
+        now: input.now,
+      });
+      if (verdict.ok) return verdict;
+      if (worst.ok) continue;
+      if (REFUSAL_RANK[verdict.reason] > REFUSAL_RANK[worst.reason]) {
+        worst = verdict;
+      }
+    }
+    return worst;
+  });
+
+/* -------------------------------------------------------------------------- */
+/* What a grant is allowed to look back at                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The lower bound (epoch ms) on board history a caller may read, or `undefined`
+ * for no bound.
+ *
+ * An owner reads everything — it is their board. A grant reads only what the
+ * board has shown **since the grant was issued**. A phone that scanned tonight is
+ * authorised to drive the board, which is not the same as being authorised to
+ * read back the hundred most recent grids *and their prompts* — the text the
+ * owner dictated before the guest arrived. The grant's own `issuedAt` is already
+ * returned by `verifyControllerGrant`, so the bound is free and cannot be
+ * influenced by the caller.
+ */
+export const grantHistoryFloor = (access: {
+  readonly via: "owner" | "grant";
+  readonly grantIssuedAt: number | null;
+}): number | undefined =>
+  access.via === "grant" && access.grantIssuedAt !== null
+    ? access.grantIssuedAt
+    : undefined;

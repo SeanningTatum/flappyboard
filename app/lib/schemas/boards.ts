@@ -80,3 +80,10 @@ export type RenameBoardFailure = "name_too_long" | "name_empty" | "rename_failed
 
 /** Why a delete attempt did not go through. Keys into `boards.delete.error.*`. */
 export type DeleteBoardFailure = "delete_failed";
+
+/**
+ * Why a revoke attempt did not go through. Keys into `boards.revoke.error.*`.
+ * One case, like delete: the procedure is owner-only and takes nothing but an id,
+ * so there is no input the form could get wrong.
+ */
+export type RevokeControllersFailure = "revoke_failed";

@@ -77,16 +77,32 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     })
   );
 
-  if (Exit.isFailure(claimed) || !claimed.value.ok) {
+  const unpaired = {
+    boardId,
+    access: "none" as const,
+    board: null,
+    state: null,
+  };
+
+  /*
+    A *thrown* `claim` is not an authorisation verdict.
+
+    `claim` answers `ok: false` for every refusal it can judge, and never throws
+    for one. So reaching here means something else broke — `room.getState`
+    raising `ExternalServiceError` because the Durable Object was momentarily
+    unreachable is the realistic case. Clearing the cookie on that path (which is
+    what this used to do) destroyed a perfectly valid grant over one hiccup during
+    a reload, and re-pairing needs physical access to the TV. Render the rescan
+    prompt, keep the cookie, and the next reload works.
+  */
+  if (Exit.isFailure(claimed)) return data(unpaired);
+
+  if (!claimed.value.ok) {
     return data(
-      {
-        boardId,
-        access: "none" as const,
-        board: null,
-        state: null,
-      },
-      // Bin a grant that no longer verifies, so the next scan starts clean
-      // instead of racing a stale cookie.
+      unpaired,
+      // A judged refusal: the grant genuinely does not verify (expired, revoked,
+      // forged). Bin it so the next scan starts clean instead of racing a stale
+      // cookie.
       { headers: { "Set-Cookie": clearGrantCookie(boardId, secure) } }
     );
   }

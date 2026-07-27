@@ -52,7 +52,7 @@ The runtime composes services into a single Layer in `app/runtime.ts` via `makeA
 | `CloudflareEnv` | `app/services/cloudflare.ts` | `app/CloudflareEnv` | The raw `Env` |
 | `Logger` | `app/services/logger.ts` | — (no Tag) | `LoggerLive` + `MinLogLevelLive` Layers — replace Effect's default Logger |
 
-Repos / procedures composition lives in `app/runtime.ts` (`AppServices` union: `Database | AuthApi | Workflows | BoardRoom | UserRepository | AnalyticsRepository | BoardRepository`).
+Repos / procedures composition lives in `app/runtime.ts` (`AppServices` union: `Database | AuthApi | Workflows | BoardRoom | BoardAgent | UserRepository | AnalyticsRepository | BoardRepository`).
 
 ### Layer wiring — what belongs in the global runtime
 

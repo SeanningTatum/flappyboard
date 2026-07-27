@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+
 /**
  * Sound layer for the split-flap board: which packs exist, and a small
  * abstraction over audio playback that behaves under the browser's autoplay
@@ -230,27 +232,52 @@ export const createFlapPlayer = (opts: {
    * audible blip. A rejection is the browser declining, not a bug — caught
    * per element and folded into the boolean result, never left as an
    * unhandled rejection.
+   *
+   * The probe runs through `Effect.tryPromise` rather than `try` / `catch`: this
+   * is `app/lib/`, where the Effect-by-default rule has no component or
+   * event-handler exemption. `Effect.ensuring` restores the volume on every path,
+   * which is what the `finally` did, and the returned `Promise<boolean>` is
+   * unchanged — `display.tsx` and the `FlapPlayer` contract see the same
+   * function.
    */
+  const probe = (element: AudioLike): Effect.Effect<boolean> => {
+    const previousVolume = element.volume;
+    return Effect.sync(() => {
+      element.volume = 0;
+      element.currentTime = 0;
+    }).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          // One `await` for the play, then the wind-down: an element that throws
+          // on `pause()` is as unusable as one that refuses to play, so both land
+          // on `false` exactly as the original `try` block did.
+          try: async () => {
+            await Promise.resolve(element.play());
+            element.pause();
+            element.currentTime = 0;
+          },
+          catch: () => "refused" as const,
+        })
+      ),
+      Effect.as(true),
+      Effect.catchAll(() => Effect.succeed(false)),
+      Effect.ensuring(
+        Effect.sync(() => {
+          element.volume = previousVolume;
+        })
+      )
+    );
+  };
+
   const unlock = async (): Promise<boolean> => {
     if (unlocked) return true;
 
-    const attempts = pool.map(async (element) => {
-      const previousVolume = element.volume;
-      element.volume = 0;
-      element.currentTime = 0;
-      try {
-        await Promise.resolve(element.play());
-        element.pause();
-        element.currentTime = 0;
-        return true;
-      } catch {
-        return false;
-      } finally {
-        element.volume = previousVolume;
-      }
-    });
-
-    const results = await Promise.all(attempts);
+    const results = await Effect.runPromise(
+      // Every pooled element is probed, and one refusal does not stop the rest —
+      // `Effect.all` with `mode: "either"` is unnecessary because `probe` never
+      // fails, it answers.
+      Effect.all(pool.map(probe), { concurrency: "unbounded" })
+    );
     unlocked = results.every((ok) => ok);
     return unlocked;
   };

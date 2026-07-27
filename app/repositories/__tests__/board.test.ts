@@ -7,6 +7,7 @@ import {
   chainableSpy,
   makeTestDatabase,
 } from "@/services/database.test-layer";
+import { and, eq, gte } from "drizzle-orm";
 import { board, boardSnapshot } from "@/db/schema";
 import { NotFoundError } from "@/models/errors/repository";
 import {
@@ -16,6 +17,7 @@ import {
   DEFAULT_HISTORY_LIMIT,
   decodeCreateBoardInput,
   decodeGetHistoryInput,
+  decodeGetHistoryQuery,
   decodeSaveSnapshotInput,
   type BoardGrid,
 } from "@/lib/schemas/board";
@@ -295,6 +297,100 @@ describe("BoardRepository.getHistory", () => {
       expectFailureTag(exit, "QueryError");
     }).pipe(Effect.provide(provideStub(stub)));
   });
+
+  /** Captures the `where` predicate so the two shapes can be told apart. */
+  const captureWhere = (wheres: unknown[]) => ({
+    select: () => ({
+      from: () => ({
+        where: (clause: unknown) => {
+          wheres.push(clause);
+          return { orderBy: () => ({ limit: () => Promise.resolve([]) }) };
+        },
+      }),
+    }),
+  });
+
+  it.effect("filters on board id alone when no floor is given — an owner reads everything", () => {
+    const wheres: unknown[] = [];
+    return Effect.gen(function* () {
+      const repo = yield* BoardRepository;
+      yield* repo.getHistory({ boardId: "b1", limit: 5 });
+      expect(wheres).toHaveLength(1);
+      expect(wheres[0]).toEqual(eq(boardSnapshot.boardId, "b1"));
+    }).pipe(Effect.provide(provideStub(captureWhere(wheres))));
+  });
+
+  it.effect("adds a createdAt floor when one is given — a grant reads only from its own issue time", () => {
+    const wheres: unknown[] = [];
+    const since = 1_700_000_000_000;
+    return Effect.gen(function* () {
+      const repo = yield* BoardRepository;
+      yield* repo.getHistory({ boardId: "b1", limit: 5, since });
+      expect(wheres).toHaveLength(1);
+      expect(wheres[0]).toEqual(
+        and(
+          eq(boardSnapshot.boardId, "b1"),
+          gte(boardSnapshot.createdAt, new Date(since))
+        )
+      );
+    }).pipe(Effect.provide(provideStub(captureWhere(wheres))));
+  });
+});
+
+describe("BoardRepository.bumpGrantEpoch", () => {
+  it.effect("fails with NotFoundError when the board is missing", () => {
+    const stub = { select: () => chainable([]) };
+    return Effect.gen(function* () {
+      const repo = yield* BoardRepository;
+      const exit = yield* Effect.exit(
+        repo.bumpGrantEpoch({ boardId: "missing" })
+      );
+      expectFailureTag(exit, "NotFoundError");
+    }).pipe(Effect.provide(provideStub(stub)));
+  });
+
+  it.effect("increments in SQL rather than read-modify-write, and returns the fresh row", () => {
+    const bumped = { id: "b1", grantEpoch: 4 };
+    const updateSpy = chainableSpy(undefined);
+    const sets: unknown[] = [];
+    const stub = {
+      select: () => chainable([bumped]),
+      update: (...args: unknown[]) => {
+        updateSpy(...(args as []));
+        return {
+          set: (patch: unknown) => {
+            sets.push(patch);
+            return { where: () => Promise.resolve(undefined) };
+          },
+        };
+      },
+    };
+    return Effect.gen(function* () {
+      const repo = yield* BoardRepository;
+      const result = yield* repo.bumpGrantEpoch({ boardId: "b1" });
+      expect(result).toEqual(bumped);
+      expect(updateSpy).toHaveBeenCalledWith(board);
+      const patch = sets[0] as Record<string, unknown>;
+      // Not a literal: `grant_epoch = grant_epoch + 1` so two concurrent
+      // revokes both count instead of one overwriting the other.
+      expect(typeof patch.grantEpoch).toBe("object");
+      expect(patch.grantEpoch).not.toBe(5);
+    }).pipe(Effect.provide(provideStub(stub)));
+  });
+
+  it.effect("fails with UpdateError when the update throws", () => {
+    const stub = {
+      select: () => chainable([{ id: "b1", grantEpoch: 0 }]),
+      update: () => {
+        throw new Error("update boom");
+      },
+    };
+    return Effect.gen(function* () {
+      const repo = yield* BoardRepository;
+      const exit = yield* Effect.exit(repo.bumpGrantEpoch({ boardId: "b1" }));
+      expectFailureTag(exit, "UpdateError");
+    }).pipe(Effect.provide(provideStub(stub)));
+  });
 });
 
 describe("BoardRepository.updateSettings", () => {
@@ -500,6 +596,28 @@ describe("board persistence input schemas", () => {
       grid: { rows: [gridRow] },
     });
     expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  itVitest("GetHistoryQuery carries an optional, non-negative `since` the client cannot set", () => {
+    // `since` is absent from `GetHistoryInput` on purpose — it is derived from
+    // the caller's own grant, never decoded from the request.
+    expect(Either.isRight(decodeGetHistoryQuery({ boardId: "b1" }))).toBe(true);
+    const withSince = decodeGetHistoryQuery({ boardId: "b1", since: 1000 });
+    expect(Either.isRight(withSince)).toBe(true);
+    if (Either.isRight(withSince)) expect(withSince.right.since).toBe(1000);
+    expect(
+      Either.isLeft(decodeGetHistoryQuery({ boardId: "b1", since: -1 }))
+    ).toBe(true);
+    expect(
+      Either.isLeft(decodeGetHistoryQuery({ boardId: "b1", since: 1.5 }))
+    ).toBe(true);
+    // A client that sends `since` on the route input has it stripped, not
+    // honoured — which is the property that makes the split worth having.
+    const fromClient = decodeGetHistoryInput({ boardId: "b1", since: 1000 });
+    expect(Either.isRight(fromClient)).toBe(true);
+    if (Either.isRight(fromClient)) {
+      expect("since" in fromClient.right).toBe(false);
+    }
   });
 
   itVitest("GetHistoryInput defaults and caps the limit", () => {

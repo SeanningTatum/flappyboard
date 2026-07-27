@@ -209,9 +209,11 @@ async function buildSql(): Promise<string> {
 
   // One demo board owned by the admin fixture, plus the snapshot that renders
   // on it. `board.revision` mirrors the snapshot revision so the Durable Object
-  // and D1 agree on the first read.
+  // and D1 agree on the first read. `grant_epoch` is stated explicitly rather
+  // than left to the column default: the fixture is what a fresh board looks
+  // like, and a fresh board has revoked nothing.
   lines.push(
-    `INSERT OR IGNORE INTO board (id, owner_id, name, sound_pack, muted, revision, created_at, updated_at) VALUES (` +
+    `INSERT OR IGNORE INTO board (id, owner_id, name, sound_pack, muted, revision, grant_epoch, created_at, updated_at) VALUES (` +
       [
         sqlString(SEED_BOARD_ID),
         sqlString(SEED_BOARD_OWNER_ID),
@@ -219,6 +221,7 @@ async function buildSql(): Promise<string> {
         sqlString("classic"),
         0,
         SEED_BOARD_REVISION,
+        0,
         now,
         now,
       ].join(", ") +

@@ -36,6 +36,13 @@ import {
 
 const failExit = <E>(e: E) => Effect.exit(tagToTRPC(Effect.fail(e)));
 
+/** The mapped `TRPCError`, for assertions about what the *client* is told. */
+const errorOf = (exit: Exit.Exit<unknown, TRPCError>): TRPCError | null => {
+  if (!Exit.isFailure(exit)) return null;
+  const failure = Cause.failureOption(exit.cause);
+  return failure._tag === "Some" ? failure.value : null;
+};
+
 const expectTRPC = (
   exit: Exit.Exit<unknown, TRPCError>,
   code: TRPCError["code"]
@@ -98,12 +105,18 @@ describe("tagToTRPC error mapping", () => {
     })
   );
 
-  it.effect("ConfigurationError → INTERNAL_SERVER_ERROR", () =>
+  it.effect("ConfigurationError → INTERNAL_SERVER_ERROR, naming nothing", () =>
     Effect.gen(function* () {
       const exit = yield* failExit(
-        new ConfigurationError({ service: "Database" })
+        new ConfigurationError({ service: "Pairing", field: "BETTER_AUTH_SECRET" })
       );
       expectTRPC(exit, "INTERNAL_SERVER_ERROR");
+      // `pair` and `generate` take no session, so an unauthenticated caller
+      // could otherwise learn which half of the deployment is unconfigured.
+      const error = errorOf(exit);
+      expect(error?.message).toBe("Internal Server Error");
+      expect(error?.message).not.toContain("BETTER_AUTH_SECRET");
+      expect(error?.message).not.toContain("Pairing");
     })
   );
 
@@ -368,7 +381,13 @@ describe("runProcedure", () => {
     );
     await expect(runProcedure(runtime, program)).rejects.toMatchObject({
       code: "INTERNAL_SERVER_ERROR",
-      message: "Configuration error for Database (DATABASE)",
+      // Generic on purpose: naming the missing config told an unauthenticated
+      // caller of `pair`/`generate` exactly which piece of the deployment was
+      // absent. `service`/`field` go to the server log instead.
+      message: "Internal Server Error",
+    });
+    await expect(runProcedure(runtime, program)).rejects.not.toMatchObject({
+      message: expect.stringContaining("DATABASE"),
     });
     await runtime.dispose();
   });

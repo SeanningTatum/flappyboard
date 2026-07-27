@@ -4,7 +4,7 @@ import {
   ConfigurationError,
   ExternalServiceError,
 } from "@/models/errors/repository";
-import { readGrantCookie, verifyControllerGrant } from "@/lib/board/pairing";
+import { readGrantCookies, verifyControllerGrants } from "@/lib/board/pairing";
 import type { Route } from "./+types/board-ws";
 
 /**
@@ -22,14 +22,15 @@ import type { Route } from "./+types/board-ws";
  * `routes/board/control.tsx` was papering over.
  *
  * Non-enumeration is preserved, and which refusal you get depends only on what the
- * caller *sent*:
+ * caller *sent* — never on whether the board exists:
  *
  * - No grant cookie for this id and no owning session → **404**, exactly what an
  *   invented board id returns. A signed-in non-owner gets the same 404, so the
  *   response never confirms that an id is real.
  * - A grant cookie for this id that does not verify → **401**, so the phone knows
- *   to rescan. Anyone can fabricate that cookie for any id, so the branch reveals
- *   nothing about the id itself.
+ *   to rescan. A board that does not exist gets the same 401 once a cookie has
+ *   been presented, so presenting one buys no information either. Anyone can
+ *   fabricate that cookie for any id, so the branch reveals nothing about the id.
  */
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
@@ -68,16 +69,38 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       catch: (cause) => new ExternalServiceError({ service: "BetterAuth", cause }),
     });
 
-    if (session) {
-      const repo = yield* BoardRepository;
-      const board = yield* repo.getBoard({ boardId });
-      if (board.ownerId === session.user.id) return yield* upgrade;
-      // An authenticated non-owner is not disqualified — they may still hold a
-      // grant for this board (a signed-in phone that scanned someone's QR).
-    }
+    /** Refused for presenting an unusable grant. Never says whether the id is real. */
+    const unauthorized = (reason: string) =>
+      Effect.logWarning("Board socket grant refused").pipe(
+        // Precise server-side, generic client-side — same split as the tRPC routes.
+        Effect.annotateLogs({ boardId, reason }),
+        Effect.as(new Response("Unauthorized", { status: 401 }))
+      );
 
-    const cookie = readGrantCookie(request.headers.get("cookie"), boardId);
-    if (cookie === null) return notFound();
+    // Read off the request before any I/O: this fixes which refusal is reachable
+    // for this caller, so the board read below cannot become an oracle.
+    const cookies = readGrantCookies(request.headers.get("cookie"), boardId);
+
+    // The grant's MAC covers the board's `grantEpoch`, so the row is needed before
+    // a grant can be verified at all. `NotFoundError` is folded into `null` here —
+    // a `QueryError` still propagates to the 503 below.
+    const repo = yield* BoardRepository;
+    const board = yield* repo
+      .getBoard({ boardId })
+      .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null)));
+
+    if (board !== null && session && board.ownerId === session.user.id) {
+      return yield* upgrade;
+    }
+    // An authenticated non-owner is not disqualified — they may still hold a
+    // grant for this board (a signed-in phone that scanned someone's QR).
+
+    if (cookies.length === 0) return notFound();
+
+    // A cookie was presented, so every remaining outcome is 401 — including "no
+    // such board". Answering 404 here would let any signed-in caller sort real
+    // board ids from invented ones with a single junk cookie.
+    if (board === null) return yield* unauthorized("missing");
 
     // Same secret, same read path as `app/trpc/routes/board.ts`: the
     // `BETTER_AUTH_SECRET` off the already-constructed Better Auth instance.
@@ -91,32 +114,25 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       );
     }
 
-    const verdict = yield* verifyControllerGrant({
-      token: cookie,
+    const verdict = yield* verifyControllerGrants({
+      tokens: cookies,
       boardId,
+      grantEpoch: board.grantEpoch,
       secret,
       now: Date.now(),
     });
-    if (!verdict.ok) {
-      // Precise server-side, generic client-side — same split as the tRPC routes.
-      yield* Effect.logWarning("Board socket grant refused").pipe(
-        Effect.annotateLogs({ boardId, reason: verdict.reason })
-      );
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    // The grant verified, so the id is real *and* signed by us — but the board row
-    // may have been deleted since. `getBoard` failing lands on the same 404.
-    const repo = yield* BoardRepository;
-    yield* repo.getBoard({ boardId });
+    if (!verdict.ok) return yield* unauthorized(verdict.reason);
 
     return yield* upgrade;
   }).pipe(
     Effect.tapErrorCause((cause) =>
       Effect.logError("Board socket upgrade failed", cause)
     ),
+    // No `NotFoundError` handler, and that is not an omission: "no such board" is
+    // now caught at the read (`catchTag` → `null`) so that it can only ever be
+    // *answered*, never *raised*. A 404 raised from deeper in the program is
+    // exactly the oracle this route was leaking.
     Effect.catchTags({
-      NotFoundError: () => Effect.succeed(notFound()),
       QueryError: () =>
         Effect.succeed(new Response("Service unavailable", { status: 503 })),
       ConfigurationError: () =>

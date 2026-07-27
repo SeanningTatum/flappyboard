@@ -10,6 +10,7 @@ import {
   BoardAgent,
   BoardAgentLive,
   makeBoardAgent,
+  makeBoardAgentLive,
   renderGridForPrompt,
   retryTurn,
   unconfiguredBoardAgent,
@@ -459,6 +460,45 @@ describe("BoardAgentLive", () => {
       Effect.provide(
         BoardAgentLive.pipe(
           Layer.provide(CloudflareEnvLive({} as unknown as Env))
+        )
+      )
+    )
+  );
+
+  /**
+   * `BoardAgentLive` is a member of the merged `baseLayer`, so every member is
+   * constructed when the request runtime is built. A constructor that threw would
+   * therefore be a layer-construction *defect* and 500 **every** request in the
+   * app — the exact outage a missing R2 binding already caused once. So the
+   * throw has to degrade to the same typed, one-procedure failure a missing key
+   * produces.
+   */
+  it.effect("survives a throwing SDK constructor: the layer builds, only generate fails, and it fails typed", () =>
+    Effect.gen(function* () {
+      const agent = yield* BoardAgent;
+      // Constructed at all — that is half the assertion.
+      expect(typeof agent.generate).toBe("function");
+      expect(agent).toBe(unconfiguredBoardAgent);
+
+      const exit = yield* Effect.exit(
+        agent.generate({ prompt: "good morning", current: blankGrid() })
+      );
+      const error = failureOf(exit);
+      expect(error).toBeInstanceOf(ConfigurationError);
+      expect(error).toMatchObject({
+        service: "BoardAgent",
+        field: "ANTHROPIC_API_KEY",
+      });
+    }).pipe(
+      Effect.provide(
+        makeBoardAgentLive(() => {
+          throw new Error("the SDK disliked something about this key");
+        }).pipe(
+          Layer.provide(
+            CloudflareEnvLive({
+              ANTHROPIC_API_KEY: "sk-ant-test",
+            } as unknown as Env)
+          )
         )
       )
     )

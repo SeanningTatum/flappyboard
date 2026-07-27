@@ -14,10 +14,12 @@ import {
   grantCookieName,
   mintControllerGrant,
   mintPairingToken,
-  readGrantCookie,
+  grantHistoryFloor,
+  readGrantCookies,
   serializeGrantCookie,
   timingSafeEqual,
   verifyControllerGrant,
+  verifyControllerGrants,
   verifyPairingToken,
   type TokenVerification,
 } from "../pairing";
@@ -26,12 +28,22 @@ const SECRET = "test-secret-not-a-real-better-auth-secret";
 const OTHER_SECRET = "a-different-secret-entirely";
 const BOARD = "board-aaaa-bbbb-cccc";
 const NOW = 1_700_000_000_000;
+/** The board's `grantEpoch` for every test that is not about revocation. */
+const EPOCH = 0;
 
 const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
   Effect.runPromise(effect);
 
 const mint = (overrides: Partial<Parameters<typeof mintPairingToken>[0]> = {}) =>
-  run(mintPairingToken({ boardId: BOARD, secret: SECRET, now: NOW, ...overrides }));
+  run(
+    mintPairingToken({
+      boardId: BOARD,
+      grantEpoch: EPOCH,
+      secret: SECRET,
+      now: NOW,
+      ...overrides,
+    })
+  );
 
 const verify = (
   overrides: Partial<Parameters<typeof verifyPairingToken>[0]> & { token: string }
@@ -39,6 +51,7 @@ const verify = (
   run(
     verifyPairingToken({
       boardId: BOARD,
+      grantEpoch: EPOCH,
       secret: SECRET,
       now: NOW,
       ...overrides,
@@ -142,7 +155,7 @@ describe("mintPairingToken", () => {
 
   it("fails as a configuration fault when there is no secret", async () => {
     const exit = await Effect.runPromiseExit(
-      mintPairingToken({ boardId: BOARD, secret: "", now: NOW })
+      mintPairingToken({ boardId: BOARD, grantEpoch: EPOCH, secret: "", now: NOW })
     );
     expect(Exit.isFailure(exit)).toBe(true);
   });
@@ -213,7 +226,7 @@ describe("verifyPairingToken", () => {
 
   it("rejects a token for board A when presented for board B", async () => {
     const token = await run(
-      mintPairingToken({ boardId: "board-a", secret: SECRET, now: NOW })
+      mintPairingToken({ boardId: "board-a", grantEpoch: EPOCH, secret: SECRET, now: NOW })
     );
     expectRefused(await verify({ token, boardId: "board-b" }), "bad-signature");
     // Sanity: it is a perfectly good token for the board it was minted for.
@@ -222,7 +235,7 @@ describe("verifyPairingToken", () => {
 
   it("rejects a token signed with a different secret", async () => {
     const token = await run(
-      mintPairingToken({ boardId: BOARD, secret: OTHER_SECRET, now: NOW })
+      mintPairingToken({ boardId: BOARD, grantEpoch: EPOCH, secret: OTHER_SECRET, now: NOW })
     );
     expectRefused(await verify({ token }), "bad-signature");
   });
@@ -252,7 +265,7 @@ describe("verifyPairingToken", () => {
   it("fails as a configuration fault when there is no secret", async () => {
     const token = await mint();
     const exit = await Effect.runPromiseExit(
-      verifyPairingToken({ token, boardId: BOARD, secret: "", now: NOW })
+      verifyPairingToken({ token, boardId: BOARD, grantEpoch: EPOCH, secret: "", now: NOW })
     );
     expect(Exit.isFailure(exit)).toBe(true);
   });
@@ -261,10 +274,16 @@ describe("verifyPairingToken", () => {
 describe("controller grants", () => {
   it("round-trips independently of the pairing token", async () => {
     const grant = await run(
-      mintControllerGrant({ boardId: BOARD, secret: SECRET, now: NOW })
+      mintControllerGrant({ boardId: BOARD, grantEpoch: EPOCH, secret: SECRET, now: NOW })
     );
     const verdict = await run(
-      verifyControllerGrant({ token: grant, boardId: BOARD, secret: SECRET, now: NOW })
+      verifyControllerGrant({
+        token: grant,
+        boardId: BOARD,
+        grantEpoch: EPOCH,
+        secret: SECRET,
+        now: NOW,
+      })
     );
     expect(verdict.ok).toBe(true);
     expect(grant.split(".")[0]).toBe(GRANT_PREFIX);
@@ -272,7 +291,7 @@ describe("controller grants", () => {
 
   it("cannot be presented as a pairing token, nor a pairing token as a grant", async () => {
     const grant = await run(
-      mintControllerGrant({ boardId: BOARD, secret: SECRET, now: NOW })
+      mintControllerGrant({ boardId: BOARD, grantEpoch: EPOCH, secret: SECRET, now: NOW })
     );
     const pairing = await mint();
 
@@ -282,6 +301,7 @@ describe("controller grants", () => {
         verifyControllerGrant({
           token: pairing,
           boardId: BOARD,
+          grantEpoch: EPOCH,
           secret: SECRET,
           now: NOW,
         })
@@ -294,6 +314,7 @@ describe("controller grants", () => {
     const grant = await run(
       mintControllerGrant({
         boardId: BOARD,
+        grantEpoch: EPOCH,
         secret: SECRET,
         now: NOW,
         ttlSeconds: 60,
@@ -304,6 +325,7 @@ describe("controller grants", () => {
         verifyControllerGrant({
           token: grant,
           boardId: "another-board",
+          grantEpoch: EPOCH,
           secret: SECRET,
           now: NOW,
         })
@@ -315,6 +337,7 @@ describe("controller grants", () => {
         verifyControllerGrant({
           token: grant,
           boardId: BOARD,
+          grantEpoch: EPOCH,
           secret: SECRET,
           now: NOW + 60_001,
         })
@@ -405,23 +428,30 @@ describe("grant cookie", () => {
 
   it("reads only this board's grant out of a cookie header", () => {
     const header = `theme=dark; ${GRANT_COOKIE_PREFIX}${BOARD}=abc.def.ghi; ${GRANT_COOKIE_PREFIX}other=zzz`;
-    expect(readGrantCookie(header, BOARD)).toBe("abc.def.ghi");
-    expect(readGrantCookie(header, "other")).toBe("zzz");
-    expect(readGrantCookie(header, "absent")).toBeNull();
+    expect(readGrantCookies(header, BOARD)).toEqual(["abc.def.ghi"]);
+    expect(readGrantCookies(header, "other")).toEqual(["zzz"]);
+    expect(readGrantCookies(header, "absent")).toEqual([]);
   });
 
-  it("returns null for absent, empty and malformed cookie headers", () => {
-    expect(readGrantCookie(null, BOARD)).toBeNull();
-    expect(readGrantCookie(undefined, BOARD)).toBeNull();
-    expect(readGrantCookie("", BOARD)).toBeNull();
-    expect(readGrantCookie("garbage", BOARD)).toBeNull();
-    expect(readGrantCookie(`${GRANT_COOKIE_PREFIX}${BOARD}=`, BOARD)).toBeNull();
-    expect(readGrantCookie(`=${GRANT_COOKIE_PREFIX}${BOARD}`, BOARD)).toBeNull();
+  it("returns every cookie with this board's name, in the order sent", () => {
+    // A sibling host on a parent domain can set the same name; the browser sends
+    // both and gives no hint which is which.
+    const header = `${GRANT_COOKIE_PREFIX}${BOARD}=injected; theme=dark; ${GRANT_COOKIE_PREFIX}${BOARD}=genuine`;
+    expect(readGrantCookies(header, BOARD)).toEqual(["injected", "genuine"]);
+  });
+
+  it("returns nothing for absent, empty and malformed cookie headers", () => {
+    expect(readGrantCookies(null, BOARD)).toEqual([]);
+    expect(readGrantCookies(undefined, BOARD)).toEqual([]);
+    expect(readGrantCookies("", BOARD)).toEqual([]);
+    expect(readGrantCookies("garbage", BOARD)).toEqual([]);
+    expect(readGrantCookies(`${GRANT_COOKIE_PREFIX}${BOARD}=`, BOARD)).toEqual([]);
+    expect(readGrantCookies(`=${GRANT_COOKIE_PREFIX}${BOARD}`, BOARD)).toEqual([]);
   });
 
   it("round-trips a real grant through serialize → read → verify", async () => {
     const grant = await run(
-      mintControllerGrant({ boardId: BOARD, secret: SECRET, now: NOW })
+      mintControllerGrant({ boardId: BOARD, grantEpoch: EPOCH, secret: SECRET, now: NOW })
     );
     const setCookie = serializeGrantCookie({
       boardId: BOARD,
@@ -431,16 +461,175 @@ describe("grant cookie", () => {
     });
     // Browsers send back only `name=value`, so that is what is parsed here.
     const sent = setCookie.split(";")[0]!;
-    const read = readGrantCookie(sent, BOARD);
+    const read = readGrantCookies(sent, BOARD)[0] ?? null;
     expect(read).toBe(grant);
     const verdict = await run(
       verifyControllerGrant({
         token: read!,
         boardId: BOARD,
+        grantEpoch: EPOCH,
         secret: SECRET,
         now: NOW,
       })
     );
     expect(verdict.ok).toBe(true);
+  });
+});
+
+describe("grant epoch — revocation", () => {
+  const grantAt = (epoch: number, boardId = BOARD) =>
+    run(
+      mintControllerGrant({ boardId, grantEpoch: epoch, secret: SECRET, now: NOW })
+    );
+
+  const verifyAt = (token: string, epoch: number, boardId = BOARD) =>
+    run(
+      verifyControllerGrant({
+        token,
+        boardId,
+        grantEpoch: epoch,
+        secret: SECRET,
+        now: NOW,
+      })
+    );
+
+  it("a grant minted at epoch N still verifies at epoch N", async () => {
+    expect((await verifyAt(await grantAt(7), 7)).ok).toBe(true);
+  });
+
+  it("a grant minted at epoch N fails at epoch N+1", async () => {
+    // Indistinguishable from a forgery, which is the point: it is no longer a
+    // token we would have issued.
+    expectRefused(await verifyAt(await grantAt(7), 8), "bad-signature");
+  });
+
+  it("every earlier epoch stays dead, not just the previous one", async () => {
+    const grant = await grantAt(0);
+    for (const epoch of [1, 2, 3, 50]) {
+      expectRefused(await verifyAt(grant, epoch), "bad-signature");
+    }
+  });
+
+  it("bumping board A does not affect a grant for board B", async () => {
+    const forB = await grantAt(0, "board-b");
+    // Board A is now at epoch 1; B never moved.
+    expect((await verifyAt(forB, 0, "board-b")).ok).toBe(true);
+    expectRefused(await verifyAt(forB, 1, "board-b"), "bad-signature");
+  });
+
+  it("covers the pairing token too, so revoking kills the QR on screen", async () => {
+    const token = await mint({ grantEpoch: 4 });
+    expect((await verify({ token, grantEpoch: 4 })).ok).toBe(true);
+    expectRefused(await verify({ token, grantEpoch: 5 }), "bad-signature");
+  });
+
+  it("does not let a grant epoch stand in for a board id, or vice versa", async () => {
+    // The message is `prefix|len|boardId|epoch|payload`, so no pair of
+    // (boardId, epoch) values can collide into the same message.
+    const grant = await grantAt(1, "ab");
+    expectRefused(await verifyAt(grant, 1, "a"), "bad-signature");
+    expectRefused(await verifyAt(grant, 11, "ab"), "bad-signature");
+  });
+});
+
+describe("verifyControllerGrants — many cookies, one name", () => {
+  const verifyMany = (tokens: ReadonlyArray<string>, grantEpoch = EPOCH) =>
+    run(
+      verifyControllerGrants({
+        tokens,
+        boardId: BOARD,
+        grantEpoch,
+        secret: SECRET,
+        now: NOW,
+      })
+    );
+
+  it("accepts when the *second* cookie is the valid one", async () => {
+    // The exact injection this exists for: a sibling host sets
+    // `fb_grant_<id>=junk` on a parent domain, the browser sends it first, and
+    // taking only the first match refused a caller who holds a genuine grant.
+    const genuine = await run(
+      mintControllerGrant({
+        boardId: BOARD,
+        grantEpoch: EPOCH,
+        secret: SECRET,
+        now: NOW,
+      })
+    );
+    const verdict = await verifyMany(["junk", genuine]);
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) expect(verdict.issuedAt).toBe(NOW);
+  });
+
+  it("accepts when the valid one is first, or the only one", async () => {
+    const genuine = await run(
+      mintControllerGrant({
+        boardId: BOARD,
+        grantEpoch: EPOCH,
+        secret: SECRET,
+        now: NOW,
+      })
+    );
+    expect((await verifyMany([genuine, "junk"])).ok).toBe(true);
+    expect((await verifyMany([genuine])).ok).toBe(true);
+  });
+
+  it("refuses when none verify, reporting the most specific reason", async () => {
+    const stale = await run(
+      mintControllerGrant({
+        boardId: BOARD,
+        grantEpoch: EPOCH,
+        secret: SECRET,
+        now: NOW,
+        ttlSeconds: 60,
+      })
+    );
+    const later = run(
+      verifyControllerGrants({
+        tokens: ["junk", stale],
+        boardId: BOARD,
+        grantEpoch: EPOCH,
+        secret: SECRET,
+        now: NOW + 60_001,
+      })
+    );
+    // `expired` outranks the `malformed` from "junk" — a better log line, and
+    // still one generic UNAUTHORIZED for the client.
+    expectRefused(await later, "expired");
+  });
+
+  it("refuses an empty list as malformed", async () => {
+    expectRefused(await verifyMany([]), "malformed");
+  });
+
+  it("does not let a revoked grant sneak in beside a fresh one", async () => {
+    const revoked = await run(
+      mintControllerGrant({
+        boardId: BOARD,
+        grantEpoch: 0,
+        secret: SECRET,
+        now: NOW,
+      })
+    );
+    expectRefused(await verifyMany([revoked, revoked], 1), "bad-signature");
+  });
+});
+
+describe("grantHistoryFloor", () => {
+  it("bounds a grant to its own issue time", () => {
+    expect(grantHistoryFloor({ via: "grant", grantIssuedAt: NOW })).toBe(NOW);
+  });
+
+  it("leaves an owner unbounded", () => {
+    expect(grantHistoryFloor({ via: "owner", grantIssuedAt: null })).toBeUndefined();
+    // An owner session carries no issue time, but even if one leaked in it must
+    // not narrow what the owner can read.
+    expect(grantHistoryFloor({ via: "owner", grantIssuedAt: NOW })).toBeUndefined();
+  });
+
+  it("leaves a grant with no issue time unbounded rather than guessing one", () => {
+    expect(
+      grantHistoryFloor({ via: "grant", grantIssuedAt: null })
+    ).toBeUndefined();
   });
 });

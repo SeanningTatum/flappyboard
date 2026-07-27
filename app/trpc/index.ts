@@ -54,16 +54,42 @@ const formatSchemaError = (cause: unknown) => {
   return null;
 };
 
+/**
+ * `isDev` is passed **explicitly**, and that matters more than it looks.
+ *
+ * Left unset, tRPC resolves it at runtime from
+ * `globalThis.process?.env["NODE_ENV"] !== "production"`. The Workers runtime does
+ * not guarantee that variable and `wrangler.jsonc` declares no `vars`, so in
+ * production it was `undefined !== "production"` → **true**: every tRPC error
+ * response carried `data.stack`, handing server stack traces to any unauthenticated
+ * caller of `pair` or `claim`. `import.meta.env.DEV` is a build-time constant Vite
+ * substitutes literally, so the value is baked into the bundle instead of depending
+ * on an environment variable that may not exist.
+ */
+const isDev = import.meta.env.DEV;
+
 const t = initTRPC.context<typeof createTRPCContext>().create({
   transformer: superjson,
+  isDev,
   errorFormatter: ({ shape, error }) => ({
     ...shape,
     data: {
-      ...shape.data,
+      // Spread first, then overwrite: `stack` is destructured out below rather
+      // than trusted to be absent. `isDev: false` already stops tRPC adding it,
+      // but a stack trace reaching a client must not depend on one flag being
+      // right — this makes it structurally impossible in either mode, at the one
+      // place every error response is shaped.
+      ...omitStack(shape.data),
       schemaError: formatSchemaError(error.cause),
     },
   }),
 });
+
+/** Drop `stack` from an error shape's `data`, whatever put it there. */
+function omitStack<T extends object>(data: T): Omit<T, "stack"> {
+  const { stack: _stack, ...rest } = data as T & { stack?: unknown };
+  return rest as Omit<T, "stack">;
+}
 
 export const createTRPCRouter = t.router;
 
@@ -73,7 +99,12 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 
   log.debug("Procedure starting");
 
-  if (t._config.isDev) {
+  // `import.meta.env.DEV`, not `t._config.isDev`: the config value is a runtime
+  // property read, so the bundler has to keep this block *and* the artificial
+  // 100-500ms delay in the production bundle. Branching on the build-time constant
+  // makes it `if (false) { … }`, which is dead code the bundler removes outright —
+  // the delay cannot ship at all, rather than merely not firing.
+  if (import.meta.env.DEV) {
     const waitMs = Math.floor(Math.random() * 400) + 100;
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }

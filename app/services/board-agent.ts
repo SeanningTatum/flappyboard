@@ -462,25 +462,68 @@ export const unconfiguredBoardAgent: BoardAgentShape = {
 };
 
 /**
+ * How a client is built from a key. A named type only so the constructor can be
+ * substituted in a test — production has exactly one implementation.
+ */
+export type AnthropicFactory = (apiKey: string) => {
+  readonly messages: { readonly create: BoardAgentClient };
+};
+
+const defaultAnthropicFactory: AnthropicFactory = (apiKey) =>
+  new Anthropic({ apiKey });
+
+/**
  * The key comes off the `CloudflareEnv` Tag, consumed while this Layer is built —
  * never `process.env`, and never read at request time. `CloudflareEnv` therefore
  * stays out of `AppServices` (`runtime.ts` provides it with `Layer.provide`, not
  * `provideMerge`), so this adds no new capability to procedures: the secret is
  * captured in the closure of one service and nothing else can reach it.
+ *
+ * **Nothing in here may throw.** `BoardAgentLive` is a member of the merged
+ * `baseLayer`, so every member is constructed when the request runtime is built:
+ * a bare `new Anthropic({ apiKey })` that threw — a malformed key, an SDK that
+ * dislikes something about the runtime — would be a layer-construction *defect*
+ * and 500 **every request in the app**, which is precisely the outage this file's
+ * docblock claims cannot happen here (and which a missing R2 binding already
+ * caused once). So the constructor is wrapped, and a throw degrades to
+ * `unconfiguredBoardAgent`: exactly one procedure fails, typed, with the same
+ * `ConfigurationError` a missing key produces.
+ *
+ * `createClient` is a parameter purely so a test can supply a throwing
+ * constructor; every production caller uses `BoardAgentLive` below.
  */
-export const BoardAgentLive = Layer.effect(
-  BoardAgent,
-  Effect.gen(function* () {
-    const env = yield* CloudflareEnv;
-    const apiKey = (env as Env & { ANTHROPIC_API_KEY?: string })
-      .ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      yield* Effect.logWarning(
-        "ANTHROPIC_API_KEY is not set — board.generate will fail with ConfigurationError"
+export const makeBoardAgentLive = (
+  createClient: AnthropicFactory = defaultAnthropicFactory
+) =>
+  Layer.effect(
+    BoardAgent,
+    Effect.gen(function* () {
+      const env = yield* CloudflareEnv;
+      const apiKey = (env as Env & { ANTHROPIC_API_KEY?: string })
+        .ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        yield* Effect.logWarning(
+          "ANTHROPIC_API_KEY is not set — board.generate will fail with ConfigurationError"
+        );
+        return unconfiguredBoardAgent;
+      }
+
+      const constructed = yield* Effect.either(
+        Effect.try({
+          try: () => createClient(apiKey),
+          catch: (cause) => cause,
+        })
       );
-      return unconfiguredBoardAgent;
-    }
-    const anthropic = new Anthropic({ apiKey });
-    return makeBoardAgent((params) => anthropic.messages.create(params));
-  })
-);
+      if (Either.isLeft(constructed)) {
+        yield* Effect.logError(
+          "Anthropic client could not be constructed — board.generate will fail with ConfigurationError"
+        ).pipe(Effect.annotateLogs({ cause: String(constructed.left) }));
+        return unconfiguredBoardAgent;
+      }
+
+      const anthropic = constructed.right;
+      return makeBoardAgent((params) => anthropic.messages.create(params));
+    })
+  );
+
+export const BoardAgentLive = makeBoardAgentLive();

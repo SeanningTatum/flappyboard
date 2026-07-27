@@ -98,6 +98,20 @@ export const board = sqliteTable("board", {
   soundPack: text("sound_pack").notNull().default("classic"),
   muted: integer("muted", { mode: "boolean" }).notNull().default(false),
   revision: integer("revision").notNull().default(0),
+  /**
+   * Revocation counter for this board's pairing tokens and controller grants.
+   *
+   * Every token is signed over (prefix, board id, **this number**, payload), so
+   * incrementing it invalidates every outstanding grant for *this* board and no
+   * other — the one revocation primitive that does not mean deleting the board or
+   * rotating `BETTER_AUTH_SECRET` (which signs out every user of the deployment).
+   *
+   * It lives on the row, not in the board's Durable Object storage, precisely
+   * because the request worker must be able to check it: `requireBoardAccess`
+   * already reads this row, so verification costs no extra round trip, whereas a
+   * DO-held epoch would put a Durable Object call on every authorised request.
+   */
+  grantEpoch: integer("grant_epoch").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .notNull(),

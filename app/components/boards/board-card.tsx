@@ -8,6 +8,7 @@ import { StackBadge } from "@/components/stack-badge";
 import { BoardTvUrl } from "@/components/boards/board-tv-url";
 import { BoardDeleteDialog } from "@/components/boards/board-delete-dialog";
 import { BoardRenameDialog } from "@/components/boards/board-rename-dialog";
+import { BoardRevokeDialog } from "@/components/boards/board-revoke-dialog";
 import { formatDate } from "@/lib/date-utils";
 import { boardControlPath, boardDisplayPath, boardTvUrl } from "@/lib/schemas/boards";
 import { cn } from "@/lib/utils";
@@ -102,8 +103,15 @@ export function BoardCard({ board, origin, isNew = false }: BoardCardProps) {
           </Button>
         </div>
 
+        {/*
+          The owner-only row. Revoke sits next to rename and delete rather than
+          beside "Control from phone", because it is a thing you do *to* the
+          board's paired phones, not a way of driving the board — and because the
+          three of them are the operations only an owning session can perform.
+        */}
         <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row">
           <BoardRenameDialog boardId={board.id} currentName={board.name} />
+          <BoardRevokeDialog boardId={board.id} boardName={board.name} />
           <BoardDeleteDialog boardId={board.id} boardName={board.name} />
         </div>
       </CardContent>

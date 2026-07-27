@@ -39,7 +39,7 @@ The argument shape becomes readonly fields on the instance. Discriminate via `_t
 
 | Error | Fields | TRPC code |
 |-------|--------|-----------|
-| `PairingTokenInvalidError` | `reason` (`malformed` \| `bad-signature` \| `expired` \| `spent`) | `UNAUTHORIZED` |
+| `PairingTokenInvalidError` | `boardId`, `reason` (`malformed` \| `bad-signature` \| `expired` \| `spent` \| `missing`) | `UNAUTHORIZED` |
 | `BoardGenerationError` | `stage` (`request` \| `empty`), `cause?` | `INTERNAL_SERVER_ERROR` |
 | `LlmRefusedError` | — | `BAD_REQUEST` |
 | `TranscriptionFailedError` | `reason`, `cause?` | `BAD_REQUEST` |

@@ -1,8 +1,11 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
+import { ExternalServiceError } from "@/models/errors/repository";
 
 /**
  * The pure half of walkie-talkie voice input — every decision about the audio
- * that does not need a binding, a browser or a network.
+ * that does not need a binding, a browser or a network. (`readBoundedBody` at the
+ * bottom is the one exception: it consumes a stream, because *bounding* a body is
+ * exactly the decision that cannot be made after the fact.)
  *
  * It lives here rather than inside the button or the route because the limits
  * have to be **one** set of numbers: the phone stops recording at the cap, and
@@ -83,6 +86,95 @@ export const isAllowedAudioContentType = (value: string | null): boolean => {
     baseContentType(value)
   );
 };
+
+/* -------------------------------------------------------------------------- */
+/* Bounding the request body                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `true` only when the header **declares** a size over the limit.
+ *
+ * The subtlety this exists for: `Number(null)` is `0`, which is finite and under
+ * any limit, so `Number(header) > limit` silently waves through every request
+ * that sent no `Content-Length` at all — i.e. every chunked upload, which is the
+ * only kind an attacker would send. A missing, empty, non-numeric or negative
+ * header is **unknown**, not zero, and unknown means "cannot refuse yet" — the
+ * counting reader below is what decides those.
+ */
+export const declaredLengthOver = (
+  header: string | null | undefined,
+  limit: number
+): boolean => {
+  if (typeof header !== "string" || header.trim().length === 0) return false;
+  const declared = Number(header);
+  if (!Number.isFinite(declared) || declared < 0) return false;
+  return declared > limit;
+};
+
+export type BoundedBody =
+  | { readonly ok: true; readonly bytes: Uint8Array }
+  /** The stream passed `limit`. Nothing beyond the cap was ever buffered. */
+  | { readonly ok: false; readonly reason: "too-large" };
+
+/**
+ * Read a request body into memory **while counting it**, aborting the moment it
+ * passes `limit`.
+ *
+ * A `TransformStream` in the middle of the pipe is what makes the bound real
+ * rather than advisory: `controller.error` on the chunk that crosses the limit
+ * errors the readable side (so the collector below rejects) *and* cancels the
+ * writable side, which propagates back and cancels the request body — the sender
+ * is cut off rather than politely drained. Peak memory is therefore `limit` plus
+ * at most one chunk, no matter what the caller intended to send.
+ *
+ * Contrast `await request.arrayBuffer()` and *then* checking `byteLength`: that
+ * answers the same question, correctly, after the damage is done.
+ *
+ * A `null` body (a POST with no body at all) is zero bytes, not an error — the
+ * transcriber already has a typed failure for an empty clip, and inventing a
+ * second one here would just give the same condition two shapes.
+ */
+export const readBoundedBody = (
+  body: ReadableStream<Uint8Array> | null,
+  limit: number
+): Effect.Effect<BoundedBody, ExternalServiceError> =>
+  Effect.suspend(() => {
+    if (body === null) {
+      return Effect.succeed<BoundedBody>({ ok: true, bytes: new Uint8Array(0) });
+    }
+
+    // Per-execution state, which is why this whole thing sits inside `suspend`:
+    // a module-level counter would be shared between concurrent requests.
+    let total = 0;
+    let overflowed = false;
+    const counter = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > limit) {
+          overflowed = true;
+          controller.error(new Error("body exceeds limit"));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    });
+
+    return Effect.tryPromise({
+      try: () => new Response(body.pipeThrough(counter)).arrayBuffer(),
+      catch: (cause) => new ExternalServiceError({ service: "AudioRead", cause }),
+    }).pipe(
+      Effect.map(
+        (buffer): BoundedBody => ({ ok: true, bytes: new Uint8Array(buffer) })
+      ),
+      // A stream error raised by our own counter is not a read failure — it is
+      // the 413 we asked for. Anything else stays in the error channel.
+      Effect.catchAll((error) =>
+        overflowed
+          ? Effect.succeed<BoundedBody>({ ok: false, reason: "too-large" })
+          : Effect.fail(error)
+      )
+    );
+  });
 
 /* -------------------------------------------------------------------------- */
 /* Recorder mime selection                                                    */

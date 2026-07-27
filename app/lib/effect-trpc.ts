@@ -93,12 +93,21 @@ const appErrorToTRPC = (e: AppError): TRPCError => {
         message: `Failed to query ${e.entity}`,
         cause: e.cause,
       });
+    // Which piece of deployment configuration is missing is *our* problem, not
+    // the caller's, and naming it is a free reconnaissance win: `pair` and
+    // `generate` take no session, so an unauthenticated caller could learn
+    // "BETTER_AUTH_SECRET is unset" or "ANTHROPIC_API_KEY is unset" — i.e. which
+    // half of the deployment to keep poking at. `service` and `field` stay in the
+    // server log; the client gets the same generic 500 as any other internal
+    // fault, so a config gap is not even distinguishable from a bug.
     case "ConfigurationError":
+      loggers.trpc.error(
+        { service: e.service, field: e.field ?? null },
+        "Configuration error — deployment config is missing"
+      );
       return new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: `Configuration error for ${e.service}${
-          e.field ? ` (${e.field})` : ""
-        }`,
+        message: "Internal Server Error",
       });
     case "ExternalServiceError":
       return new TRPCError({

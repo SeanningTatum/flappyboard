@@ -1,5 +1,5 @@
 import { Effect, Either } from "effect";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { board, boardSnapshot } from "@/db/schema";
 import { Database } from "@/services/database";
 import {
@@ -14,7 +14,7 @@ import type {
   CreateBoardInput,
   DeleteBoardInput,
   GetBoardInput,
-  GetHistoryInput,
+  GetHistoryQuery,
   RenameBoardInput,
   SaveSnapshotInput,
   UpdateBoardSettingsInput,
@@ -119,12 +119,25 @@ export class BoardRepository extends Effect.Service<BoardRepository>()(
           return yield* requireFound("board_snapshot", input.boardId, rows[0]);
         });
 
-      const getHistory = (input: GetHistoryInput) =>
+      /**
+       * `since` (epoch ms) is a **server-imposed** floor on `createdAt`, never a
+       * client input — see `GetHistoryQuery` and `grantHistoryFloor`. It is what
+       * keeps a controller grant from reading back the grids (and the prompts)
+       * the owner wrote before that grant existed.
+       */
+      const getHistory = (input: GetHistoryQuery) =>
         tryQuery("board_snapshot", () =>
           db
             .select()
             .from(boardSnapshot)
-            .where(eq(boardSnapshot.boardId, input.boardId))
+            .where(
+              input.since === undefined
+                ? eq(boardSnapshot.boardId, input.boardId)
+                : and(
+                    eq(boardSnapshot.boardId, input.boardId),
+                    gte(boardSnapshot.createdAt, new Date(input.since))
+                  )
+            )
             .orderBy(desc(boardSnapshot.revision))
             .limit(input.limit)
         );
@@ -162,6 +175,34 @@ export class BoardRepository extends Effect.Service<BoardRepository>()(
           return { success: true } as const;
         });
 
+      /**
+       * Revoke every outstanding pairing token and controller grant for one
+       * board by incrementing its `grantEpoch`.
+       *
+       * The increment is done in SQL (`grant_epoch = grant_epoch + 1`) rather
+       * than read-modify-write, so two concurrent revokes both count instead of
+       * one silently overwriting the other with the same value. Monotonic by
+       * construction, so a bump can never accidentally *restore* a revoked
+       * generation of tokens.
+       *
+       * Verifies existence first, so a stale or foreign id is a `NotFoundError`
+       * rather than a silent no-op that reports success.
+       */
+      const bumpGrantEpoch = (input: GetBoardInput) =>
+        Effect.gen(function* () {
+          yield* getBoard({ boardId: input.boardId });
+          yield* tryUpdate("board", () =>
+            db
+              .update(board)
+              .set({
+                grantEpoch: sql`${board.grantEpoch} + 1`,
+                updatedAt: new Date(),
+              })
+              .where(eq(board.id, input.boardId))
+          );
+          return yield* getBoard({ boardId: input.boardId });
+        });
+
       const renameBoard = (input: RenameBoardInput) =>
         Effect.gen(function* () {
           yield* getBoard({ boardId: input.boardId });
@@ -184,6 +225,7 @@ export class BoardRepository extends Effect.Service<BoardRepository>()(
         updateSettings,
         deleteBoard,
         renameBoard,
+        bumpGrantEpoch,
       } as const;
     }),
   }

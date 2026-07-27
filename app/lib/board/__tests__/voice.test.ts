@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Effect, Exit } from "effect";
 
 import {
   ALLOWED_AUDIO_CONTENT_TYPES,
@@ -9,6 +10,8 @@ import {
   RECORDER_MIME_CANDIDATES,
   baseContentType,
   bytesToBase64,
+  declaredLengthOver,
+  readBoundedBody,
   formatElapsed,
   isAllowedAudioContentType,
   normalizeTranscript,
@@ -177,5 +180,120 @@ describe("bytesToBase64", () => {
     const encoded = bytesToBase64(big);
     expect(encoded.length).toBe(Math.ceil(MAX_AUDIO_BYTES / 3) * 4);
     expect(atob(encoded).length).toBe(MAX_AUDIO_BYTES);
+  });
+});
+
+describe("declaredLengthOver", () => {
+  it("refuses a header that declares more than the limit", () => {
+    expect(declaredLengthOver("2048", 1024)).toBe(true);
+    expect(declaredLengthOver("1025", 1024)).toBe(true);
+  });
+
+  it("accepts a header at or under the limit", () => {
+    expect(declaredLengthOver("1024", 1024)).toBe(false);
+    expect(declaredLengthOver("0", 1024)).toBe(false);
+  });
+
+  /**
+   * The regression: `Number(null)` is `0`, which is finite and under any limit,
+   * so the old `Number(header) > limit` form silently waved through every
+   * request that sent no `Content-Length` — i.e. every chunked upload, which is
+   * the only kind worth defending against. Missing means *unknown*, and unknown
+   * is decided by the counting reader, not here.
+   */
+  it("treats a missing, blank or unparseable header as unknown, not as zero", () => {
+    expect(declaredLengthOver(null, 1024)).toBe(false);
+    expect(declaredLengthOver(undefined, 1024)).toBe(false);
+    expect(declaredLengthOver("", 1024)).toBe(false);
+    expect(declaredLengthOver("   ", 1024)).toBe(false);
+    expect(declaredLengthOver("banana", 1024)).toBe(false);
+    expect(declaredLengthOver("-1", 1024)).toBe(false);
+  });
+});
+
+describe("readBoundedBody", () => {
+  /** A body delivered in `chunkSize` slices, recording whether it was cancelled. */
+  const streamOf = (
+    total: number,
+    chunkSize: number
+  ): { stream: ReadableStream<Uint8Array>; sent: () => number; cancelled: () => boolean } => {
+    let sent = 0;
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= total) {
+          controller.close();
+          return;
+        }
+        const size = Math.min(chunkSize, total - sent);
+        controller.enqueue(new Uint8Array(size));
+        sent += size;
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return { stream, sent: () => sent, cancelled: () => cancelled };
+  };
+
+  const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
+
+  it("reads a body that fits", async () => {
+    const { stream } = streamOf(300, 100);
+    const result = await run(readBoundedBody(stream, 1024));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.bytes.byteLength).toBe(300);
+  });
+
+  it("reads a body exactly at the limit", async () => {
+    const { stream } = streamOf(1024, 256);
+    const result = await run(readBoundedBody(stream, 1024));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.bytes.byteLength).toBe(1024);
+  });
+
+  /**
+   * The abort path, and the whole reason this helper exists: the old code did
+   * `await request.arrayBuffer()` and *then* checked the size, so a 100MB
+   * chunked POST was fully buffered in a 128MB isolate before it earned its 413.
+   */
+  it("aborts as soon as the limit is passed, without buffering the rest", async () => {
+    const huge = 100 * 1024 * 1024;
+    const chunk = 64 * 1024;
+    const { stream, sent, cancelled } = streamOf(huge, chunk);
+
+    const result = await run(readBoundedBody(stream, 1024));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("too-large");
+    // Stopped within a chunk or two of the cap, not 100MB later.
+    expect(sent()).toBeLessThanOrEqual(1024 + chunk * 2);
+    // And the sender was cut off rather than politely drained.
+    expect(cancelled()).toBe(true);
+  });
+
+  it("refuses a single chunk that is over the limit on its own", async () => {
+    const { stream } = streamOf(4096, 4096);
+    const result = await run(readBoundedBody(stream, 1024));
+    expect(result.ok).toBe(false);
+  });
+
+  it("treats a null body as zero bytes rather than an error", async () => {
+    const result = await run(readBoundedBody(null, 1024));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.bytes.byteLength).toBe(0);
+  });
+
+  it("fails with ExternalServiceError when the stream itself breaks", async () => {
+    const broken = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("socket died"));
+      },
+    });
+    const exit = await Effect.runPromiseExit(readBoundedBody(broken, 1024));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(JSON.stringify(exit.cause)).toContain("ExternalServiceError");
+    }
   });
 });

@@ -82,9 +82,14 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     `/b/${encodeURIComponent(boardId)}/c`,
     request.url
   );
+  // `grantEpoch` comes off the row we just read, so the QR is always minted at
+  // the board's current epoch: after the owner revokes controllers, the next
+  // re-mint tick (`QR_REFRESH_MS`) prints a code that works again, and the codes
+  // printed before it stay dead.
   const minted = await Effect.runPromiseExit(
     mintPairingToken({
       boardId,
+      grantEpoch: exit.value.board.grantEpoch,
       secret: context.cloudflare.env.BETTER_AUTH_SECRET,
       now: Date.now(),
     })

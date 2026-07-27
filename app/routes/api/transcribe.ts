@@ -7,10 +7,12 @@ import {
   type NotFoundError,
   type QueryError,
 } from "@/models/errors/repository";
-import { readGrantCookie, verifyControllerGrant } from "@/lib/board/pairing";
+import { readGrantCookies, verifyControllerGrants } from "@/lib/board/pairing";
 import {
   MAX_AUDIO_BYTES,
   isAllowedAudioContentType,
+  declaredLengthOver,
+  readBoundedBody,
 } from "@/lib/board/voice";
 import { Transcription, TranscriptionLive } from "@/services/transcription";
 import { CloudflareEnvLive } from "@/services/cloudflare";
@@ -41,17 +43,21 @@ import type { Route } from "./+types/transcribe";
  * the same single way, `context.auth.options.secret`, so there is one secret
  * with one read path across the whole board surface.
  *
- * Non-enumeration is preserved with the same split:
+ * Non-enumeration is preserved with the same split, and which refusal you get
+ * depends only on what the caller *sent* — never on whether the board exists:
  *
  * - No grant cookie for this id and no owning session → **404**, byte-identical
  *   to what an invented board id returns. A signed-in non-owner gets it too.
  * - A grant cookie for this id that does not verify → **401**, so the phone
- *   knows to rescan. Anyone can fabricate that cookie for any id, so the branch
- *   reveals nothing about whether the id is real.
+ *   knows to rescan. A board that does not exist gets the same 401 once a cookie
+ *   has been presented. Anyone can fabricate that cookie for any id, so neither
+ *   branch reveals whether the id is real.
  *
  * This route spends money on every call that reaches the binding, which is why
  * authorisation runs **before** the body is read: an unauthorised caller never
- * gets a megabyte buffered on its behalf, let alone an inference call.
+ * gets a megabyte buffered on its behalf, let alone an inference call. And an
+ * *authorised* caller is bounded while it is read, not after — see
+ * `readBoundedBody`.
  */
 
 /** A fresh Response each time — a Response body is single-use. */
@@ -103,22 +109,27 @@ export async function action({ request, context }: Route.ActionArgs) {
       return refuse(WRONG_TYPE_REASON, 415);
     }
 
-    // Checked twice on purpose. `Content-Length` is the cheap rejection — it
-    // costs nothing and refuses an oversized body before a byte is buffered —
-    // but it is client-supplied and absent on a chunked upload, so the real
-    // enforcement is the actual byte count below.
-    const declaredLength = Number(request.headers.get("content-length"));
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_AUDIO_BYTES) {
+    // Two layers, and the second is the one that actually enforces.
+    //
+    // `Content-Length` is the free rejection: when the client declares an
+    // oversized body we refuse before reading a byte. But it is client-supplied
+    // and *absent on a chunked upload*, which is how this used to be defeated —
+    // `Number(null)` is `0`, finite and under the limit, so a missing header
+    // sailed past, and the real check ran only after `request.arrayBuffer()` had
+    // already materialised the whole body. A 100MB chunked POST was fully
+    // buffered in a 128MB isolate before it earned its 413.
+    //
+    // So: a missing or unparseable header is treated as **unknown**, not zero,
+    // and the body is read through a counting `TransformStream` that errors the
+    // stream — cancelling the source — the moment the cap is passed. Peak memory
+    // is bounded by `MAX_AUDIO_BYTES` plus one chunk, whatever the sender claims.
+    if (declaredLengthOver(request.headers.get("content-length"), MAX_AUDIO_BYTES)) {
       return refuse(TOO_LARGE_REASON, 413);
     }
 
-    const body = yield* Effect.tryPromise({
-      try: () => request.arrayBuffer(),
-      catch: (cause) => new ExternalServiceError({ service: "AudioRead", cause }),
-    });
-    if (body.byteLength > MAX_AUDIO_BYTES) {
-      return refuse(TOO_LARGE_REASON, 413);
-    }
+    const read = yield* readBoundedBody(request.body, MAX_AUDIO_BYTES);
+    if (!read.ok) return refuse(TOO_LARGE_REASON, 413);
+    const body = read.bytes;
 
     /* ---------------------------------------------------------------------- */
     /* 3. Transcribe                                                         */
@@ -126,7 +137,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     const transcription = yield* Transcription;
     const result = yield* transcription.transcribe({
-      audio: new Uint8Array(body),
+      audio: body,
       language: languageHint(url.searchParams.get("lang")),
     });
 
@@ -208,16 +219,39 @@ const authorise = ({
       catch: (cause) => new ExternalServiceError({ service: "BetterAuth", cause }),
     });
 
-    if (session) {
-      const repo = yield* BoardRepository;
-      const board = yield* repo.getBoard({ boardId });
-      if (board.ownerId === session.user.id) return "ok";
-      // An authenticated non-owner is not disqualified — they may still hold a
-      // grant for this board (a signed-in phone that scanned someone's QR).
-    }
+    /** Refused for presenting an unusable grant. Never says whether the id is real. */
+    const unauthorized = (reason: string) =>
+      Effect.logWarning("Transcribe grant refused").pipe(
+        // Precise server-side, generic client-side — the same split as the tRPC
+        // routes and the socket.
+        Effect.annotateLogs({ boardId, reason }),
+        Effect.as(new Response("Unauthorized", { status: 401 }))
+      );
 
-    const cookie = readGrantCookie(request.headers.get("cookie"), boardId);
-    if (cookie === null) return notFound();
+    // Read off the request before any I/O, so which refusal this caller can get is
+    // fixed by what they sent rather than by what the board read finds.
+    const cookies = readGrantCookies(request.headers.get("cookie"), boardId);
+
+    // The grant's MAC covers the board's `grantEpoch`, so the row must be read
+    // before a grant can be verified. `NotFoundError` folds into `null`; a
+    // `QueryError` still propagates to the 503.
+    const repo = yield* BoardRepository;
+    const board = yield* repo
+      .getBoard({ boardId })
+      .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null)));
+
+    if (board !== null && session && board.ownerId === session.user.id) {
+      return "ok";
+    }
+    // An authenticated non-owner is not disqualified — they may still hold a
+    // grant for this board (a signed-in phone that scanned someone's QR).
+
+    if (cookies.length === 0) return notFound();
+
+    // A cookie was presented, so every remaining outcome is 401 — "no such board"
+    // included. A 404 here would let any signed-in caller sort real board ids from
+    // invented ones with one junk cookie.
+    if (board === null) return yield* unauthorized("missing");
 
     const secret = context.auth.options.secret;
     if (typeof secret !== "string" || secret.length === 0) {
@@ -226,24 +260,14 @@ const authorise = ({
       );
     }
 
-    const verdict = yield* verifyControllerGrant({
-      token: cookie,
+    const verdict = yield* verifyControllerGrants({
+      tokens: cookies,
       boardId,
+      grantEpoch: board.grantEpoch,
       secret,
       now: Date.now(),
     });
-    if (!verdict.ok) {
-      // Precise server-side, generic client-side — the same split as the tRPC
-      // routes and the socket.
-      yield* Effect.logWarning("Transcribe grant refused").pipe(
-        Effect.annotateLogs({ boardId, reason: verdict.reason })
-      );
-      return new Response("Unauthorized", { status: 401 });
-    }
+    if (!verdict.ok) return yield* unauthorized(verdict.reason);
 
-    // The grant verified, so the id is real *and* signed by us — but the board
-    // row may have been deleted since. `getBoard` failing lands on the same 404.
-    const repo = yield* BoardRepository;
-    yield* repo.getBoard({ boardId });
     return "ok";
   });
