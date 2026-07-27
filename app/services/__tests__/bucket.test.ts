@@ -5,7 +5,11 @@ import { Bucket, BucketLive } from "../bucket";
 import { CloudflareEnv } from "../cloudflare";
 import { BucketBindingError } from "@/models/errors/bucket";
 
-const envLayer = (env: Partial<Env>) =>
+// BUCKET is absent from the generated Env type when setup is run with R2
+// disabled (no r2_buckets in wrangler.jsonc) — the same situation BucketLive
+// guards against at runtime. Widen the test env so both the present and the
+// missing case stay expressible; drop this widening when R2 is re-enabled.
+const envLayer = (env: Partial<Env> & { BUCKET?: R2Bucket }) =>
   Layer.succeed(CloudflareEnv, env as Env);
 
 const fakeBucket = { put: () => {}, get: () => {} } as unknown as R2Bucket;

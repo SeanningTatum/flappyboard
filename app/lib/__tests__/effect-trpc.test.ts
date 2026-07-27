@@ -27,6 +27,12 @@ import {
   BucketValidationError,
 } from "@/models/errors/bucket";
 import { WorkflowTriggerError } from "@/models/errors/workflow";
+import {
+  BoardGenerationError,
+  LlmRefusedError,
+  PairingTokenInvalidError,
+  TranscriptionFailedError,
+} from "@/models/errors/board";
 
 const failExit = <E>(e: E) => Effect.exit(tagToTRPC(Effect.fail(e)));
 
@@ -165,6 +171,98 @@ describe("tagToTRPC error mapping", () => {
         new WorkflowTriggerError({ name: "EXAMPLE_WORKFLOW" })
       );
       expectTRPC(exit, "INTERNAL_SERVER_ERROR");
+    })
+  );
+
+  it.effect("PairingTokenInvalidError → UNAUTHORIZED", () =>
+    Effect.gen(function* () {
+      const exit = yield* failExit(
+        new PairingTokenInvalidError({ boardId: "b1", reason: "expired" })
+      );
+      expectTRPC(exit, "UNAUTHORIZED");
+    })
+  );
+
+  it.effect(
+    "PairingTokenInvalidError does NOT leak which check failed to the client",
+    () =>
+      Effect.gen(function* () {
+        // "expired" vs "bad-signature" vs "spent" is a token oracle. The client
+        // gets one message for all of them; the reason stays in the server log.
+        const exit = yield* failExit(
+          new PairingTokenInvalidError({ boardId: "b1", reason: "bad-signature" })
+        );
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit)) {
+          const failure = Cause.failureOption(exit.cause);
+          if (failure._tag === "Some") {
+            expect(failure.value.message).not.toContain("bad-signature");
+            expect(failure.value.message).not.toContain("b1");
+            expect(failure.value.message).toContain("rescan");
+          }
+        }
+      })
+  );
+
+  it.effect("BoardGenerationError → INTERNAL_SERVER_ERROR", () =>
+    Effect.gen(function* () {
+      const exit = yield* failExit(
+        new BoardGenerationError({ stage: "request", cause: "boom" })
+      );
+      expectTRPC(exit, "INTERNAL_SERVER_ERROR");
+    })
+  );
+
+  it.effect("LlmRefusedError → BAD_REQUEST", () =>
+    Effect.gen(function* () {
+      const exit = yield* failExit(new LlmRefusedError({ category: "cyber" }));
+      expectTRPC(exit, "BAD_REQUEST");
+    })
+  );
+
+  it.effect("LlmRefusedError does NOT leak the policy category to the client", () =>
+    Effect.gen(function* () {
+      // The category is a safety-policy label; it is useless to the phone and
+      // stays in the server log. All the client needs is "rephrase it".
+      const exit = yield* failExit(new LlmRefusedError({ category: "bio" }));
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        if (failure._tag === "Some") {
+          expect(failure.value.message).not.toContain("bio");
+          expect(failure.value.message).toContain("rephras");
+        }
+      }
+    })
+  );
+
+  it.effect("TranscriptionFailedError → BAD_REQUEST", () =>
+    Effect.gen(function* () {
+      const exit = yield* failExit(
+        new TranscriptionFailedError({ reason: "the recording was empty" })
+      );
+      expectTRPC(exit, "BAD_REQUEST");
+    })
+  );
+
+  it.effect("TranscriptionFailedError surfaces its client-safe reason", () =>
+    Effect.gen(function* () {
+      const exit = yield* failExit(
+        new TranscriptionFailedError({
+          reason: "the recording was empty",
+          cause: new Error("internal decoder detail"),
+        })
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        if (failure._tag === "Some") {
+          // `reason` is written for the user (it tells them to re-record);
+          // `cause` is not.
+          expect(failure.value.message).toContain("the recording was empty");
+          expect(failure.value.message).not.toContain("internal decoder detail");
+        }
+      }
     })
   );
 
