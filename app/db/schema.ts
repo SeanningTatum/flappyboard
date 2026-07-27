@@ -1,5 +1,10 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -83,3 +88,45 @@ export const verification = sqliteTable("verification", {
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
 });
+
+export const board = sqliteTable("board", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull().default("flappyboard"),
+  soundPack: text("sound_pack").notNull().default("classic"),
+  muted: integer("muted", { mode: "boolean" }).notNull().default(false),
+  revision: integer("revision").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+});
+
+export type Board = typeof board.$inferSelect;
+
+export const boardSnapshot = sqliteTable(
+  "board_snapshot",
+  {
+    id: text("id").primaryKey(),
+    boardId: text("board_id")
+      .notNull()
+      .references(() => board.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    cells: text("cells").notNull(),
+    source: text("source", { enum: ["manual", "llm", "automation"] })
+      .notNull()
+      .default("manual"),
+    prompt: text("prompt"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (t) => [uniqueIndex("board_snapshot_board_revision_unq").on(t.boardId, t.revision)]
+);
+
+export type BoardSnapshot = typeof boardSnapshot.$inferSelect;
