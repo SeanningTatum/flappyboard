@@ -64,6 +64,23 @@ Measured latency on a real call: ~10s no-search, ~31s with search (two searches 
 search path is slow enough to be a UX question, not just a cost one — see the open issue on rate
 limiting / spend caps.
 
+**Verified in a browser, twice, independently:**
+[`verifications/2026-07-28-run-c.md`](verifications/2026-07-28-run-c.md) and
+[`verifications/2026-07-28-run-e.md`](verifications/2026-07-28-run-e.md). Both drove the real UI
+(recorded audio → Whisper → `board.generate` → DO write → TV socket) from a cookie-less phone that
+paired off a single-use QR token. Run C's board carried a sunset time within one minute of the real
+one; run E's carried a humidity range containing the real 38% and a sky condition matching the WMO
+code exactly. Both no-search prompts returned 2.7–5.7× faster than their searching counterparts,
+which is what demonstrates the prompt's do-not-search half is load-bearing rather than decorative.
+
+Two traps recorded there, because both read as app defects and neither is:
+- A TV screenshot taken within ~5s of a write catches tiles **mid-flap** (`flap-travel.ts` runs
+  3–5s). Run E's board reads `TEMP 19#22C` because `#` sits four flaps before `-` in `BOARD_CHARS`.
+  Assert on `data-char`, which said `19-22C`.
+- `page.mouse.down()` does **not** engage `control-ptt` on a `hasTouch` context — it binds React
+  `onPointerDown`/`onPointerUp`. Dispatch real `PointerEvent`s and assert `data-recording="true"`
+  immediately, or a missed press is indistinguishable from a hung generate.
+
 ### Persistence details
 - No new tables. Generated grids are written as `board_snapshot` rows with `source: "llm"` and the
   originating `prompt` retained for history and debugging.
