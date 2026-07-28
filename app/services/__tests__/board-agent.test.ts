@@ -7,8 +7,10 @@ import {
   BOARD_AGENT_MAX_PAUSES,
   BOARD_AGENT_MODEL,
   BOARD_AGENT_SYSTEM_PROMPT,
+  BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH,
   BOARD_AGENT_TOOLS,
   BOARD_MESSAGE_JSON_SCHEMA,
+  BOARD_ROUTER_MODEL,
   BoardAgent,
   BoardAgentLive,
   makeBoardAgent,
@@ -57,19 +59,52 @@ const refusal = (
     content: [],
   }) as unknown as Anthropic.Message;
 
+/** A router reply: one boolean of JSON, in the shape Haiku is asked for. */
+const routed = (needsLiveData: boolean): Anthropic.Message =>
+  ({
+    id: "msg_router",
+    type: "message",
+    role: "assistant",
+    model: BOARD_ROUTER_MODEL,
+    stop_reason: "end_turn",
+    stop_details: null,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ needs_live_data: needsLiveData }),
+        citations: null,
+      },
+    ],
+  }) as unknown as Anthropic.Message;
+
 interface Recorded {
+  /** Board calls only, so index-based assertions read as attempts. */
   readonly calls: Array<Anthropic.MessageCreateParamsNonStreaming>;
+  /** The routing calls, kept separately because they are not attempts. */
+  readonly routerCalls: Array<Anthropic.MessageCreateParamsNonStreaming>;
 }
 
 /**
  * Plays the given replies in order (the last one repeats), recording every
  * request so the tests can assert on what the model was actually told.
+ *
+ * The router call is answered separately and does **not** consume a reply, so a
+ * test can keep talking about "the first attempt" without counting the routing
+ * round trip. `route` controls what the router says; pass an `Error` or a
+ * non-JSON message to exercise the fail-open path.
  */
 const stubClient = (
-  replies: ReadonlyArray<Anthropic.Message | Error>
+  replies: ReadonlyArray<Anthropic.Message | Error>,
+  route: Anthropic.Message | Error = routed(true)
 ): { client: BoardAgentClient; recorded: Recorded } => {
-  const recorded: Recorded = { calls: [] };
+  const recorded: Recorded = { calls: [], routerCalls: [] };
   const client: BoardAgentClient = (params) => {
+    if (params.model === BOARD_ROUTER_MODEL) {
+      recorded.routerCalls.push(params);
+      return route instanceof Error
+        ? Promise.reject(route)
+        : Promise.resolve(route);
+    }
     recorded.calls.push(params);
     const next = replies[Math.min(recorded.calls.length - 1, replies.length - 1)]!;
     return next instanceof Error
@@ -291,19 +326,32 @@ describe("BoardAgent request shape", () => {
       expect(tools).toHaveLength(1);
       const search = tools[0] as Anthropic.WebSearchTool20260318;
       expect(search.type).toBe("web_search_20260318");
-      // A hard bound on both the bill and how long someone waits at the TV.
-      expect(search.max_uses).toBe(3);
-      // Dynamic filtering provisions its own execution environment; a second
-      // one only confuses the model about which to call.
+      // One search is what a board needs, and a cap of 1 is only *safe* with
+      // dynamic filtering off — with it on, the single use is spent inside the
+      // code path and the model declares the tool offline.
+      expect(search.max_uses).toBe(1);
+      expect(search.allowed_callers).toEqual(["direct"]);
+      // Nothing here needs code execution, and a second execution environment
+      // only confuses the model about which to call.
       expect(
         tools.some((tool) => tool.type?.startsWith("code_execution") ?? false)
       ).toBe(false);
     })
   );
 
-  it("tells the model when to search and, just as importantly, when not to", () => {
+  it("tells the searching prompt to search once, and never sends a dead instruction", () => {
     expect(BOARD_AGENT_SYSTEM_PROMPT).toContain("search the web for it first");
-    expect(BOARD_AGENT_SYSTEM_PROMPT).toContain("do not search");
+    expect(BOARD_AGENT_SYSTEM_PROMPT).toContain("One search");
+    // The no-tool prompt must not tell the model to search: starve a search it
+    // was told to make and it writes LIVE FEED UNAVAILABLE onto the board.
+    expect(BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH).not.toContain("search the web");
+    expect(BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH).toContain(
+      "cannot look anything up"
+    );
+    // And it must still forbid the thing the feature exists to prevent.
+    expect(BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH).toContain(
+      "Never state a number as fact"
+    );
   });
 
   it.effect("includes the current board so a follow-up prompt can edit it", () =>
@@ -367,6 +415,152 @@ describe("BoardAgent happy path", () => {
       expect(result.repaired).toBe(false);
       expect(result.truncated).toBe(true);
       expect(result.grid.rows).toHaveLength(BOARD_ROWS);
+    })
+  );
+});
+
+/**
+ * The router exists so the do-not-search rule is a property of the request rather
+ * than a line in a prompt the model may ignore — with the tool attached, five of
+ * six plain prompts searched anyway. So the assertion that matters is the
+ * *absence* of `tools`, not a prompt string.
+ */
+describe("BoardAgent routing", () => {
+  it.effect("asks the cheap model first, and asks it only once", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([reply(VALID)], routed(true));
+      yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+
+      expect(recorded.routerCalls).toHaveLength(1);
+      const route = recorded.routerCalls[0]!;
+      expect(route.model).toBe(BOARD_ROUTER_MODEL);
+      expect(route.model).not.toBe(BOARD_AGENT_MODEL);
+      // The board is still written by the capable model — routing picks the
+      // request shape, not the author.
+      expect(recorded.calls[0]!.model).toBe(BOARD_AGENT_MODEL);
+      // Haiku 4.5 rejects `effort` with a 400.
+      expect(route.output_config?.effort).toBeUndefined();
+      // The router must not be handed the search tool either.
+      expect(route.tools).toBeUndefined();
+    })
+  );
+
+  it.effect("withholds the search tool entirely when no live data is needed", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([reply(VALID)], routed(false));
+      yield* makeBoardAgent(client).generate({
+        prompt: "remind everyone bin day is thursday",
+        current: blankGrid(),
+      });
+
+      const board = recorded.calls[0]!;
+      // Absent, not empty: a request with no tool *cannot* search, cannot spend
+      // the time, and cannot bill a search.
+      expect(board.tools).toBeUndefined();
+      expect(board.system).toBe(BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH);
+    })
+  );
+
+  it.effect("attaches the tool and the searching prompt when live data is needed", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([reply(VALID)], routed(true));
+      yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+
+      const board = recorded.calls[0]!;
+      expect(board.tools).toEqual(BOARD_AGENT_TOOLS);
+      expect(board.system).toBe(BOARD_AGENT_SYSTEM_PROMPT);
+    })
+  );
+
+  /**
+   * The two ways to be wrong are not symmetric: routing a plain board to the
+   * searching path costs seconds, routing a weather board to the plain path costs
+   * the feature. So every unhappy router path must fail *open*.
+   */
+  it.effect("falls back to searching when the router call throws", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient(
+        [reply(VALID)],
+        new Error("503 overloaded_error")
+      );
+      const result = yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+
+      expect(recorded.calls[0]!.tools).toEqual(BOARD_AGENT_TOOLS);
+      // A router outage must not fail the board.
+      expect(result.attempts).toBe(1);
+      expect(result.repaired).toBe(false);
+    })
+  );
+
+  it.effect("falls back to searching when the router returns unusable JSON", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient(
+        [reply(VALID)],
+        reply("I think it probably does need a search?")
+      );
+      yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+      expect(recorded.calls[0]!.tools).toEqual(BOARD_AGENT_TOOLS);
+    })
+  );
+
+  it.effect("falls back to searching when the router answers with the wrong type", () =>
+    Effect.gen(function* () {
+      // Valid JSON, wrong shape — `"yes"` is not a boolean, and coercing it would
+      // silently make every malformed answer mean "search".
+      const { client, recorded } = stubClient(
+        [reply(VALID)],
+        reply(JSON.stringify({ needs_live_data: "yes" }))
+      );
+      yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+      expect(recorded.calls[0]!.tools).toEqual(BOARD_AGENT_TOOLS);
+    })
+  );
+
+  it.effect("falls back to searching when the router itself refuses", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([reply(VALID)], refusal("cyber"));
+      const result = yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+      // A refusal from the *router* is not a refusal of the board.
+      expect(recorded.calls[0]!.tools).toEqual(BOARD_AGENT_TOOLS);
+      expect(result.attempts).toBe(1);
+    })
+  );
+
+  it.effect("routes once per generate, not once per retry", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient(
+        [reply("not json"), reply(VALID)],
+        routed(false)
+      );
+      yield* makeBoardAgent(client).generate({
+        prompt: "remind everyone bin day is thursday",
+        current: blankGrid(),
+      });
+
+      expect(recorded.routerCalls).toHaveLength(1);
+      expect(recorded.calls).toHaveLength(2);
+      // The retry keeps the route it was given — re-deciding mid-conversation
+      // would change the tool set under a cached prefix.
+      expect(recorded.calls[1]!.tools).toBeUndefined();
+      expect(recorded.calls[1]!.system).toBe(BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH);
     })
   );
 });

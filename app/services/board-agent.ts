@@ -42,25 +42,87 @@ export const BOARD_AGENT_MAX_TOKENS = 8192;
 
 /**
  * Web search, so "what's the weather" puts today's weather on the board instead
- * of the model's training-cutoff guess. `_20260318` is the newest variant the
- * SDK types and this model support; it brings **dynamic filtering**, which runs
- * the search from inside code execution and filters results before they reach
- * the context window. That matters here: a raw weather search is ~18k input
- * tokens, and the board only needs a temperature.
+ * of the model's training-cutoff guess.
  *
- * Do **not** add `code_execution` to this array. `allowed_callers` already
- * defaults to `["code_execution_20260120"]` on this variant and the API
- * provisions the execution environment itself; declaring a second one confuses
- * the model about which to use.
+ * **`allowed_callers: ["direct"]` deliberately turns dynamic filtering off**, and
+ * the reason is measured, not assumed. Left on its default the tool runs the
+ * search from inside code execution and filters results before they reach the
+ * context window — which saves tokens and costs a great deal of wall clock,
+ * because the code-execution leg is serial and the phone is waiting on it. Direct
+ * search on the same prompt: **14.5s and ~14k input tokens** against **30–35s** for
+ * the filtered path. Filtering optimises the wrong resource for this feature.
  *
- * `max_uses` is a hard cap, not a hint. Three is enough for the questions a
- * board gets asked (one subject, one fact) and it bounds both the bill — web
- * search bills per search on top of tokens — and the time someone spends
- * holding a phone in front of a blank TV.
+ * Turning it off is also what makes `max_uses: 1` viable. A cap of 1 *with*
+ * filtering does not bound the search, it starves it: the single use is spent
+ * inside the code path and the model concludes the tool is broken, writing
+ * `LIVE FEED UNAVAILABLE / SEARCH TOOL OFFLINE` onto the board. Measured twice,
+ * at 73s and 41s. One direct search is what a board actually needs — one subject,
+ * one fact — and it bounds the bill, since search bills per use on top of tokens.
+ *
+ * Do **not** add `code_execution` here. Nothing in this configuration needs it,
+ * and a second execution environment only confuses the model about which to call.
  */
 export const BOARD_AGENT_TOOLS: Anthropic.ToolUnion[] = [
-  { type: "web_search_20260318", name: "web_search", max_uses: 3 },
+  {
+    type: "web_search_20260318",
+    name: "web_search",
+    max_uses: 1,
+    allowed_callers: ["direct"],
+  },
 ];
+
+/* -------------------------------------------------------------------------- */
+/* Routing                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Haiku decides one thing: does this request depend on information the model
+ * cannot already know?
+ *
+ * The point is **not** to run the board on a cheaper model — that was measured and
+ * buys nothing. Haiku wrote a board in 16.5s against Sonnet's 14.5s, because the
+ * wall clock is dominated by the search round trip rather than by model tier, and
+ * Haiku's layout was visibly worse (blank rows where Sonnet uses `spread`).
+ *
+ * The point is to decide **whether to attach the search tool at all**. That turns
+ * the do-not-search rule from a line in the prompt into a property of the request:
+ * a plain board physically cannot search, so it cannot spend the time or the money
+ * or invent a figure. The prompt alone does not hold — with direct search enabled,
+ * five of six plain prompts searched anyway, taking a reminder from ~3s to ~9s and
+ * billing a search for it.
+ *
+ * Haiku 4.5 is the router because it is the cheapest model that supports
+ * structured outputs, and one boolean is exactly the shape of work it is good at.
+ * Note it rejects `output_config.effort` with a 400 and has no adaptive thinking,
+ * so neither is sent.
+ */
+export const BOARD_ROUTER_MODEL = "claude-haiku-4-5";
+
+/** One boolean of JSON. The cap is generous purely so a stray token cannot truncate it. */
+export const BOARD_ROUTER_MAX_TOKENS = 256;
+
+export const BOARD_ROUTER_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["needs_live_data"],
+  properties: {
+    needs_live_data: {
+      type: "boolean",
+      description:
+        "True if answering needs current real-world information the model cannot already know — weather, forecast, score, price, departure time, exchange rate, today's news. False for anything self-contained: greetings, reminders, jokes, countdowns, announcements, or edits to the board's current text.",
+    },
+  },
+};
+
+export const BOARD_ROUTER_SYSTEM_PROMPT = [
+  "You route one request and return only JSON.",
+  "",
+  "Decide whether writing this message needs current real-world information that you could not already know — weather, a forecast, a score, a price, a departure time, an exchange rate, today's news.",
+  "",
+  'Answer false when the request is self-contained: a greeting, a reminder ("bin day is Thursday"), a joke, a countdown, an announcement, or an edit to what is already on the board. A date or a day of the week that the request itself supplies is not live data.',
+  "",
+  "Answer true only if a figure or fact would have to be looked up to be correct.",
+].join("\n");
 
 /**
  * Server tools run in a loop on Anthropic's side, and a long one comes back as
@@ -129,7 +191,7 @@ export const BOARD_AGENT_MAX_ATTEMPTS = 3;
  * temperature coloured by how cold it is carries information, a temperature
  * coloured at random is decoration.
  */
-export const BOARD_AGENT_SYSTEM_PROMPT = [
+const BOARD_AGENT_PROMPT_BODY = [
   `You compose on a physical split-flap board: a grid of ${BOARD_ROWS} rows × ${BOARD_COLS} columns, ${
     BOARD_ROWS * BOARD_COLS
   } tiles. Every tile shows either one character or one solid colour. You are laying out a grid, not writing lines of text.`,
@@ -156,11 +218,42 @@ export const BOARD_AGENT_SYSTEM_PROMPT = [
   } for the text.`,
   "- Decorate only when the request asks for a look, or when a headline is helped by a frame. A plain message stays plain — no gratuitous borders.",
   "",
+].join("\n");
+
+const BOARD_AGENT_PROMPT_TAIL =
+  "\nBe brief and have some personality. Vary the wording, colours and layout each time — never fall back on the same template.";
+
+/**
+ * The prompt sent when the request was routed as needing live data, so the search
+ * tool is actually attached. Telling the model to search is only honest here.
+ */
+export const BOARD_AGENT_SYSTEM_PROMPT = [
+  BOARD_AGENT_PROMPT_BODY,
   "FACTS",
   "- If the board depends on something current — weather, a forecast, a score, a price, a departure time, today's news — search the web for it first and put the real number on the board. Never invent one: a split-flap board reads as fact.",
-  "- If the request needs no outside information — a greeting, a reminder, a joke, a countdown, an edit to what is already up there — do not search. Write the board.",
-  "",
-  "Be brief and have some personality. Vary the wording, colours and layout each time — never fall back on the same template.",
+  "- One search. Read what it gives you and write the board; do not go looking for a second opinion.",
+  BOARD_AGENT_PROMPT_TAIL,
+].join("\n");
+
+/**
+ * The prompt sent when the request was routed as *not* needing live data, so no
+ * search tool is attached at all.
+ *
+ * It is a separate prompt rather than the same one, because a request with no
+ * tool carrying an instruction to "search the web first" is a lie the model acts
+ * on: starve the search and it writes `LIVE FEED UNAVAILABLE / SEARCH TOOL
+ * OFFLINE` onto the board — measured, twice. So the no-tool prompt states the
+ * constraint instead, which turns the one bad case (a live-data request the
+ * router got wrong) into an honest board rather than an invented number. Two
+ * variants also means two stable prompt prefixes, both cacheable; a prompt built
+ * per request would be neither.
+ */
+export const BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH = [
+  BOARD_AGENT_PROMPT_BODY,
+  "FACTS",
+  "- You cannot look anything up on this request. Write the board from what the request already tells you.",
+  "- Never state a number as fact that the request did not give you — no temperature, price, score or departure time. A split-flap board reads as fact, so inventing one is worse than leaving it out. If the request needed a figure you were not given, say plainly on the board that it is unavailable.",
+  BOARD_AGENT_PROMPT_TAIL,
 ].join("\n");
 
 /**
@@ -394,8 +487,30 @@ interface Turn {
   readonly content: Anthropic.ContentBlock[];
 }
 
+/**
+ * What the router decided, as the two things it changes about the request.
+ *
+ * `tools` is **omitted entirely** rather than sent empty when the board needs no
+ * search: an absent tool is what makes the guardrail structural instead of
+ * advisory, and it keeps the request shape identical to the pre-search one.
+ */
+interface Route {
+  readonly system: string;
+  readonly tools?: Anthropic.ToolUnion[];
+}
+
+export const SEARCHING_ROUTE: Route = {
+  system: BOARD_AGENT_SYSTEM_PROMPT,
+  tools: BOARD_AGENT_TOOLS,
+};
+
+export const PLAIN_ROUTE: Route = {
+  system: BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH,
+};
+
 const callModel = (
   client: BoardAgentClient,
+  route: Route,
   messages: Anthropic.MessageParam[],
   pauses = 0
 ): Effect.Effect<Turn, BoardGenerationError | LlmRefusedError> =>
@@ -405,9 +520,9 @@ const callModel = (
         client({
           model: BOARD_AGENT_MODEL,
           max_tokens: BOARD_AGENT_MAX_TOKENS,
-          system: BOARD_AGENT_SYSTEM_PROMPT,
+          system: route.system,
           messages,
-          tools: BOARD_AGENT_TOOLS,
+          ...(route.tools ? { tools: route.tools } : {}),
           output_config: {
             effort: BOARD_AGENT_EFFORT,
             format: {
@@ -448,6 +563,7 @@ const callModel = (
       );
       return yield* callModel(
         client,
+        route,
         [...messages, { role: "assistant", content: response.content }],
         pauses + 1
       );
@@ -486,6 +602,7 @@ const callModel = (
  */
 const runPipeline = (
   client: BoardAgentClient,
+  route: Route,
   messages: Anthropic.MessageParam[],
   attempt: number
 ): Effect.Effect<
@@ -493,7 +610,7 @@ const runPipeline = (
   BoardGenerationError | LlmRefusedError
 > =>
   Effect.gen(function* () {
-    const turn = yield* callModel(client, messages);
+    const turn = yield* callModel(client, route, messages);
     const verdict = yield* evaluate(turn.text);
 
     if (Either.isRight(verdict)) {
@@ -517,6 +634,7 @@ const runPipeline = (
 
     return yield* runPipeline(
       client,
+      route,
       [
         ...messages,
         { role: "assistant", content: turn.content },
@@ -526,13 +644,93 @@ const runPipeline = (
     );
   });
 
+/**
+ * Ask Haiku whether this request needs the web, and pick the route.
+ *
+ * **Never fails, and defaults to searching.** Every unhappy path — network error,
+ * refusal, unparseable JSON, a boolean that isn't there — resolves to
+ * `SEARCHING_ROUTE`, because the two ways to be wrong are not symmetric. Route a
+ * plain board to the searching path and it costs a few seconds and one search.
+ * Route a weather board to the plain path and the board either says the figure is
+ * unavailable or, worse, the model reaches for one it cannot have — which is the
+ * exact failure this whole feature exists to remove. So the cheap mistake is the
+ * default and the expensive one has to be earned by an explicit `false`.
+ */
+export const routeFor = (
+  client: BoardAgentClient,
+  prompt: string
+): Effect.Effect<Route> =>
+  Effect.gen(function* () {
+    const response = yield* Effect.either(
+      Effect.tryPromise({
+        try: () =>
+          client({
+            model: BOARD_ROUTER_MODEL,
+            max_tokens: BOARD_ROUTER_MAX_TOKENS,
+            system: BOARD_ROUTER_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: prompt }],
+            // No `effort`: Haiku 4.5 rejects it with a 400.
+            output_config: {
+              format: { type: "json_schema", schema: BOARD_ROUTER_SCHEMA },
+            },
+          }),
+        catch: (cause) => cause,
+      })
+    );
+
+    if (Either.isLeft(response)) {
+      yield* Effect.logWarning(
+        "Board router call failed — defaulting to the searching route"
+      ).pipe(Effect.annotateLogs({ cause: String(response.left) }));
+      return SEARCHING_ROUTE;
+    }
+
+    if (response.right.stop_reason === "refusal") {
+      yield* Effect.logWarning(
+        "Board router refused — defaulting to the searching route"
+      );
+      return SEARCHING_ROUTE;
+    }
+
+    const decision = yield* Effect.either(
+      Effect.try({
+        try: () => {
+          const parsed = JSON.parse(textOf(response.right)) as {
+            needs_live_data?: unknown;
+          };
+          if (typeof parsed.needs_live_data !== "boolean") {
+            throw new Error("needs_live_data was not a boolean");
+          }
+          return parsed.needs_live_data;
+        },
+        catch: (cause) => cause,
+      })
+    );
+
+    if (Either.isLeft(decision)) {
+      yield* Effect.logWarning(
+        "Board router returned unusable JSON — defaulting to the searching route"
+      ).pipe(Effect.annotateLogs({ cause: String(decision.left) }));
+      return SEARCHING_ROUTE;
+    }
+
+    yield* Effect.logInfo("Board route chosen").pipe(
+      Effect.annotateLogs({ needsLiveData: decision.right })
+    );
+    return decision.right ? SEARCHING_ROUTE : PLAIN_ROUTE;
+  });
+
 export const makeBoardAgent = (client: BoardAgentClient): BoardAgentShape => ({
   generate: (params) =>
-    runPipeline(
-      client,
-      [{ role: "user", content: firstUserTurn(params.prompt, params.current) }],
-      1
-    ),
+    Effect.gen(function* () {
+      const route = yield* routeFor(client, params.prompt);
+      return yield* runPipeline(
+        client,
+        route,
+        [{ role: "user", content: firstUserTurn(params.prompt, params.current) }],
+        1
+      );
+    }),
 });
 
 /**

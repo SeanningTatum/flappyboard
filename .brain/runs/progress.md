@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-07-28 — Web search shipped to PR #4 (https://github.com/SeanningTatum/flappyboard/pull/4) on branch feat/board-agent-web-search — 3 commits: the service change, the verification evidence, and the feature-memo link. Greptile reviewed the branch twice pre-PR (code diff, then final diff): 0 comments, confidence 5/5, no security findings, so nothing needed triaging. Two independent browser runs agree that a live-data prompt lands real numbers and a plain prompt does not search: run C got a sunset within one minute of reality (30.5s searching vs 5.3s not), run E got sky matching the WMO code and a humidity range containing the real 38% (35.1s vs 12.9s). 855 unit tests green (6 new, hermetic), typecheck and build clean, harness-check 7/7.
+- branch: `feat/board-agent-web-search`
+- in-progress feature: none
+- run note: none
+- next: Merge decision is the owner's. Before a real-key deploy, land issue #1 (rate limiting / spend caps on board.generate and /api/transcribe) — web search bills per search on top of ~18k input tokens per searched turn, so this PR turns that from should-have into blocker. Then pick a latency affordance: ~30-35s searching vs ~5-13s not is a long time at a blank TV, and the untaken levers are max_uses 2, response_inclusion 'excluded', or a searching state on the controller. feat-009 stays in-progress: still outstanding are voice on a real phone over HTTPS and a walk on the actual Samsung TV. Two harness traps are now written down in the feature memo so they are not rediscovered as app bugs — TV screenshots within ~5s of a write catch tiles mid-flap, and control-ptt needs dispatched PointerEvents rather than page.mouse on a hasTouch context.
+
+---
+
 ## 2026-07-28 — v0.1.1 released — docs-only patch. PR #3 squash-merged as 2157222 and tagged v0.1.1 (https://github.com/SeanningTatum/flappyboard/releases/tag/v0.1.1). README trimmed 275 -> 244 lines: the harness-loop.gif embed removed and harness-loop.gif + harness-loop.mp4 deleted (995KB, both boilerplate leftovers from the initial commit 80e73a8 and the only docs/assets files not from this project's own verification walks); 'Four ideas worth stealing' collapsed into four bullets under 'How it's built' with all technical claims intact; the verification section's brag paragraph and the flap-travel rAF aside cut. setup-flow.svg deliberately kept. Deploy preview red again for the same non-code reason (version 93a23ae5 uploaded, preview-URL extraction failed); Baseline/Build/E2E/sweep green.
 - branch: `main`
 - in-progress feature: none
