@@ -62,7 +62,7 @@ The audio goes to Whisper on Workers AI, the transcript goes to `claude-sonnet-5
 
 ## The board actually travels
 
-This is the part that's easy to fake and worth not faking. A real split-flap doesn't cross-fade — each tile steps *forward through the alphabet* until it reaches the letter it wants, and it clatters the whole way.
+A real split-flap doesn't cross-fade — each tile steps *forward through the alphabet* until it reaches the letter it wants, and it clatters the whole way. So does this one.
 
 <p align="center">
   <img src="docs/assets/board-mid-flip.png" alt="The board mid-travel: tiles showing genuine intermediate glyphs like ZZZZZ and 33333 and partial words, not the final text" width="820">
@@ -70,7 +70,7 @@ This is the part that's easy to fake and worth not faking. A real split-flap doe
   <em>Caught mid-travel. Those aren't the final letters — the tiles are genuinely passing through the drum.</em>
 </p>
 
-The numbers, from the code and confirmed by a browser walk that sampled `requestAnimationFrame` at 84 frames over 1400ms:
+The numbers, from the code and confirmed by a browser walk:
 
 | | |
 |---|---|
@@ -134,36 +134,12 @@ Deleting a board cascades its snapshot history with it, and every grant that poi
 
 ---
 
-## Four ideas worth stealing
+## How it's built
 
-These are the design decisions that did real work. Each one is written up in `.brain/` with the incident that earned it.
-
-### The compiler owns the 6×24 invariant, and nothing else may
-
-Writers — the phone, a socket, the model — produce a loose `BoardMessage`: up to six rows, each an alignment plus a list of `{ text, color }` segments. `compileMessage` is the **only** bridge to a strict `BoardGrid`. It folds the charset, word-wraps to 24, applies alignment, and pads to exactly 144 cells.
-
-So no caller can construct an invalid board. This paid off twice: structured outputs turned out to reject array size bounds (`maxItems` caps at 400), which means the model *cannot* be constrained to six rows by schema — and a layout bug reported from a photo of a real TV turned out to be layout logic that had leaked into the editor, somewhere the model couldn't reach.
-
-### One Durable Object per board is the only live writer
-
-The Worker never holds board state. It validates, compiles, and hands the grid to `BoardRoom`, which fans it out over WebSocket Hibernation — so an idle board costs nothing — and persists a snapshot to D1. A read that can't reach the DO falls back to the last snapshot, so the display always has something to render.
-
-Writes are last-write-wins on an advisory revision; the loser learns the truth from the echoed state. Two-client sync measured **1.5ms** against a 300ms bar in local dev.
-
-### Pairing is one HMAC primitive, used twice
-
-The signed message is `prefix|boardId.length|boardId|grantEpoch|payload`.
-
-- The **prefix** authenticates *purpose* — a write grant can't be replayed as a pairing token, and it fails before the key is even consulted.
-- The **board id** is a MAC *audience*, not something compared after the fact.
-- **Length framing** keeps the encoding injective, so no two different inputs can produce the same signed bytes.
-- The **grant epoch** is what makes revocation instant: bump it and every outstanding grant for that board is dead.
-
-Single-use is an atomic check-and-set inside the room's `blockConcurrencyWhile`. Six concurrent redemptions of one token return `200 401 401 401 401 401`.
-
-### An unowned board is a 404, never a 403
-
-A `FORBIDDEN` confirms the id is real, which makes boards enumerable. Every ownership failure is a `NotFoundError`. Relatedly: destructive procedures check board *ownership* and never the write-path guard — a pairing grant authorises writing **to** a board, never destroying it.
+- **The compiler owns the 6×24 invariant.** Writers — phone, socket, model — produce a loose `BoardMessage`; `compileMessage` is the only bridge to a strict `BoardGrid`. It folds the charset, word-wraps to 24, applies alignment, and pads to exactly 144 cells, so no caller can construct an invalid board.
+- **One Durable Object per board is the only live writer.** The Worker validates, compiles, and hands the grid to `BoardRoom`, which fans it out over WebSocket Hibernation (an idle board costs nothing) and snapshots to D1. A read that can't reach the DO falls back to the last snapshot.
+- **Pairing is one HMAC primitive.** Signed message is `prefix|boardId.length|boardId|grantEpoch|payload` — the prefix authenticates purpose, the board id is a MAC audience, length framing keeps the encoding injective, and bumping the grant epoch revokes every outstanding grant instantly. Single-use is an atomic check-and-set inside `blockConcurrencyWhile`.
+- **An unowned board is a 404, never a 403** — a `FORBIDDEN` would confirm the id is real and make boards enumerable.
 
 ---
 
@@ -193,8 +169,6 @@ Built on [cf-saas-starter-react-router](https://github.com/SeanningTatum/cf-saas
 
 Beyond the unit suite, user-visible flows get a **browser walk**: a headless run against the live app that drives the golden path plus an error path, screenshots every step, and writes a verdict doc to `.brain/features/<slug>/verifications/`. Every screenshot in this README came out of one of those runs.
 
-The MVP shipped on **two independent walks that agreed on all seven behavioural checks**, plus a third re-verifying pairing and revocation after a change to the HMAC. A single green run wasn't accepted. Those runs proved, among other things, that the QR encodes the real controller URL — by pixel-comparing it against a freshly generated code (0 of 262,144 pixels differing, versus 28.6% for a control) rather than just checking that `src` was non-empty.
-
 ---
 
 ## Status
@@ -211,10 +185,6 @@ The MVP shipped on **two independent walks that agreed on all seven behavioural 
 ## Working in this repo
 
 This repo runs an **agent harness** — a `.brain/` directory of retrieval-first docs, deterministic slash-command gates, and machine-checkable state, so that Claude Code / Cursor / Codex stay coherent across sessions instead of re-deriving conventions every time.
-
-<p align="center">
-  <img src="docs/assets/harness-loop.gif" alt="The harness loop: /start-task, work, /verify-done, /ship-feature, gated by typecheck, test, and brain-sync" width="640">
-</p>
 
 **If you are a human:** read [`AGENTS.md`](AGENTS.md) once. It points at everything else.
 
