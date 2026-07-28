@@ -8,10 +8,13 @@ import {
   type QueryError,
 } from "@/models/errors/repository";
 import { readGrantCookies, verifyControllerGrants } from "@/lib/board/pairing";
+import { spenderId } from "@/lib/board/quota";
+import { BoardRoom } from "@/services/board-room";
 import {
   MAX_AUDIO_BYTES,
   isAllowedAudioContentType,
   declaredLengthOver,
+  formatWaitEnglish,
   readBoundedBody,
 } from "@/lib/board/voice";
 import { Transcription, TranscriptionLive } from "@/services/transcription";
@@ -66,6 +69,27 @@ const refuse = (error: string, status: number) =>
 
 const notFound = () => new Response("Not found", { status: 404 });
 
+/**
+ * 429 with a `Retry-After` header as well as the JSON body. This route is
+ * `fetch`ed directly rather than through tRPC, so it answers in HTTP's own
+ * vocabulary — the header is what a proxy or a well-behaved client reads, the
+ * body is what the phone shows the person holding the button.
+ */
+const rateLimited = (retryAfter: number) =>
+  Response.json(
+    {
+      // Worded to match the controller's own cap copy rather than dumping raw
+      // seconds: the phone renders this string verbatim, so "1065s" would have
+      // been what a person actually read. `Retry-After` keeps the exact seconds
+      // for machines.
+      error: `That's this board's voice turn used up for now. Try again in ${formatWaitEnglish(
+        retryAfter
+      )} — or type your message above.`,
+      retryAfter,
+    },
+    { status: 429, headers: { "retry-after": String(retryAfter) } }
+  );
+
 const TOO_LARGE_REASON = `That recording is too long. Keep it under ${
   MAX_AUDIO_BYTES / 1024
 }KB.`;
@@ -98,7 +122,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     /* ---------------------------------------------------------------------- */
 
     const authorised = yield* authorise({ request, context, boardId });
-    if (authorised !== "ok") return authorised;
+    if (authorised instanceof Response) return authorised;
 
     /* ---------------------------------------------------------------------- */
     /* 2. Bound the input, before the binding is touched                     */
@@ -127,12 +151,65 @@ export async function action({ request, context }: Route.ActionArgs) {
       return refuse(TOO_LARGE_REASON, 413);
     }
 
+    /* ---------------------------------------------------------------------- */
+    /* 3. Peek at the spend cap — refuse early, but do not charge yet         */
+    /* ---------------------------------------------------------------------- */
+
+    // Split into peek-then-charge because the two obvious orderings are each
+    // wrong in one direction.
+    //
+    // Charging *before* the body read means a caller who omits `Content-Length`
+    // (chunked, so the header check above cannot refuse them) and sends an
+    // oversized body gets their slot consumed and then a 413 — no inference, no
+    // cost to anyone but the counter. Two hundred of those and transcription is
+    // dead for the whole household until the window rolls.
+    //
+    // Charging only *after* the read means an already-over-cap caller gets to
+    // push a megabyte through the isolate before being told no.
+    //
+    // So: peek here, which refuses an over-cap caller before they send anything
+    // expensive and increments nothing; charge below, once the body is known
+    // good. The two calls are not atomic together and need not be — the charge
+    // is the authoritative one.
+    //
+    // Fails closed at both points: an unreachable ledger raises
+    // `ExternalServiceError`, which lands on the 503 below rather than waving an
+    // unmetered call through.
+    const room = yield* BoardRoom;
+    const refuseOverCap = (retryAfter: number) =>
+      Effect.logWarning("Board spend cap reached").pipe(
+        Effect.annotateLogs({ boardId, endpoint: "transcribe", retryAfter }),
+        Effect.as(rateLimited(retryAfter))
+      );
+
+    const peek = yield* room.spendQuota({
+      boardId,
+      endpoint: "transcribe",
+      spender: authorised.spender,
+      mode: "peek",
+    });
+    if (!peek.allowed) return yield* refuseOverCap(peek.retryAfter);
+
+    /* ---------------------------------------------------------------------- */
+    /* 4. Read the body, then charge for it                                  */
+    /* ---------------------------------------------------------------------- */
+
     const read = yield* readBoundedBody(request.body, MAX_AUDIO_BYTES);
     if (!read.ok) return refuse(TOO_LARGE_REASON, 413);
     const body = read.bytes;
 
+    const charge = yield* room.spendQuota({
+      boardId,
+      endpoint: "transcribe",
+      spender: authorised.spender,
+      mode: "charge",
+    });
+    // Reachable when someone else spent the last slot between the peek and here.
+    // Refusing is correct: nothing has been sent to Whisper yet.
+    if (!charge.allowed) return yield* refuseOverCap(charge.retryAfter);
+
     /* ---------------------------------------------------------------------- */
-    /* 3. Transcribe                                                         */
+    /* 5. Transcribe                                                         */
     /* ---------------------------------------------------------------------- */
 
     const transcription = yield* Transcription;
@@ -200,16 +277,27 @@ interface AuthoriseArgs {
 }
 
 /**
- * `"ok"` when the caller may transcribe for this board, otherwise the Response
- * to return. Lifted out of the main program only so the money-spending path
- * below it reads as a straight line — the logic is `board-ws.ts`'s, unchanged.
+ * The caller's spend-cap identity when they may transcribe for this board,
+ * otherwise the Response to return. Lifted out of the main program only so the
+ * money-spending path below it reads as a straight line — the logic is
+ * `board-ws.ts`'s, unchanged.
+ *
+ * It returns the spender rather than a bare `"ok"` because the quota bucket has
+ * to be keyed by *which* caller this is, and this function is the only place
+ * that knows: it is where the grant is verified and therefore the only place the
+ * grant's nonce exists. Recomputing it later would mean verifying twice.
  */
+interface Authorised {
+  /** `owner:<id>` or `grant:<nonce>` — see `spenderId` in `@/lib/board/quota`. */
+  readonly spender: string;
+}
+
 const authorise = ({
   request,
   context,
   boardId,
 }: AuthoriseArgs): Effect.Effect<
-  "ok" | Response,
+  Authorised | Response,
   ConfigurationError | ExternalServiceError | NotFoundError | QueryError,
   BoardRepository
 > =>
@@ -241,7 +329,13 @@ const authorise = ({
       .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null)));
 
     if (board !== null && session && board.ownerId === session.user.id) {
-      return "ok";
+      return {
+        spender: spenderId({
+          via: "owner",
+          ownerId: board.ownerId,
+          grantNonce: null,
+        }),
+      };
     }
     // An authenticated non-owner is not disqualified — they may still hold a
     // grant for this board (a signed-in phone that scanned someone's QR).
@@ -269,5 +363,11 @@ const authorise = ({
     });
     if (!verdict.ok) return yield* unauthorized(verdict.reason);
 
-    return "ok";
+    return {
+      spender: spenderId({
+        via: "grant",
+        ownerId: board.ownerId,
+        grantNonce: verdict.nonce,
+      }),
+    };
   });

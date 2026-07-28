@@ -50,7 +50,15 @@
         "mic": "The microphone wouldn't start. Check nothing else is using it.",
         "transcribe": "That didn't come through. Hold the button and try again.",
         "generate": "The board didn't take it. Try again.",
-        "insecure": "Voice needs a secure connection. Open this page over https (or on the same device as the server) — or just type your message above."
+        "insecure": "Voice needs a secure connection. Open this page over https (or on the same device as the server) — or just type your message above.",
+        "rate_limited": "That's this board's turn used up for now. It'll take voice messages again shortly — or type your message above.",
+        "rate_limited_wait": "That's this board's turn used up for now. Try again in {{wait}} — or type your message above."
+      },
+      "wait": {
+        "seconds_one": "{{count}} second",
+        "seconds_other": "{{count}} seconds",
+        "minutes_one": "{{count}} minute",
+        "minutes_other": "{{count}} minutes"
       }
     },
     "editor": {

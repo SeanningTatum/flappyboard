@@ -16,6 +16,7 @@ import {
   MIN_RECORDING_MS,
   formatElapsed,
   pickRecorderMimeType,
+  readGenerateFailure,
   readTranscribeOutcome,
 } from "@/lib/board/voice";
 
@@ -75,7 +76,14 @@ export type VoiceFault =
   | { readonly kind: "mic" }
   /** `reason` is the server's own user-facing copy, or `null` for our generic. */
   | { readonly kind: "transcribe"; readonly reason: string | null }
-  | { readonly kind: "generate" };
+  | { readonly kind: "generate" }
+  /**
+   * The board's hourly spend cap refused this call. Distinct from `generate`
+   * because the two need different copy: one is "something went wrong, try
+   * again", this one is "you have had your turn for now" — and retrying
+   * immediately is futile, which the generic message actively invites.
+   */
+  | { readonly kind: "rateLimited"; readonly retryAfter: number | null };
 
 export type VoicePhase =
   | { readonly step: "idle" }
@@ -197,9 +205,19 @@ export function PushToTalkButton({
             });
             void utils.board.history.invalidate();
           },
-          onError: () => {
+          onError: (error) => {
             if (!alive.current) return;
-            setPhase({ step: "error", fault: { kind: "generate" } });
+            // A spend-cap refusal is not "try again" — retrying is futile until
+            // the window rolls, so it gets its own copy and, when the server
+            // told us, the wait. Everything else stays the generic fault.
+            const failure = readGenerateFailure(error);
+            setPhase({
+              step: "error",
+              fault:
+                failure.kind === "rate-limited"
+                  ? { kind: "rateLimited", retryAfter: failure.retryAfter }
+                  : { kind: "generate" },
+            });
           },
         }
       );
@@ -580,13 +598,19 @@ export const voiceCopyKey = (phase: VoicePhase): string => {
           return "control.voice.error.transcribe";
         case "generate":
           return "control.voice.error.generate";
+        // Two keys, because a wait we do not have must not render as
+        // "try again in undefined seconds".
+        case "rateLimited":
+          return phase.fault.retryAfter === null
+            ? "control.voice.error.rate_limited"
+            : "control.voice.error.rate_limited_wait";
       }
   }
 };
 
 const stateCopy = (
   phase: VoicePhase,
-  t: (key: string) => string
+  t: (key: string, options?: Record<string, unknown>) => string
 ): string => {
   // The server's own user-facing reason wins when it sent one — it is more
   // specific than any string we could pick from here ("the recording was
@@ -598,5 +622,28 @@ const stateCopy = (
   ) {
     return phase.fault.reason;
   }
+  // The only branch that interpolates. Minutes rather than raw seconds once it
+  // is past a minute: "try again in 1484 seconds" is a number, not an answer.
+  if (
+    phase.step === "error" &&
+    phase.fault.kind === "rateLimited" &&
+    phase.fault.retryAfter !== null
+  ) {
+    return t(voiceCopyKey(phase), {
+      wait: formatRetryWait(phase.fault.retryAfter, t),
+    });
+  }
   return t(voiceCopyKey(phase));
 };
+
+/**
+ * A wait a person can act on. Under a minute stays in seconds; past that it
+ * rounds **up** to whole minutes, so the advice is never early.
+ */
+export const formatRetryWait = (
+  seconds: number,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string =>
+  seconds < 60
+    ? t("control.voice.wait.seconds", { count: Math.max(1, Math.ceil(seconds)) })
+    : t("control.voice.wait.minutes", { count: Math.ceil(seconds / 60) });

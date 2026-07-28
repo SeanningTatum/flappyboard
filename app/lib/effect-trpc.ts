@@ -29,6 +29,7 @@ const APP_ERROR_TAGS = new Set<AppError["_tag"]>([
   "BoardGenerationError",
   "LlmRefusedError",
   "TranscriptionFailedError",
+  "RateLimitError",
 ]);
 
 // Compile-time exhaustiveness guard for `appErrorToTRPC`'s switch. Reachable
@@ -193,6 +194,19 @@ const appErrorToTRPC = (e: AppError): TRPCError => {
       return new TRPCError({
         code: "BAD_REQUEST",
         message: `Could not transcribe the recording: ${e.reason}`,
+      });
+    // Both fields are the caller's own usage of a board they are already
+    // authorised for, so unlike a pairing refusal there is nothing to withhold —
+    // and `retryAfter` is what lets the phone say something useful.
+    case "RateLimitError":
+      return new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: `Board ${e.endpoint} limit reached. Try again in ${e.retryAfter}s.`,
+        // Carried so the error formatter can put `retryAfter` on `data` as a
+        // number. Without it the only way for the phone to learn the wait would
+        // be to scrape it back out of this message string, which is a contract
+        // nobody should have to keep.
+        cause: e,
       });
     default:
       return assertNever(e);

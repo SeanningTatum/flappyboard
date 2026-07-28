@@ -31,6 +31,7 @@ import {
   BoardGenerationError,
   LlmRefusedError,
   PairingTokenInvalidError,
+  RateLimitError,
   TranscriptionFailedError,
 } from "@/models/errors/board";
 
@@ -274,6 +275,33 @@ describe("tagToTRPC error mapping", () => {
           // `cause` is not.
           expect(failure.value.message).toContain("the recording was empty");
           expect(failure.value.message).not.toContain("internal decoder detail");
+        }
+      }
+    })
+  );
+
+  it.effect("RateLimitError → TOO_MANY_REQUESTS", () =>
+    Effect.gen(function* () {
+      const exit = yield* failExit(
+        new RateLimitError({ endpoint: "generate", retryAfter: 42 })
+      );
+      expectTRPC(exit, "TOO_MANY_REQUESTS");
+    })
+  );
+
+  it.effect("RateLimitError tells the caller how long to wait", () =>
+    Effect.gen(function* () {
+      const exit = yield* failExit(
+        new RateLimitError({ endpoint: "transcribe", retryAfter: 42 })
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        if (failure._tag === "Some") {
+          // Nothing here is an oracle — it is the caller's own usage of a board
+          // they are already authorised for — so both fields are echoed.
+          expect(failure.value.message).toContain("42");
+          expect(failure.value.message).toContain("transcribe");
         }
       }
     })

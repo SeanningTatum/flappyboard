@@ -81,9 +81,28 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
       // place every error response is shaped.
       ...omitStack(shape.data),
       schemaError: formatSchemaError(error.cause),
+      retryAfter: rateLimitRetryAfter(error.cause),
     },
   }),
 });
+
+/**
+ * Seconds to wait, when the failure was a spend-cap refusal; `null` otherwise.
+ *
+ * Deliberately narrow: it reads `retryAfter` only off a `RateLimitError` cause,
+ * so no other error can put a number here. That keeps this an explicit
+ * allowlist rather than a hole that leaks whatever a future `cause` happens to
+ * carry — the same discipline `omitStack` above exists for.
+ */
+function rateLimitRetryAfter(cause: unknown): number | null {
+  if (typeof cause !== "object" || cause === null) return null;
+  const tagged = cause as { _tag?: unknown; retryAfter?: unknown };
+  if (tagged._tag !== "RateLimitError") return null;
+  return typeof tagged.retryAfter === "number" &&
+    Number.isFinite(tagged.retryAfter)
+    ? tagged.retryAfter
+    : null;
+}
 
 /** Drop `stack` from an error shape's `data`, whatever put it there. */
 function omitStack<T extends object>(data: T): Omit<T, "stack"> {

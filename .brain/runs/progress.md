@@ -21,6 +21,57 @@
 
 ---
 
+## 2026-07-28 — CI triage. Three separate things, only one mine. (1) PR #5 showed ZERO checks — not a broken pipeline: the branch had gone CONFLICTING when v0.1.1 (PR #3, README trim) landed on main, and GitHub will not run pull_request workflows on a PR whose merge commit it cannot compute. 'gh pr checks' reports 'no checks reported', which reads like none-configured rather than none-possible; the tell is 'gh pr view --json mergeable' = CONFLICTING. Merged origin/main in (not rebased — branch is pushed with an open PR), resolved .brain/CHANGELOG.md and .brain/runs/progress.md by keeping every entry from both sides in date order (all 9 of the day's checkpoints survive; no code conflicted), and corrected a stale 903 -> 908 test count in my own CHANGELOG entry. PR #5 is now MERGEABLE and all four CI jobs PASS: Baseline, Build, E2E smoke, Five non-negotiables sweep. (2) PR #4 feat/board-agent-web-search failed its non-negotiables sweep on a bare 'throw new Error("needs_live_data was not a boolean")' at commit 153671b — already fixed by that branch's owner at 5eee9bc, where the sweep is green. Left alone, not mine to push to. (3) Deploy preview is red on EVERY PR and is the only real standing failure: 'Could not extract preview URLs from wrangler output'. The version uploads fine and the code-10211 Durable Object branch does not fire — flappyboard-preview has simply never had a real wrangler deploy, so preview URLs were never enabled and there is nothing to extract. Confirmed NOT caused by the spend-cap change.
+- branch: `worktree-tv-living-room`
+- in-progress feature: llm-board-agent
+- run note: none
+- next: OWNER-ONLY, one-time, and the only thing still red: run 'bun run deploy:preview' locally to bootstrap the preview worker. It needs real Cloudflare credentials and creates real resources, so it cannot run from CI or from here — preview.yml:181 documents the same remedy. That turns Deploy preview green for every future PR until a new DO migration tag is added. PR #5 is otherwise green and mergeable. After it merges: feat-010 tv-pairing per the plan's decision 6.
+
+---
+
+## 2026-07-28 — Issue #1 shipped as PR #5 (https://github.com/SeanningTatum/flappyboard/pull/5) through the pre-PR review flow: verify -> review -> resolve -> create. Greptile ran clean this time (it deterministically timed out on the MVP's ~50-file diff) at confidence 3/5 with 4 findings — 2 P1 escalated and answered by the owner, 2 P2 auto-fixed. P1a: the DO enforced caller-supplied limits, so the cap was a call-site convention; policy moved into the DO, wire shrunk to endpoint/spender/mode, and a test asserts a limit cannot be smuggled. P1b: quota was charged before readBoundedBody, so oversized chunked bodies drained the board budget at zero AI cost; now peek -> read -> charge, re-measured closed (10 oversized chunked posts -> 413 x10, zero allowance consumed, a full 60 tiny posts still fit). A 5th finding came from the browser, not from static review: three runs agreed a cap refusal rendered the generic 'The board didn't take it' because the component discarded the error payload — retryAfter never reached the phone despite RateLimitError's doc comment promising it would. Needed cause: e on the TRPCError plus an allowlisted errorFormatter line; three runs then confirmed 1210s->'21 minutes', 627s->'11 minutes', 578s->'10 minutes', with C and D proving the 429 came from board.generate while /api/transcribe returned 200. Gate: typecheck 0, 908 tests (from 849), build 0, e2e 2/2, harness 7/7.
+- branch: `worktree-tv-living-room`
+- in-progress feature: llm-board-agent
+- run note: none
+- next: Owner-only and now unblocked: deploy with a real ANTHROPIC_API_KEY. Then feat-010 tv-pairing per the plan's decision 6 — its device-code endpoint inherits this limiter, which was its hard prerequisite since a 6-char code is only safe while attempt-capped. Still owed on real hardware: the Samsung TV walk and phone voice over HTTPS. Still unproven: /api/transcribe's 429 through the UI, fail-closed against a genuinely broken DO, and window rollover.
+
+---
+
+## 2026-07-28 — PR opened for llm-board-agent: https://github.com/SeanningTatum/flappyboard/pull/5
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-28 — shipped llm-board-agent: Shipped in v0.1.0 (PR #2, squash-merged as f8ae90f, 2026-07-27) and held open afterwards only for a formal verdict doc a
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-28 — Issue #1 closed — spend caps on board.generate and /api/transcribe, committed as abd0eea on worktree-tv-living-room. Atomic per-spender + per-board check-and-increment in the BoardRoom Durable Object (no new binding; same blockConcurrencyWhile as the spent-nonce ledger), new RateLimitError -> TOO_MANY_REQUESTS, 429 + Retry-After on the non-tRPC transcribe route. Gate: typecheck 0, 892 tests (from 849), build 0, e2e 2/2, harness 7/7. Four claims proven live against a real DO, not reasoned about: cap bites at 21 with a usable retryAfter; 30 concurrent calls at a limit of 20 admitted exactly 20 (no lost increments — the reason it lives in the DO); an exhausted owner still left a freshly paired grant its own full 20; and a 4th grant with a brand-new nonce was refused on its first call at 60/60, closing the re-pairing bypass. Verdict doc at .brain/features/llm-board-agent/verifications/2026-07-28.md, deliberately scoped — it says the endpoints are bounded, NOT that the LLM feature works. Also fixed a recipe trap: effect-trpc gates on a runtime APP_ERROR_TAGS set that nothing type-checks against the AppError union, so a new error compiles fine and still returns a generic 500; recipes/add-tagged-error.md now names that step.
+- branch: `worktree-tv-living-room`
+- in-progress feature: llm-board-agent
+- run note: features/llm-board-agent/runs/2026-07-28-progress.md
+- next: feat-009 stays in-progress: it still owes a browser walk of the actual voice-to-board golden path, which needs ANTHROPIC_API_KEY and the remote AI binding — owner-only. Also unproven: /api/transcribe's 429 (same spendQuota call and ledger, but reaching it needs the AI binding) and fail-closed against a live broken DO (unit-tested at the service boundary only). Once feat-009 has that verdict, decision 6 releases the TV living-room work and phase 1 (feat-010 tv-pairing) starts — its device-code endpoint inherits this limiter.
+
+---
+
+## 2026-07-28 — Kickoff: issue #1 rate limiting / spend caps on board.generate and /api/transcribe — Phase 0 of the TV living-room plan and the last hard blocker on a real-key deploy. Domain: mixed (cloudflare DO + routes + errors). Scope: both. Affects feat-009 llm-board-agent, the one in-progress feature, so no scope-policy conflict. Runbook: recipes/add-tagged-error (whose worked example is literally a RateLimitError) plus rules/cloudflare for the DO side. Baseline green after 'bun install' in the worktree — the first run's TS2742 on app/trpc/client.tsx was an empty-node_modules artifact of the fresh worktree, not a regression.
+- branch: `worktree-tv-living-room`
+- in-progress feature: llm-board-agent
+- run note: features/llm-board-agent/runs/2026-07-28-progress.md
+- next: Mirror workers/board-room.ts handleSpendNonce (line 203) into a quota counter: atomic check-and-increment under blockConcurrencyWhile, windowed, keyed by grant nonce so one guest cannot spend another's allowance, with a prune companion like pruneNonces (line 252). First check whether BoardAccess already carries the grant nonce — it exposes via/grantIssuedAt/grantExpiresAt, and if the nonce is not on it, that has to be surfaced before the counter can be keyed correctly.
+
+---
+
+## 2026-07-28 — TV living-room plan reviewed and approved (round 1, plans/2026-07-28-tv-living-room.html). All 6 decisions answered: device-code pairing for the TV (/tv + /link, WebSocket approval not polling); runtime is the Samsung BUILT-IN BROWSER, chosen against the recommendation of a kiosk stick — no native Tizen/webOS app either way; 30-day sliding controller grants (up from 12h); device name captured at pairing, owner-visible; pixel drift + idle dim for burn-in; and feat-009 llm-board-agent gets closed out FIRST rather than being parked blocked. Three open questions resolved in review (socket over polling, one board for now, spinner while offline); one still open — where an unapproved device code lives before it is bound to a board. Registered feat-010 tv-pairing, feat-011 family-grants, feat-012 kiosk-display as planned with feature docs. Working in git worktree .claude/worktrees/tv-living-room on branch worktree-tv-living-room, based on merged main (v0.1.0). No app code touched yet.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Decision 6 governs the order: close feat-009 llm-board-agent first — it needs a browser-level verdict doc, and its issue #1 (rate limiting / spend caps on board.generate and /api/transcribe) is ALSO a hard prerequisite for feat-010, since a 6-char device code is only safe when attempt-capped. Then phase 1 (feat-010 tv-pairing). Two owner-only tests are decisive and cannot be faked in CI: power-cycle the real Samsung TV to see whether the fb_device_ cookie survives (if it does not, decision 2 is wrong and the runtime must be revisited), and drive voice on a real phone over HTTPS.
 ## 2026-07-28 — PR #4 extended with routing and retitled 'live data via a routed web search' (4 commits). Three findings, all measured: max_uses 1 STARVES the search when dynamic filtering is on (single use spent inside the code-execution path, model writes LIVE FEED UNAVAILABLE / SEARCH TOOL OFFLINE — seen at 73s and 41s), so allowed_callers direct and a cap of 1 go together or not at all; direct search halves the searching path to 15.3s on ~14k input tokens vs 30-35s/~22k filtered; and direct search alone leaks the do-not-search rule (5 of 6 plain prompts searched, a reminder going 3s to 9s). So Haiku 4.5 now answers one structured-output boolean and the answer decides whether tools is attached at all — omitted, not empty. Router fails OPEN to searching on every unhappy path, and the no-search path gets its own prompt so a request that cannot search is not told to search. Sonnet still writes every board: running the board on Haiku was measured (16.5s vs 14.5s, worse layout) and rejected, as was removing thinking (already 0 thinking tokens; documented to make the model less tool-eager). Measured: weather 15.3s, match result 9.6s, reminder 3.5s, greeting 3.3s. 863 tests green (14 new hermetic), typecheck/build clean, harness 7/7, Greptile 0 comments confidence 5/5 on three separate passes.
 - branch: `feat/board-agent-web-search`
 - in-progress feature: none

@@ -2,6 +2,12 @@ import { Context, Effect, Either, Layer } from "effect";
 import { CloudflareEnv } from "./cloudflare";
 import { ConfigurationError, ExternalServiceError } from "@/models/errors/repository";
 import { decodeBoardGrid, type BoardGrid, type BoardMessage, type BoardSource } from "@/lib/schemas/board";
+import {
+  parseQuotaSpend,
+  type QuotaEndpoint,
+  type QuotaMode,
+  type QuotaSpendResult,
+} from "@/lib/board/quota";
 
 /**
  * The live state of a board as the room reports it. Declared structurally
@@ -62,6 +68,36 @@ export interface BoardRoomShape {
     nonce: string,
     ttlSeconds: number
   ) => Effect.Effect<boolean, ExternalServiceError>;
+
+  /**
+   * Atomically charge one call against the board's spend caps for a metered
+   * endpoint. Answers whether the call may proceed, and how long to wait if not.
+   *
+   * Same reasoning as `spendNonce`: the counter lives in the board's Durable
+   * Object because that is the only place a check-and-increment is serialised,
+   * so N phones pressing the button together cannot lose increments to a race.
+   * A broken ledger is a typed error, never a permissive `allowed: true` — the
+   * caller fails closed, because an unmetered paid endpoint is the exact thing
+   * this prevents.
+   */
+  readonly spendQuota: (
+    params: SpendQuotaParams
+  ) => Effect.Effect<QuotaSpendResult, ExternalServiceError>;
+}
+
+export interface SpendQuotaParams {
+  readonly boardId: string;
+  readonly endpoint: QuotaEndpoint;
+  /** `owner:<id>` or `grant:<nonce>` — see `spenderId` in `@/lib/board/quota`. */
+  readonly spender: string;
+  /**
+   * `charge` to spend, `peek` to ask without spending.
+   *
+   * There is deliberately no `policy` field: the limits are the Durable Object's
+   * to know, not its callers'. Passing them would make the cap a convention here
+   * rather than a guarantee there.
+   */
+  readonly mode: QuotaMode;
 }
 
 export class BoardRoom extends Context.Tag("app/BoardRoom")<
@@ -230,6 +266,28 @@ export const BoardRoomLive = Layer.effect(
             );
           }
           return spent;
+        }),
+      spendQuota: (params: SpendQuotaParams) =>
+        Effect.gen(function* () {
+          const body = yield* rawCall(
+            params.boardId,
+            "/spend-quota",
+            postJson({
+              endpoint: params.endpoint,
+              spender: params.spender,
+              mode: params.mode,
+            })
+          );
+          const result = parseQuotaSpend(body);
+          if (result === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised quota-ledger payload",
+              })
+            );
+          }
+          return result;
         }),
     };
   })

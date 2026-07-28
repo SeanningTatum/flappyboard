@@ -43,6 +43,29 @@ The argument shape becomes readonly fields on the instance. Discriminate via `_t
 | `BoardGenerationError` | `stage` (`request` \| `empty`), `cause?` | `INTERNAL_SERVER_ERROR` |
 | `LlmRefusedError` | — | `BAD_REQUEST` |
 | `TranscriptionFailedError` | `reason`, `cause?` | `BAD_REQUEST` |
+| `RateLimitError` | `endpoint` (`generate` \| `transcribe`), `retryAfter` | `TOO_MANY_REQUESTS` |
+
+`RateLimitError` echoes **both** fields to the client, which is the opposite of `PairingTokenInvalidError` and worth the contrast: a rate-limit refusal describes the caller's own usage of a board they are *already authorised for*, so there is no oracle in it — while a pairing refusal describes a credential, where "expired" vs "bad-signature" is exactly the feedback an attacker wants. `retryAfter` is what lets the phone say something better than "try again later". `/api/transcribe` is not a tRPC route, so it returns its own 429 with a `Retry-After` header rather than going through this mapping.
+
+### Getting a *number* to the client, not just a message
+
+`tagToTRPC` puts `retryAfter` in the message string, but a client must never have to
+scrape a number back out of copy — copy gets reworded. So `RateLimitError` is the
+one case that passes `cause: e` into its `TRPCError`, and `errorFormatter` in
+[`app/trpc/index.ts`](../../app/trpc/index.ts) reads `retryAfter` off that cause
+onto `data`. The client reads `data.code` + `data.retryAfter`
+(`readGenerateFailure` in `app/lib/board/voice.ts`).
+
+That formatter helper is a deliberate **allowlist**, not a passthrough: it checks
+`_tag === "RateLimitError"` and copies exactly one numeric field. Same discipline
+as `omitStack` beside it — a future `cause` carrying something sensitive must not
+be able to ride out to a client just because it happens to be attached.
+
+> Lesson worth keeping: a tagged error's fields do not reach the browser by
+> themselves. If a client needs to *act* on one, it needs a `cause` and a
+> formatter line, and both need a test — otherwise the field exists, the doc
+> comment promises it, and the UI still renders a generic string. That is exactly
+> what happened here and three browser runs caught it.
 
 `TranscriptionFailedError.reason` **is** echoed to the client (write it user-facing, e.g. "the recording was empty"); its `cause` is not. That is the opposite of `PairingTokenInvalidError`, where the reason is an oracle and stays server-side — the difference is that a transcription failure is the user's own audio, while a pairing failure is a credential.
 

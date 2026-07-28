@@ -77,8 +77,28 @@ export class TranscriptionFailedError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+/**
+ * The caller is over the spend cap on a metered endpoint — `board.generate`
+ * (Anthropic) or `/api/transcribe` (Workers AI). Raised *before* the paid call
+ * is made, which is the whole point.
+ *
+ * Unlike `PairingTokenInvalidError`, everything here is safe to tell the client:
+ * both fields describe the caller's own usage of a board they are already
+ * authorised for, so there is no oracle to leak. `retryAfter` is what lets the
+ * phone say something better than "try again later".
+ *
+ * Maps to TOO_MANY_REQUESTS in `app/lib/effect-trpc.ts`.
+ */
+export class RateLimitError extends Data.TaggedError("RateLimitError")<{
+  /** Which cap was hit — echoed to the client. */
+  readonly endpoint: "generate" | "transcribe";
+  /** Whole seconds until the window rolls over. Never 0. */
+  readonly retryAfter: number;
+}> {}
+
 export type BoardError =
   | PairingTokenInvalidError
   | BoardGenerationError
   | LlmRefusedError
-  | TranscriptionFailedError;
+  | TranscriptionFailedError
+  | RateLimitError;

@@ -1,10 +1,27 @@
 # Feature: LLM Board Agent
 
-_Last updated: 2026-07-27_
+_Last updated: 2026-07-28_
 
-> **Status: in-progress — phase 5 (generation) landed 2026-07-27; phase 6 (voice) pending.** Design comes from the approved plan
-> [`plans/2026-07-27-flappyboard-mvp.html`](../../../plans/2026-07-27-flappyboard-mvp.html)
+> **Status: shipped.** Both phases landed and went out in
+> [`v0.1.0`](https://github.com/SeanningTatum/flappyboard/releases/tag/v0.1.0)
+> (PR #2, squash-merged as `f8ae90f`, 2026-07-27). Design comes from the approved
+> plan [`plans/2026-07-27-flappyboard-mvp.html`](../../../plans/2026-07-27-flappyboard-mvp.html)
 > (approved round 2, 2026-07-27). Phases 5–6.
+>
+> The tracker lagged reality: this stayed `in-progress` after the release, held
+> open for a formal verdict doc and for its one blocking follow-up. Both closed
+> on 2026-07-28 — issue #1 (spend caps) in `abd0eea`, verdict doc in
+> [`verifications/2026-07-28.md`](verifications/2026-07-28.md) — so the status
+> was corrected to match what shipped.
+>
+> **What is proven, and how.** Phase 5 by a live eval: 20/20 valid grids, 0
+> retries, 0 repairs on the real model. Phase 6 by a real call against the real
+> Cloudflare account, which returned a transcript and wrote the board. The spend
+> caps by four measurements against a live Durable Object. **What is not:** there
+> is no screenshotted browser walk of the voice-to-board path, and the
+> 2026-07-28 verdict doc is deliberately scoped to the caps rather than standing
+> in for one. Worth doing on real hardware alongside the Samsung TV walk that
+> `[[kiosk-display]]` already owes.
 
 ## Purpose
 The headline feature: hold the button on your phone, talk, and the board writes itself. Whisper
@@ -159,7 +176,9 @@ pre-recorded audio fixture, plus the empty-transcript error path.
 | `app/routes/api/transcribe.ts` | Audio blob → transcript |
 | `app/trpc/routes/board.ts` | `generate` |
 | `app/components/board/PushToTalkButton.tsx` | Hold-to-talk recording UI |
-| `app/models/errors/board.ts` | `BoardGenerationError`, `LlmRefusedError`, `TranscriptionFailedError` |
+| `app/models/errors/board.ts` | `BoardGenerationError`, `LlmRefusedError`, `TranscriptionFailedError`, `RateLimitError` |
+| `app/lib/board/quota.ts` | Spend caps — window maths, storage keys, wire shapes, the pure decision |
+| `workers/board-room.ts` | `POST /spend-quota` — the atomic check-and-increment |
 
 ## Dependencies
 - `[[split-flap-board]]` — schema, compiler, repair, DO write path
@@ -174,6 +193,83 @@ pre-recorded audio fixture, plus the empty-transcript error path.
 | `BoardGenerationError` | retries exhausted / API failure | INTERNAL_SERVER_ERROR |
 | `LlmRefusedError` | `stop_reason === "refusal"` | BAD_REQUEST |
 | `TranscriptionFailedError` | empty or failed Whisper result | BAD_REQUEST |
+| `RateLimitError` | over the spend cap on `generate` | TOO_MANY_REQUESTS |
+
+## Spend caps (2026-07-28, issue #1)
+
+Both endpoints here cost real money, and until now nothing bounded how often a
+paired phone could call them. Authorisation was never the hole — it is correct
+and runs before the body is read — but a phone that legitimately scanned the QR
+was unbounded, so one photograph of the TV bought twelve hours of unmetered
+spend on the owner's account.
+
+The counter lives in the board's `BoardRoom` Durable Object, which needs no new
+binding: it is already the single-threaded authority for a board, and the
+check-and-increment runs under the same `blockConcurrencyWhile` as the spent-nonce
+ledger, so simultaneous presses cannot lose increments to a race.
+
+**Two buckets, and a call must clear both:**
+
+| Bucket | Key | Why |
+|--------|-----|-----|
+| Per-spender | `owner:<id>` or `grant:<nonce>` | Fairness — one guest cannot eat another's allowance, and the owner's budget is separate. The nonce is covered by the grant's MAC, so it cannot be chosen, forged, or stripped. |
+| Per-board | the board | The ceiling. Per-spender alone is bypassable by re-pairing: every fresh redemption mints a fresh nonce and therefore a fresh allowance. |
+
+**The DO owns the policy.** The request body carries only `endpoint`, `spender`
+and `mode` — never a limit. An earlier revision took the limits off the wire,
+which meant the object enforced whatever its caller asked for, so a future call
+site that forgot `DEFAULT_QUOTA` would silently have got its own numbers and the
+cap would have been a call-site convention rather than something the enforcer
+guarantees. A unit test asserts a caller cannot even express a limit.
+
+**`peek` vs `charge`.** `peek` decides without writing. `/api/transcribe` needs it
+because the two obvious orderings are each wrong in one direction: charging before
+the body read lets an oversized *chunked* body (no `Content-Length`, so the cheap
+header check cannot refuse it) consume a slot and then 413 — free budget drain,
+and 200 of those kill transcription for the household; charging only after the read
+lets an already-over-cap caller push a megabyte through the isolate first. So it
+peeks, reads, then charges. The two calls are not atomic together and need not be —
+the charge is the authoritative one, and a peek that passes followed by a charge
+that refuses is a correct outcome.
+
+Defaults per hour: **20/60** generations (spender/board), **60/200**
+transcriptions. Fixed windows rather than a sliding log — a window boundary
+allows up to 2× burst, which is the right trade for two integers of storage
+against a cap whose job is bounding a runaway bill, not smoothing traffic.
+
+> ⚠️ **These numbers were chosen against a cheaper call than the one that now
+> ships.** When 20/hour was picked, a generation was 1–3 Sonnet requests at
+> `max_tokens: 4096`. After the web-search routing landed (PR #4, merged as
+> `de1717d`), one accepted `board.generate` is: a Haiku router call, **plus**
+> 1–3 Sonnet attempts at `max_tokens: 8192`, **plus** up to one billed web
+> search, **plus** up to `BOARD_AGENT_MAX_PAUSES` (3) `pause_turn` resends —
+> and a pause deliberately does *not* spend a retry attempt, so pauses multiply
+> requests *inside* a single charged call.
+>
+> The cap still does its job: it bounds the number of calls, which is what stands
+> between a photographed QR and an open-ended bill. But the dollar ceiling it
+> permits is materially higher than when the number was set, and 20/hour was
+> picked as "far more than a household will ever type", not as a spend budget.
+> Worth revisiting deliberately rather than by drift — counting is per call, so
+> lowering `DEFAULT_QUOTA` is the whole change.
+
+**Fails closed.** An unreachable or unparseable ledger raises
+`ExternalServiceError` instead of answering `allowed: true`. A refused call
+increments nothing — counting refusals would let a caller already over the limit
+hold the board bucket down on traffic that never cost anything.
+
+Ordering at the call sites: `board.generate` charges after `requireBoardAccess`
+and before the model call (no body, so nothing to peek for);
+`/api/transcribe` runs content-type → content-length → **peek** →
+`readBoundedBody` → **charge** → Whisper. A 415 or a 413 costs no allowance; an
+over-cap caller is refused before sending anything expensive.
+
+**What the phone shows.** A cap refusal gets its own copy — "that's this board's
+turn used up for now", plus the wait in minutes when the server sent one — and not
+the generic "the board didn't take it, try again", because retrying is futile until
+the window rolls. Getting the number there needed `cause: e` on the `TRPCError` and
+a line in `errorFormatter`; see `rules/errors.md` for why the client reads
+`data.retryAfter` rather than parsing the message.
 
 ## Deferred
 Automations (a cron refreshing the board each morning) are a paid feature, out of MVP scope. Two
@@ -187,6 +283,7 @@ Cron Trigger with no HTTP request in play, and `board_snapshot.source` already a
 |------|------|-------------|
 | 2026-07-27 | feature | Planned from the approved MVP plan (phases 5–6) |
 | 2026-07-27 | feature | Phase 5 landed: `BoardAgent` on `claude-sonnet-5` with schema-enforced output, decode → retry×2-with-error-fed-back → repair, `board.generate`, 3 tagged errors mapped. Live eval **20/20 valid grids, 0 retries, 0 repairs** |
+| 2026-07-28 | security | Issue #1 closed — per-spender + per-board spend caps on `board.generate` and `/api/transcribe`, atomic in the `BoardRoom` DO, fail-closed, `RateLimitError` → `TOO_MANY_REQUESTS` (429 + `Retry-After` on the non-tRPC route). 849 → 892 tests |
 
 ## Phase 5 — implemented behaviour (2026-07-27)
 

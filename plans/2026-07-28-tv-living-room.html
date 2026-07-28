@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>flappyboard in the living room — TV pairing, family grants, kiosk hardening</title>
+<style>
+  :root {
+    --bg: #faf9f5; --surface: #ffffff; --fg: #141413; --fg-secondary: #3d3d3a;
+    --muted: #73726c; --border: #dedcd1; --highlight: #fff7ca; --accent: #d97757;
+    --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-6: 40px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Helvetica, Arial, sans-serif;
+    font-size: 16px; background: var(--bg); color: var(--fg); line-height: 1.6;
+    max-width: 72ch; margin: 0 auto; padding: var(--space-6) var(--space-4);
+  }
+  h1, h2, h3 {
+    font-family: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-weight: 600; line-height: 1.25; color: var(--fg);
+  }
+  h1 { font-size: 1.75em; }
+  h2 { font-size: 1.3em; font-weight: 500; margin-top: var(--space-6);
+    border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+  h3 { font-size: 1.05em; font-weight: 500; }
+  p, li { color: var(--fg-secondary); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88em; background: #f1efe6; border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 4px; }
+  mark, .highlight { background: var(--highlight); color: var(--fg); padding: 0 2px; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 0.8em; font-weight: 600; border: 1px solid var(--border); }
+  .chip-status-draft { background: var(--surface); color: var(--muted); }
+  .chip-status-in-review { background: var(--highlight); color: var(--fg);
+    border-color: var(--highlight); }
+  .chip-status-reviewed { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .chip-high { color: var(--accent); border-color: var(--accent); }
+  .chip-med { color: var(--fg-secondary); }
+  .chip-low { color: var(--muted); }
+  .decision-card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: var(--space-4); margin: var(--space-4) 0; }
+  table { width: 100%; border-collapse: collapse; margin: var(--space-3) 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid
+    var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .tag-recommended { color: var(--accent); font-weight: 600; }
+  .btn-queue, .btn-approve, .btn-request-changes {
+    border: none; border-radius: 10px; padding: 8px 16px; font-weight: 600;
+    cursor: pointer; font-size: 0.95em;
+  }
+  .btn-queue, .btn-approve { background: var(--fg); color: #fff; }
+  .btn-request-changes { background: transparent; color: var(--fg);
+    border: 1px solid var(--border); }
+  .queue-ack { margin-left: var(--space-3); font-size: 0.9em; color: var(--muted); }
+  .checklist { list-style: none; padding: 0; }
+  .checklist li { margin: var(--space-2) 0; }
+  pre.mermaid { text-align: center; }
+  pre.mermaid svg { display: block; margin: 0 auto; }
+  .arch-diagram .box { fill: var(--surface); stroke: var(--fg-secondary); stroke-width: 2; }
+  .arch-diagram .box-label { fill: var(--fg); font-size: 14px; }
+  .arch-diagram .arrow { stroke: var(--muted); stroke-width: 2; marker-end: url(#arrow); }
+
+  .item-x, .item-restore, .list-add-btn { cursor: pointer; border: 1px solid var(--border);
+    background: var(--surface); border-radius: 6px; font-size: 0.85em; padding: 1px 8px;
+    color: var(--fg-secondary); }
+  /* item-x and item-restore are told apart by their label text ("x" vs
+     "restore"), not by color — this palette keeps color-coding to a single
+     accent reserved for recommended/emphasis. */
+  /* No display:none on .item-restore — the hidden attribute already hides it,
+     and JS toggles the hidden PROPERTY. */
+  [data-item-text] { cursor: text; }
+  .item-removed { opacity: 0.5; }
+  .item-removed [data-item-text] { text-decoration: line-through; }
+  .item-edited [data-item-text] { border-bottom: 2px dotted var(--accent); }
+  .item-badge { font-size: 0.75em; color: var(--muted); margin-left: 6px; font-style: italic; }
+  .item-badge-proposed { color: var(--accent); }
+  .item-proposed { border-left: 2px dashed var(--accent); padding-left: 6px; }
+  .list-add-row { display: flex; gap: 8px; margin-top: var(--space-2); }
+  .list-add-input { flex: 1; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface); color: var(--fg); }
+  header .meta { color: var(--muted); font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>flappyboard in the living room</h1>
+  <div class="meta">
+    <span>2026-07-28</span> ·
+    <span>features: tv-pairing (new), family-grants (new), kiosk-display (new)</span> ·
+    <span class="chip chip-status-reviewed">reviewed</span> ·
+    <span>round 1 — all 6 decisions answered</span>
+  </div>
+</header>
+
+<section id="tldr">
+  <h2>TL;DR</h2>
+  <p>The board already runs fine on a TV — what does not work is <em>getting</em> it
+  onto the TV and keeping it there: <code>/b/:boardId</code> demands the owner's
+  login, so somebody types an email and password with a D-pad, and every phone
+  re-scans the QR twice a day because controller grants expire in 12 hours. Fix
+  that with a <mark>device-code pairing flow</mark> (TV shows a code, owner approves
+  from their phone), <mark>long-lived revocable family grants</mark>, and a
+  <mark>kiosk-hardening pass</mark> on the display route. Explicitly
+  <strong>not</strong> a native Tizen/webOS app — that buys an icon and autostart
+  for weeks of certificate wrangling. Per decision 2 it is also <strong>not</strong>
+  a dedicated kiosk stick: this runs in the <mark>Samsung TV's built-in
+  browser</mark>, no new hardware. That choice makes cookie survival the load-bearing
+  risk of the whole plan, so phases 1 and 3 are written around it.</p>
+</section>
+
+<section id="context">
+  <h2>Context</h2>
+  <p>Per plan <code>2026-07-27-flappyboard-mvp</code> (reviewed, 2 rounds), the MVP
+  shipped the split-flap board, the QR phone controller, and the LLM walkie-talkie.
+  The <strong>2026-07-28</strong> checkpoint records v0.1.0 released — PR #2
+  squash-merged as <code>f8ae90f</code> and tagged. That same checkpoint names two
+  outstanding owner-only tasks that this plan is the natural home for:
+  <em>"drive voice on a real phone over HTTPS, walk the display on the actual
+  Samsung TV."</em> Nobody has yet put this on the TV it was designed for.</p>
+
+  <p>Feature state: 8 shipped, <code>feat-009 llm-board-agent</code> still
+  <strong>in-progress</strong> — deliberately held open until it has a browser-level
+  verdict doc. The scope policy allows exactly one in-progress feature, so
+  <strong>decision 6</strong> below asks how to sequence this work against it.</p>
+
+  <p>What already exists and gets reused rather than rebuilt (from
+  <code>feat-008 phone-control</code>, verdict PASS, 10 screenshots):</p>
+  <ul>
+    <li><code>app/lib/board/pairing.ts</code> — HMAC-SHA256 mint/verify over
+    <code>crypto.subtle</code>, signed message
+    <code>prefix|boardId.length|boardId|payload</code> for domain separation and
+    MAC-audience binding, verify order structure→signature→claims, constant-time
+    compare, 512-char ceiling before crypto, injected clock. Two token families
+    already: <code>PAIRING_PREFIX = "fbp1"</code> and
+    <code>GRANT_PREFIX = "fbg1"</code>.</li>
+    <li>Single-use redemption enforced inside the board Durable Object under
+    <code>blockConcurrencyWhile</code> — measured at 6 concurrent redemptions
+    returning <code>200 401 401 401 401 401</code>, and still refused after a full
+    dev-server restart, proving it is storage-backed.</li>
+    <li><code>grantEpoch</code> on the board row — bumping it kills every
+    outstanding grant at once. This is already the "kick everyone off" primitive.</li>
+    <li><code>HttpOnly</code> cookie per board, <code>fb_grant_&lt;boardId&gt;</code>
+    (<code>GRANT_COOKIE_PREFIX</code>).</li>
+    <li>The display route already handles a TV remote: any <code>keydown</code>
+    unlocks audio (<code>display.tsx:160</code>), and QR re-minting uses
+    <code>setInterval</code> + <code>visibilitychange</code> and nothing else,
+    with a comment reading <em>"so this works on a Tizen browser."</em></li>
+  </ul>
+
+  <p>So this plan is mostly <em>a third token family and a mirror-image flow</em>,
+  not new cryptography.</p>
+</section>
+
+<section id="big-picture">
+  <h2>Big picture</h2>
+
+  <p>Today the QR flow assumes the TV is already authenticated and the phone is
+  not. Device-code pairing is the same trust transfer running the other way: the
+  <em>phone</em> holds the session and hands authority to the <em>TV</em>.</p>
+
+  <pre class="mermaid">
+flowchart TD
+  TV["Samsung TV built-in browser<br/>opens /tv"]
+  CODE["6-char code<br/>fbd1 device token"]
+  DO[("BoardRoom Durable Object<br/>single-use redemption")]
+  PHONE["Owner phone<br/>/link — has session"]
+  D1[("D1: board row<br/>grantEpoch, deviceEpoch")]
+  DISPLAY["/b/:boardId<br/>session OR device grant"]
+  FAM["Family phones<br/>/b/:boardId/c — 30d grant"]
+
+  TV --> CODE
+  CODE -->|live WebSocket, awaits approval| DO
+  PHONE -->|approves code| DO
+  DO --> D1
+  DO -->|fb_device_&lt;board&gt; cookie| DISPLAY
+  DISPLAY -->|prints QR| FAM
+  FAM -->|fb_grant_&lt;board&gt; cookie| DO
+  </pre>
+
+  <p>The two epochs are separate on purpose: revoking family controllers should not
+  black out the TV, and un-pairing a TV should not log out the family.</p>
+</section>
+
+<section id="decisions">
+  <h2>Decisions needed</h2>
+
+  <div class="decision-card" id="decision-tv-auth" data-brain-action>
+    <p><strong>1. How does the TV authenticate to <code>/b/:boardId</code>?</strong>
+      <span class="chip chip-status-reviewed">answered: device-code pairing</span></p>
+    <p>Today <code>display.tsx:52</code> calls <code>requireSession</code>. That
+    means typing an email and password on a D-pad keyboard, and re-typing it
+    whenever the TV browser evicts cookies. This is the single biggest source of
+    friction in the product.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-tv-auth" id="opt-device-code"
+            value="Device-code pairing (/tv + /link)" checked data-brain-action></td>
+          <td><label for="opt-device-code">Device-code pairing
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>TV types one short URL, ever. Familiar (Netflix/YouTube shape,
+            RFC 8628). Reuses the whole <code>pairing.ts</code> HMAC surface as a
+            third prefix. Revocable per-device.</td>
+          <td>New route pair + a code store in the DO. Short codes are low
+            entropy — needs rate limiting and a short TTL (see error paths).</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-tv-auth" id="opt-secret-url"
+            value="Long-lived signed bookmarkable URL" data-brain-action></td>
+          <td><label for="opt-secret-url">Long-lived signed URL</label></td>
+          <td>Cheapest to build — one more token prefix, no new UI at all.</td>
+          <td>A ~60-char secret typed on a D-pad is worse than the problem.
+            Bearer-in-URL leaks via history, screenshots, and the QR the board
+            itself prints.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-tv-auth" id="opt-keep-login"
+            value="Keep owner login on the TV" data-brain-action></td>
+          <td><label for="opt-keep-login">Keep owner login</label></td>
+          <td>Zero work.</td>
+          <td>The status quo, which is the thing being complained about. Also puts
+            a full owner session on a shared living-room device.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-tv-auth',
+        'How does the TV authenticate to /b/:boardId?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-tv-auth"></span>
+  </div>
+
+  <div class="decision-card" id="decision-runtime" data-brain-action>
+    <p><strong>2. What actually runs the display in the living room?</strong>
+      <span class="chip chip-status-reviewed">answered: Samsung built-in browser</span></p>
+    <p>You asked whether to make this a TV app. This card is that question.
+      <strong>Answered against the recommendation</strong> — no extra hardware. The
+      recommendation marker is left in place as the record of what was advised, not
+      as a live suggestion. Consequences are absorbed into phases 1, 3 and 4 below:
+      cookie eviction becomes the plan's main risk, there is no autostart (someone
+      picks up the remote after a power cycle), and Wake Lock / Fullscreen support
+      on Tizen is unreliable enough that the fallbacks become the primary path
+      rather than the safety net.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-runtime" id="opt-stick"
+            value="Dedicated kiosk stick (Fire TV / Pi) in browser kiosk mode"
+            data-brain-action></td>
+          <td><label for="opt-stick">Dedicated kiosk stick
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>~$40. Autostarts on boot, HDMI-CEC can wake the TV, real Chromium
+            (WebSocket keepalive, Wake Lock, fullscreen all behave). Stays a plain
+            web app — zero platform-specific code.</td>
+          <td>One more box behind the TV. A hardware dependency in a software plan.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-runtime" id="opt-tizen-browser"
+            value="Samsung built-in browser, bookmark + startup page" checked data-brain-action></td>
+          <td><label for="opt-tizen-browser">Samsung built-in browser</label></td>
+          <td>No extra hardware. Works today.</td>
+          <td>No kiosk mode, so browser chrome stays visible. No autostart — someone
+            picks up the remote after every power cycle. Aggressive cookie eviction,
+            which is exactly what decision 1 is trying to survive.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-runtime" id="opt-native"
+            value="Native Tizen / webOS app" data-brain-action></td>
+          <td><label for="opt-native">Native Tizen/webOS app</label></td>
+          <td>Home-screen icon and autostart, the "real app" feel.</td>
+          <td>Samsung dev account, signing cert, TV in dev mode with your PC's IP
+            whitelisted, sideload certs that expire, store review if you ever want
+            it to survive. Buys exactly the two things the stick buys, for weeks
+            instead of an afternoon. <span class="chip chip-high">not recommended</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-runtime',
+        'What actually runs the display in the living room?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-runtime"></span>
+  </div>
+
+  <div class="decision-card" id="decision-grant-ttl" data-brain-action>
+    <p><strong>3. How long does a family phone stay paired?</strong>
+      <span class="chip chip-status-reviewed">answered: 30 days, sliding</span></p>
+    <p><code>DEFAULT_GRANT_TTL_SECONDS = 12 * 60 * 60</code>
+    (<code>pairing.ts:61</code>) — pair after breakfast, re-scan after dinner.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-grant-ttl" id="opt-sliding-30"
+            value="30 days, sliding (renewed on use)" checked data-brain-action></td>
+          <td><label for="opt-sliding-30">30 days, sliding
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>A phone used weekly never re-scans. A guest's phone ages out by
+            itself. <code>grantEpoch</code> still revokes everything instantly.</td>
+          <td>Renewal-on-use is a new code path (re-mint + <code>Set-Cookie</code>
+            on the socket upgrade).</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-grant-ttl" id="opt-fixed-30"
+            value="30 days, fixed" data-brain-action></td>
+          <td><label for="opt-fixed-30">30 days, fixed</label></td>
+          <td>One-constant change. Genuinely trivial.</td>
+          <td>Everyone in the house re-scans on the same day, forever.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-grant-ttl" id="opt-until-revoked"
+            value="No expiry — valid until revoked" data-brain-action></td>
+          <td><label for="opt-until-revoked">Until revoked</label></td>
+          <td>Never re-scan.</td>
+          <td>A lost phone holds board access forever unless someone remembers to
+            bump the epoch. No natural expiry is a bad default even at home.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-grant-ttl',
+        'How long does a family phone stay paired?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-grant-ttl"></span>
+  </div>
+
+  <div class="decision-card" id="decision-attribution" data-brain-action>
+    <p><strong>4. Do controllers have names?</strong>
+      <span class="chip chip-status-reviewed">answered: name at pairing, owner-visible</span></p>
+    <p>With several family phones paired, "who put that on the board" becomes a
+    real question — both for delight and for revocation.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-attribution" id="opt-name-prompt"
+            value="Ask for a name once at pairing; show it in the owner's device list only"
+            checked data-brain-action></td>
+          <td><label for="opt-name-prompt">Name at pairing, owner-visible
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Makes per-device revoke meaningful ("un-pair Kai's phone" beats
+            "bump the epoch and re-pair everyone"). One text field, once.</td>
+          <td>Needs a per-grant record in the DO instead of a pure stateless token.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-attribution" id="opt-name-on-board"
+            value="Name at pairing, and print it on the board with each message" data-brain-action></td>
+          <td><label for="opt-name-on-board">Also print it on the board</label></td>
+          <td>Fun. Family chat energy.</td>
+          <td>Spends a row of a 6-row board on metadata, and the LLM feature already
+            competes for those rows.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-attribution" id="opt-no-names"
+            value="No names — grants stay anonymous" data-brain-action></td>
+          <td><label for="opt-no-names">No names</label></td>
+          <td>Nothing to build. Keeps grants stateless.</td>
+          <td>Revocation stays all-or-nothing.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-attribution',
+        'Do controllers have names?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-attribution"></span>
+  </div>
+
+  <div class="decision-card" id="decision-burnin" data-brain-action>
+    <p><strong>5. Burn-in and always-on behaviour.</strong>
+      <span class="chip chip-status-reviewed">answered: pixel drift + idle dim</span></p>
+    <p>A split-flap board is static high-contrast text held for hours — close to a
+    worst case for an OLED panel, and unflattering on any panel at 3am.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-burnin" id="opt-drift-dim"
+            value="Pixel drift + scheduled idle dim" checked data-brain-action></td>
+          <td><label for="opt-drift-dim">Pixel drift + idle dim
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Drift (a few px on a slow cycle) is invisible to a viewer and is the
+            standard mitigation. Dimming overnight is what a real board in a hallway
+            would do anyway.</td>
+          <td>Two behaviours to tune. Drift interacts with the <code>vmin</code>
+            layout and must not trigger a scrollbar.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-burnin" id="opt-dim-only"
+            value="Idle dim only" data-brain-action></td>
+          <td><label for="opt-dim-only">Idle dim only</label></td>
+          <td>Simpler; one schedule.</td>
+          <td>Does nothing for the 16 waking hours the board holds one message.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-burnin" id="opt-nothing"
+            value="Do nothing — accept the risk" data-brain-action></td>
+          <td><label for="opt-nothing">Do nothing</label></td>
+          <td>No work. Fine on LCD/QLED.</td>
+          <td>On OLED this is a slow, permanent, expensive mistake.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-burnin',
+        'Burn-in and always-on behaviour?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-burnin"></span>
+  </div>
+
+  <div class="decision-card" id="decision-sequencing" data-brain-action>
+    <p><strong>6. Sequencing against <code>feat-009 llm-board-agent</code>.</strong>
+      <span class="chip chip-status-reviewed">answered: close feat-009 first</span></p>
+    <p>The scope policy permits one in-progress feature. <code>feat-009</code> is
+    open, awaiting a browser-level verdict doc, and issue #1 (rate limiting / spend
+    caps on <code>board.generate</code> and <code>/api/transcribe</code>) still
+    blocks any deploy with a real key. Rate limiting is <em>also</em> a prerequisite
+    for this plan — a device-code endpoint needs it too.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-sequencing" id="opt-close-009"
+            value="Close feat-009 first (verdict doc + issue #1), then start this"
+            checked data-brain-action></td>
+          <td><label for="opt-close-009">Close feat-009 first
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Obeys the scope policy without a special case. Issue #1's rate
+            limiter gets built once and this plan inherits it. The TV walk that
+            feat-009 still owes is the same walk this plan needs anyway.</td>
+          <td>Delays the living-room work by that closeout.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-sequencing" id="opt-block-009"
+            value="Mark feat-009 blocked, start this now" data-brain-action></td>
+          <td><label for="opt-block-009">Block feat-009, start now</label></td>
+          <td>Living-room work starts immediately. Policy-legal — "mark the first
+            blocked with a reason in evidence."</td>
+          <td>Leaves a nearly-done feature parked, and rate limiting still has to
+            happen before either ships for real.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-sequencing" id="opt-rate-limit-first"
+            value="Do issue #1 rate limiting as its own task first, then decide" data-brain-action></td>
+          <td><label for="opt-rate-limit-first">Rate limiting first, standalone</label></td>
+          <td>Unblocks both, is small, and is the only thing genuinely gating a
+            real-key deploy.</td>
+          <td>A third work item between you and a board on the wall.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-sequencing',
+        'Sequencing against feat-009 llm-board-agent?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-sequencing"></span>
+  </div>
+</section>
+
+<section id="plan-of-record">
+  <h2>Plan of record</h2>
+  <p class="meta">Double-click any phase to rewrite it; <code>x</code> to drop it.</p>
+  <ol data-brain-section="plan-of-record">
+    <template>
+      <li data-brain-item>
+        <span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0"><strong>Phase 0 — prerequisite: rate limiting.</strong>
+      <span data-item-text data-brain-action>Land issue #1 (spend caps on board.generate and /api/transcribe) and extend the same limiter to the new device-code endpoints. Acceptance: a fixed-window counter in the board DO; unit tests prove the Nth call in a window is refused; the limiter is reachable from both the tRPC procedure and the device-code redeem path.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="1"><strong>Phase 1 — TV device-code pairing.</strong>
+      <span data-item-text data-brain-action>Add a third token family fbd1 to pairing.ts (mintDeviceGrant / verifyDeviceGrant, fb_device_&lt;boardId&gt; HttpOnly cookie with the longest Max-Age the grant TTL allows — decision 2 put this in a browser that evicts aggressively, so cookie lifetime is not a detail here). New /tv route displays a 6-char code and holds a WebSocket to the DO awaiting approval (per review: socket, not polling — the TV gets the grant the instant the owner taps approve, and the socket doubles as the liveness signal that lets the DO expire an abandoned code). New /link route lets a signed-in owner approve it against a board; the code lives in the BoardRoom DO with a short TTL and single-use redemption under blockConcurrencyWhile, exactly like the pairing token. display.tsx accepts session OR device grant. Acceptance: a browser context holding zero cookies reaches a live board through /tv + /link alone; the TV transitions from code to board with no reload and no poll; concurrent redemption of one code returns exactly one 200; typecheck 0; unit tests for the new token family mirror the existing pairing.test.ts cases.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="2"><strong>Phase 2 — family grants.</strong>
+      <span data-item-text data-brain-action>Raise the controller grant TTL per decision 3, add sliding renewal on socket upgrade, and add an optional device name captured once at pairing. Owner gets a paired-devices list on /boards with per-device revoke alongside the existing bump-the-epoch revoke. Acceptance: a grant older than the old 12h ceiling still opens a socket; per-device revoke kills exactly one device and leaves the others live; grantEpoch bump still kills all of them.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="3"><strong>Phase 3 — kiosk hardening.</strong>
+      <span data-item-text data-brain-action>Retargeted at the Samsung built-in browser per decision 2, which changes what is realistic: navigator.wakeLock is feature-detected but the silent-looping-muted-video fallback is written as the PRIMARY path, not the safety net, because Tizen's browser is the case that most likely lacks the API; requestFullscreen rides the existing gesture handler at display.tsx:160 but the plan accepts that browser chrome may remain visible and does not treat that as a failure; a watchdog hard-reloads after the socket has been dead past a threshold; a reconnect spinner is shown while the socket is down (per review) rather than leaving a silently stale board; pixel drift and idle dim per decision 5. Acceptance: the page stays awake across an 8h unattended run on the real TV; killing the socket shows the spinner and triggers exactly one reload, not a loop; drift never produces a scrollbar (the existing verification already asserts scrollable=false).
+        <details>
+          <summary>Why is fullscreen not just a CSS concern?</summary>
+          <p>The Fullscreen API requires a user gesture, and on a wall-mounted TV there may never be one after the initial setup. That is the same constraint the sound-unlock prompt already documents — which is why this rides the existing gesture handler rather than adding a second one.</p>
+        </details>
+      </span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="4"><strong>Phase 4 — the actual living room.</strong>
+      <span data-item-text data-brain-action>Write the Samsung-browser setup recipe (.brain/recipes/) per decision 2: set flappyboard as the Internet app's startup page, bookmark /tv as the recovery path, and document the two things this runtime cannot do — no autostart (someone opens the Internet app after a power cycle) and no kiosk chrome suppression. Then do the owner-only walk this has been owing since the 2026-07-28 checkpoint: the display on the real Samsung TV and voice on a real phone over HTTPS. Acceptance: a verification doc per brain playbook verify, with screenshots, covering pair-the-TV, send-from-phone, revoke, and — the one that decides whether decision 2 holds up — a real power-cycle showing whether the device cookie survives.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+  </ol>
+  <div class="list-add-row" data-brain-section-add="plan-of-record">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a phase..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="files-changed">
+  <h2>Files that change</h2>
+  <table>
+    <thead><tr><th>Path</th><th>Change</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>app/lib/board/pairing.ts</code></td><td>edit</td>
+        <td>Third token family <code>fbd1</code> + <code>fb_device_</code> cookie
+        helpers, alongside the existing <code>fbp1</code>/<code>fbg1</code>. Grant
+        TTL constant moves per decision 3.</td></tr>
+      <tr><td><code>app/routes/tv.tsx</code></td><td>new</td>
+        <td>The one URL a TV ever types. Shows the code and holds a WebSocket to
+        the DO until approved (per review — not polling).</td></tr>
+      <tr><td><code>app/routes/tv.claim.ts</code></td><td>new</td>
+        <td>Single-use handoff → <code>Set-Cookie</code> + redirect. Exists only
+        because a socket frame cannot set a cookie.</td></tr>
+      <tr><td><code>app/routes/link.tsx</code></td><td>new</td>
+        <td>Owner-side approval: enter the code, pick a board.</td></tr>
+      <tr><td><code>app/routes/board/display.tsx</code></td><td>edit</td>
+        <td>Line 52 — <code>requireSession</code> becomes session-or-device-grant.
+        Plus wake lock, fullscreen, watchdog, drift.</td></tr>
+      <tr><td><code>app/trpc/routes/board.ts</code></td><td>edit</td>
+        <td><code>issueDeviceCode</code> / <code>approveDeviceCode</code>
+        procedures, next to the existing redeem logic at ~line 349.</td></tr>
+      <tr><td><code>app/routes/api/board-ws.ts</code></td><td>edit</td>
+        <td>Accept a device grant in the auth matrix; sliding renewal on upgrade.</td></tr>
+      <tr><td><code>app/db/schema.ts</code></td><td>edit</td>
+        <td><code>deviceEpoch</code> on the board row (sibling of
+        <code>grantEpoch</code>); paired-device records if decision 4 says names.</td></tr>
+      <tr><td><code>app/routes.ts</code></td><td>edit</td>
+        <td>Register <code>/tv</code> and <code>/link</code> outside the locale
+        prefix, same rationale as the existing <code>/b/:boardId</code> comment.</td></tr>
+      <tr><td><code>app/routes/boards/_index.tsx</code></td><td>edit</td>
+        <td>Paired-devices list + per-device revoke.</td></tr>
+      <tr><td><code>app/hooks/use-wake-lock.ts</code></td><td>new</td>
+        <td>Wake Lock with the silent-video fallback, unit-tested per
+        non-negotiable 4.</td></tr>
+      <tr><td><code>app/lib/board/__tests__/pairing.test.ts</code></td><td>edit</td>
+        <td>Mirror every existing pairing case onto the device family.</td></tr>
+      <tr><td><code>app/components/board/board-offline.tsx</code></td><td>new</td>
+        <td>Reconnect spinner over the retained grid (per review).</td></tr>
+      <tr><td><code>.brain/features/…</code>, <code>.brain/recipes/…</code></td><td>new</td>
+        <td>Feature docs for the new slugs + the Samsung-browser setup recipe
+        (startup page, <code>/tv</code> bookmark, the no-autostart caveat).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="golden-path">
+  <h2>Golden path</h2>
+  <p>Setup, once, on a TV that has never seen the app:</p>
+  <pre class="mermaid">
+sequenceDiagram
+  participant TV as Samsung TV browser
+  participant W as Worker
+  participant DO as BoardRoom DO
+  participant P as Owner phone
+  TV->>W: GET /tv
+  W->>DO: issueDeviceCode()
+  DO-->>W: code "K7Q2XM" (TTL 5 min, single-use)
+  W-->>TV: renders the code
+  TV->>DO: WebSocket upgrade, awaiting approval
+  P->>W: POST /link { code, boardId } (has session)
+  W->>DO: approveDeviceCode(code, boardId, owner)
+  DO-->>W: ok — code consumed under blockConcurrencyWhile
+  DO-->>TV: approved { boardId, handoff }
+  Note over TV,W: A socket frame cannot Set-Cookie, so the<br/>TV makes one ordinary request to bank it
+  TV->>W: GET /tv/claim?handoff=… (single-use)
+  W-->>TV: 302 /b/:boardId + Set-Cookie fb_device_&lt;boardId&gt; (HttpOnly)
+  TV->>W: GET /b/:boardId (device grant, no session)
+  W-->>TV: the board
+  </pre>
+  <p>Everyday use, unchanged from today except that nobody re-scans: the TV prints
+  the QR, a family phone lands on <code>/b/:boardId/c</code>, and its 30-day grant
+  renews itself every time it connects.</p>
+</section>
+
+<section id="error-paths">
+  <h2>Error paths</h2>
+  <table>
+    <thead><tr><th>Failure</th><th>Detected by</th><th>Handled by</th><th>User sees</th></tr></thead>
+    <tbody data-brain-section="error-paths">
+      <template>
+        <tr data-brain-item>
+          <td colspan="4">
+            <span data-item-text data-brain-action></span>
+            <span class="item-controls">
+              <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+              <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+            </span>
+          </td>
+        </tr>
+      </template>
+      <tr data-brain-item="0">
+        <td><span data-item-text data-brain-action>Device code brute-forced</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span>
+          <br><span class="chip chip-high">highest security risk</span></td>
+        <td>Attempt counter per code and per IP in the DO</td>
+        <td>5-minute TTL, single-use, ~5 attempts then the code is burned and the TV
+          re-issues. A 6-char code from an unambiguous alphabet is ~30 bits — safe
+          only because it is short-lived and attempt-capped, which is exactly the
+          RFC 8628 argument.</td>
+        <td>TV silently rotates to a new code</td>
+      </tr>
+      <tr data-brain-item="1">
+        <td><span data-item-text data-brain-action>Code approved for the wrong board</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Owner picks from their own board list on <code>/link</code></td>
+        <td>Un-pair from the paired-devices list, re-run <code>/tv</code></td>
+        <td>Wrong board on screen; two clicks to fix</td>
+      </tr>
+      <tr data-brain-item="2">
+        <td><span data-item-text data-brain-action>Device cookie evicted by the TV browser</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span>
+          <br><span class="chip chip-high">highest operational risk — decision 2</span></td>
+        <td>Loader finds neither session nor device grant</td>
+        <td>Redirect to <code>/tv</code> rather than 404 — a display that lost its
+          cookie should offer re-pairing, not a dead end. This is the failure mode
+          the built-in browser makes likely, and re-pairing is deliberately two taps
+          on a phone rather than anything typed on the TV.</td>
+        <td>A fresh pairing code, no typing</td>
+      </tr>
+      <tr data-brain-item="3">
+        <td><span data-item-text data-brain-action>Socket dies overnight and never recovers</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Watchdog timer against the existing reconnect state</td>
+        <td>One hard reload past the threshold, then back off — never a reload loop</td>
+        <td>Board blinks once and is live again</td>
+      </tr>
+      <tr data-brain-item="4">
+        <td><span data-item-text data-brain-action>Wake Lock unsupported (Tizen)</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Feature detection</td>
+        <td>Silent looping muted video fallback; if that also fails, do nothing —
+          a sleeping TV is not an error state worth shouting about</td>
+        <td>Nothing</td>
+      </tr>
+      <tr data-brain-item="5">
+        <td><span data-item-text data-brain-action>Owner revokes while the TV is live</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td><code>deviceEpoch</code> bump, checked on socket upgrade</td>
+        <td>Socket closed; the display falls back to the <code>/tv</code> pairing
+          screen instead of a 404</td>
+        <td>Board returns to a pairing code</td>
+      </tr>
+      <tr data-brain-item="6">
+        <td><span data-item-text data-brain-action>House internet drops — board is stale but intact</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Existing reconnect state in <code>use-board-socket</code></td>
+        <td>Per review: show a reconnect spinner rather than leaving a silently
+          stale grid. The last grid stays on screen underneath — a split-flap board
+          holding its last message is correct behaviour, it just should not pretend
+          to be live.</td>
+        <td>Board plus a small spinner, then it clears on reconnect</td>
+      </tr>
+      <tr data-brain-item="7">
+        <td><span data-item-text data-brain-action>Handoff token replayed from the /tv/claim URL</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Single-use consumption in the DO, same
+          <code>blockConcurrencyWhile</code> path as the pairing token</td>
+        <td>Second use refused; the redirect strips the query string exactly as the
+          existing controller flow strips <code>t=</code></td>
+        <td>Nothing — the URL is already gone from the address bar</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="list-add-row" data-brain-section-add="error-paths">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a failure mode..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="testing-plan">
+  <h2>Testing plan</h2>
+  <ul class="checklist" data-brain-section="testing-plan">
+    <template>
+      <li data-brain-item><label><input type="checkbox">
+        <span data-item-text data-brain-action></span></label>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <!-- Double-clicking label text toggles the checkbox twice on the way into
+         edit mode (click, click, dblclick all fire). It nets back to its original
+         state — do not "fix" this with preventDefault, which would break
+         click-to-check. -->
+    <li data-brain-item="0"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Golden path: a browser context asserted to hold ZERO cookies pairs via /tv + /link and renders a live board — the same zero-cookie proof standard the phone-control verification already met</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="1"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Error path: 6 concurrent redemptions of one device code return exactly one 200 and five 4xx</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="2"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Error path: replay a consumed device code after a full dev-server restart — still refused (proves storage-backed, not in-memory)</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="3"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Error path: brute force — N+1 wrong guesses burn the code and the TV rotates</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="4"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Authorisation matrix on /api/board-ws re-run with the device grant added — forged device grant, device grant for another board, expired device grant, each against a real and an invented board</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="5"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Regression: the existing QR scan-to-pair flow still passes its 2026-07-27 verification steps unchanged</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="6"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Regression: flap-tile count still exactly 144, grid 24x6, scrollable=false — with pixel drift active</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="7"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Soak: 8h unattended run — fullscreen held, no sleep, one reload at most from the watchdog</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="8"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Owner-only, on real hardware: the Samsung TV walk and phone voice over HTTPS, outstanding since the 2026-07-28 checkpoint</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="9"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Owner-only, decisive for decision 2: power-cycle the real Samsung TV and confirm the fb_device_ cookie survives — if it does not, the built-in browser is not viable and decision 2 must be revisited</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="10"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Error path: drop the network mid-session — spinner appears over the retained grid, and clears on reconnect without re-flipping tiles</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="11"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Error path: replay the /tv/claim handoff token — refused, and the query string is stripped from the final URL</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="testing-plan">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a test..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="open-questions">
+  <h2>Open questions</h2>
+  <ul data-brain-section="open-questions">
+    <template>
+      <li data-brain-item>
+        <span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0">
+      <span data-item-text data-brain-action>Still open — where does an unapproved device code live before it is bound to a board? It cannot sit in a board's DO if no board is chosen yet. Two shapes: a global codes DO, or /tv is reached from the owner's board list so the code is board-scoped from birth. The review's "just one board for now" answer makes the second shape cheap, but it inverts the flow — the owner would start the pairing, not the TV.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+  </ul>
+
+  <h3>Resolved in round 1</h3>
+  <ul>
+    <li><strong>Poll or socket?</strong> — <em>WebSocket.</em> Folded into phase 1
+      and the golden path; it also gave the DO a liveness signal for expiring
+      abandoned codes.</li>
+    <li><strong>More than one board in the house?</strong> — <em>Just one for
+      now.</em> The plan assumes a single board; multi-board grants are out of
+      scope, and this simplifies the open question above.</li>
+    <li><strong>Offline story?</strong> — <em>Show a spinner.</em> Now an error-path
+      row, a component in the files table, and a test.</li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="open-questions">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add an open question..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="verdict">
+  <h2>Verdict</h2>
+  <p>
+    <button type="button" class="btn-approve" data-brain-action
+      onclick="queueVerdict('approve')">Approve plan</button>
+    <button type="button" class="btn-request-changes" data-brain-action
+      onclick="queueVerdict('request-changes')">Request changes</button>
+  </p>
+</section>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+</script>
+
+<script>
+  function queueDecision(cardId, question) {
+    var card = document.getElementById(cardId);
+    var checked = card.querySelector('input[type="radio"]:checked');
+    if (!checked) return;
+    var choice = checked.value;
+    if (window.brain && typeof window.brain.queuePrompt === "function") {
+      window.brain.queuePrompt({
+        tag: "decision",
+        queueKey: cardId,
+        prompt: question + ": " + choice,
+        target: { type: "decision", question: question, choice: choice }
+      });
+    }
+    var ack = document.getElementById("ack-" + cardId);
+    if (ack) ack.textContent = "Queued: " + choice;
+  }
+
+  function queueVerdict(verdict) {
+    if (!(window.brain && typeof window.brain.queuePrompt === "function")) return;
+    window.brain.queuePrompt({
+      tag: "message",
+      queueKey: "verdict",
+      prompt: verdict === "approve"
+        ? "Plan approved as written."
+        : "Requesting changes — see annotations."
+    });
+  }
+</script>
+
+<script>
+  (function () {
+    function queueList(section, queueKey, prompt, action, item, index) {
+      if (window.brain && typeof window.brain.queuePrompt === "function") {
+        window.brain.queuePrompt({
+          tag: "list-edit",
+          queueKey: queueKey,
+          prompt: prompt,
+          target: { type: "list-edit", section: section, action: action, item: item, index: index }
+        });
+      }
+    }
+
+    function slugify(s) {
+      return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "").slice(0, 60) || "item";
+    }
+
+    function itemText(el) {
+      var t = el.querySelector("[data-item-text]");
+      return (t || el).textContent.trim();
+    }
+
+    function addBadge(el, cls, label) {
+      var badge = el.querySelector("." + cls);
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "item-badge " + cls;
+        el.appendChild(badge);
+      }
+      badge.textContent = label;
+    }
+
+    function toggleRemoved(item, section) {
+      var index = Number(item.getAttribute("data-brain-item"));
+      var text = itemText(item);
+      var removed = item.classList.toggle("item-removed");
+      var xBtn = item.querySelector(".item-x");
+      var restoreBtn = item.querySelector(".item-restore");
+      if (xBtn) xBtn.hidden = removed;
+      if (restoreBtn) restoreBtn.hidden = !removed;
+      var key = section + ":remove:" + index;
+      if (removed) {
+        queueList(section, key, "Remove from " + section + ": \"" + text + "\"", "remove", text, index);
+      } else {
+        queueList(section, key, "Cancelled: keep \"" + text + "\" in " + section, "edit", text, index);
+      }
+    }
+
+    function startEdit(item, section) {
+      if (item.classList.contains("item-removed")) return;
+      var span = item.querySelector("[data-item-text]");
+      if (!span || span.isContentEditable) return;
+      var before = span.textContent;
+      span.setAttribute("contenteditable", "true");
+      span.focus();
+
+      function commit() {
+        span.removeAttribute("contenteditable");
+        span.removeEventListener("blur", commit);
+        span.removeEventListener("keydown", onKey);
+        var text = span.textContent.trim();
+        if (!text || text === before.trim()) { span.textContent = before; return; }
+        var index = Number(item.getAttribute("data-brain-item"));
+        addBadge(item, "item-badge-edited", "edited");
+        queueList(section, section + ":edit:" + index,
+          "Edit " + section + " item " + index + ": \"" + text + "\"", "edit", text, index);
+      }
+      function onKey(ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); span.blur(); }
+        else if (ev.key === "Escape") { span.textContent = before; ev.preventDefault(); span.blur(); }
+      }
+      span.addEventListener("blur", commit);
+      span.addEventListener("keydown", onKey);
+    }
+
+    function commitAdd(addRow) {
+      var section = addRow.getAttribute("data-brain-section-add");
+      var input = addRow.querySelector(".list-add-input");
+      var text = input.value.trim();
+      if (!text) return;
+      var list = document.querySelector("[data-brain-section=\"" + section + "\"]");
+      var tpl = list && list.querySelector("template");
+      if (!list || !tpl) return;
+      var node = document.importNode(tpl.content, true);
+      var item = node.querySelector("[data-brain-item]") || node.firstElementChild;
+      item.setAttribute("data-brain-item", "new");
+      var span = item.querySelector("[data-item-text]");
+      if (span) span.textContent = text;
+      item.classList.add("item-proposed");
+      addBadge(item, "item-badge-proposed", "proposed");
+      list.insertBefore(node, tpl.nextSibling);
+      input.value = "";
+      queueList(section, section + ":add:" + slugify(text),
+        "Add to " + section + ": \"" + text + "\"", "add", text, null);
+    }
+
+    document.addEventListener("click", function (ev) {
+      var xBtn = ev.target.closest(".item-x");
+      var restoreBtn = ev.target.closest(".item-restore");
+      if (xBtn || restoreBtn) {
+        var item = ev.target.closest("[data-brain-item]");
+        var section = ev.target.closest("[data-brain-section]");
+        if (item && section) toggleRemoved(item, section.getAttribute("data-brain-section"));
+        return;
+      }
+      var addBtn = ev.target.closest(".list-add-btn");
+      if (addBtn) {
+        var addRow = ev.target.closest("[data-brain-section-add]");
+        if (addRow) commitAdd(addRow);
+      }
+    });
+
+    document.addEventListener("dblclick", function (ev) {
+      var item = ev.target.closest("[data-brain-item]");
+      if (!item) return;
+      var section = item.closest("[data-brain-section]");
+      if (section) startEdit(item, section.getAttribute("data-brain-section"));
+    });
+
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
+      var addRow = ev.target.closest("[data-brain-section-add]");
+      if (addRow && ev.target.classList.contains("list-add-input")) {
+        ev.preventDefault();
+        commitAdd(addRow);
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>
