@@ -1,0 +1,1 @@
+ALTER TABLE `board` ADD `device_epoch` integer DEFAULT 0 NOT NULL;

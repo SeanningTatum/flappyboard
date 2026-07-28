@@ -52,13 +52,65 @@ import { ConfigurationError } from "@/models/errors/repository";
 export const PAIRING_PREFIX = "fbp1";
 export const GRANT_PREFIX = "fbg1";
 
+/**
+ * The TV's own credential. Same primitive as a controller grant, different
+ * purpose and — crucially — a different revocation epoch: a device grant is
+ * signed over the board's `deviceEpoch`, so "kick every phone off my board" and
+ * "un-pair the TV" are two buttons that cannot fire each other.
+ */
+export const DEVICE_PREFIX = "fbd1";
+
+/**
+ * The one-shot bearer that carries an approval from the owner's phone to the TV.
+ *
+ * A fourth prefix rather than reusing `fbp1` for the same job, because the two
+ * are redeemed for credentials of very different weight: an `fbp1` token buys a
+ * 30-day controller grant, an `fbh1` token buys a 180-day device grant. Sharing
+ * one prefix would mean a QR photographed off the TV could be walked into
+ * `/tv/claim` and cashed for the longer-lived credential — a privilege
+ * escalation across the exact boundary the two epochs exist to keep apart.
+ * Domain separation is structural here (the prefix is inside the MAC), so
+ * keeping them apart costs one constant.
+ */
+export const HANDOFF_PREFIX = "fbh1";
+
 /** ~2 minutes: long enough to walk to the TV and scan, short enough that a
  * photographed QR is worthless by the time it is shared. */
 export const DEFAULT_PAIRING_TTL_SECONDS = 120;
 
-/** A grant outlives the pairing token by design — the phone stays the remote for
- * the evening without rescanning. */
-export const DEFAULT_GRANT_TTL_SECONDS = 12 * 60 * 60;
+/**
+ * A grant outlives the pairing token by design — the phone stays the remote
+ * without rescanning.
+ *
+ * **30 days, and renewed on every socket upgrade** (see `family-grants`). At the
+ * original 12h a household paired after breakfast and re-scanned after dinner,
+ * which made the QR a daily chore rather than a one-time setup. Sliding renewal
+ * is what makes the number safe to raise: a phone in weekly use never expires,
+ * while a guest's phone ages out on its own without anyone having to remember it.
+ *
+ * The risk this accepts is that a stolen phone keeps access as long as it keeps
+ * connecting, which is why per-device revoke ships alongside it rather than later.
+ */
+export const DEFAULT_GRANT_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * The TV's grant, longer again than a phone's and renewed the same way.
+ *
+ * The number is chosen so that **cookie eviction, not expiry, is what ends a
+ * pairing**. The display runs in a Samsung TV's built-in browser, which evicts
+ * aggressively; if the TTL were the shorter of the two, re-pairing would be a
+ * scheduled chore on top of an unpredictable one. Well inside the 400-day cap
+ * browsers clamp `Max-Age` to, so the value that is written is the value that is
+ * honoured.
+ */
+export const DEFAULT_DEVICE_TTL_SECONDS = 180 * 24 * 60 * 60;
+
+/**
+ * The handoff lives exactly as long as a pairing token, and for the same reason:
+ * it only has to survive the round trip from "owner tapped approve" to the TV's
+ * next request, and it is single-use on top of that.
+ */
+export const DEFAULT_HANDOFF_TTL_SECONDS = 120;
 
 /**
  * Hard ceiling on an accepted token. A 6KB query string is not a token, and
@@ -78,6 +130,13 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
 /** Cookie name prefix for a controller grant. */
 export const GRANT_COOKIE_PREFIX = "fb_grant_";
+
+/**
+ * Cookie name prefix for a device grant. A separate name, not a separate value
+ * under the same name: a TV and a phone can be the same browser profile (the
+ * owner testing on a laptop), and one must never overwrite the other.
+ */
+export const DEVICE_COOKIE_PREFIX = "fb_device_";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -120,9 +179,14 @@ export interface MintTokenInput {
   readonly now: number;
   readonly ttlSeconds?: number;
   /**
-   * Test seam only: pin the nonce so a tamper test can hold every other field
-   * constant. Production callers must let this default to a fresh random value —
-   * a predictable nonce would make the single-use ledger bypassable.
+   * Pin the nonce instead of letting the mint draw one.
+   *
+   * Two legitimate uses, and no third: a tamper test holding every other field
+   * constant, and a caller that needs to *know* the nonce it just minted —
+   * `board.pair` records the grant against its nonce in the room, and the nonce
+   * is otherwise sealed inside the signed payload. Such a caller must pass
+   * `generateNonce()` and nothing else: a predictable nonce would make the
+   * single-use ledger bypassable and the per-spender quota bucket forgeable.
    */
   readonly nonce?: string;
 }
@@ -144,6 +208,30 @@ export interface VerifyTokenInput {
   readonly secret: string;
   /** Caller-supplied clock. The verify path never reads `Date.now()` itself. */
   readonly now: number;
+}
+
+/**
+ * The same two inputs for the device-side families (`fbd1`, `fbh1`), with one
+ * field renamed: `deviceEpoch` instead of `grantEpoch`.
+ *
+ * This is a deliberate type-level fence, not decoration. Both epochs are plain
+ * numbers on the same board row, so a call site that reached for the wrong one
+ * would compile perfectly and produce a bug with no symptom until the day
+ * somebody hits revoke: device grants signed over `grantEpoch` would go dark
+ * every time the family controllers were revoked, which is the precise outcome
+ * two separate epochs exist to prevent. Different field names make that a
+ * compile error instead.
+ */
+export interface MintDeviceTokenInput
+  extends Omit<MintTokenInput, "grantEpoch"> {
+  /** The board's current `deviceEpoch`. Never `grantEpoch` — see above. */
+  readonly deviceEpoch: number;
+}
+
+export interface VerifyDeviceTokenInput
+  extends Omit<VerifyTokenInput, "grantEpoch"> {
+  /** The board's current `deviceEpoch`. Never `grantEpoch` — see above. */
+  readonly deviceEpoch: number;
 }
 
 const malformed: TokenVerification = { ok: false, reason: "malformed" };
@@ -394,6 +482,14 @@ const parseStructure = (prefix: string, token: string): TokenStructure | null =>
 const randomNonce = (): string =>
   bytesToBase64Url(crypto.getRandomValues(new Uint8Array(NONCE_BYTES)));
 
+/**
+ * The same 128 bits a mint would have drawn for itself, exposed for the one
+ * caller that has to know the nonce it is about to sign over. Exported rather
+ * than left inline so there is exactly one source of nonce randomness in the
+ * codebase to audit.
+ */
+export const generateNonce = (): string => randomNonce();
+
 const normalizeTtl = (ttlSeconds: number, fallback: number): number => {
   if (!Number.isFinite(ttlSeconds)) return fallback;
   const floored = Math.floor(ttlSeconds);
@@ -493,6 +589,50 @@ export const verifyControllerGrant = (
 ): Effect.Effect<TokenVerification, ConfigurationError> =>
   verifyToken(GRANT_PREFIX, input);
 
+/**
+ * Widen a device-side input into the shape the shared mint/verify take. The only
+ * thing that crosses is the epoch, under its generic name — which is exactly why
+ * this one-line adapter exists rather than letting call sites pass `grantEpoch`
+ * directly: the swap can only happen here, in a function whose whole body is
+ * visible at once.
+ */
+const withDeviceEpoch = <T extends { readonly deviceEpoch: number }>(
+  input: T
+): Omit<T, "deviceEpoch"> & { readonly grantEpoch: number } => {
+  const { deviceEpoch, ...rest } = input;
+  return { ...rest, grantEpoch: deviceEpoch };
+};
+
+/** Mint the cookie-borne grant that lets a TV *display* one board. */
+export const mintDeviceGrant = (
+  input: MintDeviceTokenInput
+): Effect.Effect<string, ConfigurationError> =>
+  mintToken(DEVICE_PREFIX, DEFAULT_DEVICE_TTL_SECONDS, withDeviceEpoch(input));
+
+export const verifyDeviceGrant = (
+  input: VerifyDeviceTokenInput
+): Effect.Effect<TokenVerification, ConfigurationError> =>
+  verifyToken(DEVICE_PREFIX, withDeviceEpoch(input));
+
+/**
+ * Mint the single-use handoff the owner's approval hands to the waiting TV.
+ *
+ * Minted in the request worker, not in the Durable Object: the worker is where
+ * the owner's session was checked and where the board row (and therefore
+ * `deviceEpoch`) was read, so the room never needs the signing secret at all.
+ * The returned `nonce` is what the caller records as spent — same contract as
+ * `verifyPairingToken`, same ledger.
+ */
+export const mintHandoffToken = (
+  input: MintDeviceTokenInput
+): Effect.Effect<string, ConfigurationError> =>
+  mintToken(HANDOFF_PREFIX, DEFAULT_HANDOFF_TTL_SECONDS, withDeviceEpoch(input));
+
+export const verifyHandoffToken = (
+  input: VerifyDeviceTokenInput
+): Effect.Effect<TokenVerification, ConfigurationError> =>
+  verifyToken(HANDOFF_PREFIX, withDeviceEpoch(input));
+
 /* -------------------------------------------------------------------------- */
 /* Grant cookie                                                               */
 /* -------------------------------------------------------------------------- */
@@ -507,8 +647,15 @@ export const verifyControllerGrant = (
  * real board id, so a collided cookie simply fails to verify. The name is a
  * lookup key, never an authorisation decision.
  */
+const cookieName = (prefix: string, boardId: string): string =>
+  `${prefix}${boardId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+
 export const grantCookieName = (boardId: string): string =>
-  `${GRANT_COOKIE_PREFIX}${boardId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  cookieName(GRANT_COOKIE_PREFIX, boardId);
+
+/** The TV's cookie for one board. Same rules as `grantCookieName`, other name. */
+export const deviceCookieName = (boardId: string): string =>
+  cookieName(DEVICE_COOKIE_PREFIX, boardId);
 
 export interface GrantCookieInput {
   readonly boardId: string;
@@ -529,26 +676,50 @@ export interface GrantCookieInput {
  * mechanisms that actually bind: a per-board cookie *name*, and a board id
  * inside the signed token.
  */
-export const serializeGrantCookie = (input: GrantCookieInput): string =>
+const serializeCookie = (
+  name: string,
+  value: string,
+  maxAgeSeconds: number,
+  secure: boolean
+): string =>
   [
-    `${grantCookieName(input.boardId)}=${input.token}`,
+    `${name}=${value}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
-    `Max-Age=${Math.max(0, Math.floor(input.maxAgeSeconds))}`,
-    ...(input.secure ? ["Secure"] : []),
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
+    ...(secure ? ["Secure"] : []),
   ].join("; ");
+
+export const serializeGrantCookie = (input: GrantCookieInput): string =>
+  serializeCookie(
+    grantCookieName(input.boardId),
+    input.token,
+    input.maxAgeSeconds,
+    input.secure
+  );
 
 /** Same name/path/flags with a zero lifetime — anything else leaves the cookie in place. */
 export const clearGrantCookie = (boardId: string, secure: boolean): string =>
-  [
-    `${grantCookieName(boardId)}=`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    "Max-Age=0",
-    ...(secure ? ["Secure"] : []),
-  ].join("; ");
+  serializeCookie(grantCookieName(boardId), "", 0, secure);
+
+/**
+ * The TV's cookie. Identical attributes to a controller grant's — `HttpOnly` so
+ * the kiosk page cannot read its own credential, `SameSite=Lax` because the TV
+ * arrives at `/b/:boardId` by a top-level redirect from `/tv/claim`, `Path=/`
+ * because the display's socket upgrade goes to `/api/board-ws` rather than to
+ * the board URL.
+ */
+export const serializeDeviceCookie = (input: GrantCookieInput): string =>
+  serializeCookie(
+    deviceCookieName(input.boardId),
+    input.token,
+    input.maxAgeSeconds,
+    input.secure
+  );
+
+export const clearDeviceCookie = (boardId: string, secure: boolean): string =>
+  serializeCookie(deviceCookieName(boardId), "", 0, secure);
 
 /**
  * **Every** grant this header carries for this board, in the order the browser
@@ -568,12 +739,11 @@ export const clearGrantCookie = (boardId: string, secure: boolean): string =>
  * valid MAC over (prefix, board id, current epoch, payload), so an injected
  * cookie can only ever be noise, never a credential.
  */
-export const readGrantCookies = (
+const readCookies = (
   header: string | null | undefined,
-  boardId: string
+  wanted: string
 ): ReadonlyArray<string> => {
   if (typeof header !== "string" || header.length === 0) return [];
-  const wanted = grantCookieName(boardId);
   const found: string[] = [];
   for (const part of header.split(";")) {
     const separator = part.indexOf("=");
@@ -587,6 +757,17 @@ export const readGrantCookies = (
   }
   return found;
 };
+
+export const readGrantCookies = (
+  header: string | null | undefined,
+  boardId: string
+): ReadonlyArray<string> => readCookies(header, grantCookieName(boardId));
+
+/** Every device grant this header carries for this board. Same plurality rule. */
+export const readDeviceCookies = (
+  header: string | null | undefined,
+  boardId: string
+): ReadonlyArray<string> => readCookies(header, deviceCookieName(boardId));
 
 /** Refusals, worst-to-best. A more specific reason makes a better log line. */
 const REFUSAL_RANK: Record<PairingFailureReason, number> = {
@@ -618,10 +799,27 @@ export interface VerifyGrantsInput {
 export const verifyControllerGrants = (
   input: VerifyGrantsInput
 ): Effect.Effect<TokenVerification, ConfigurationError> =>
+  verifyAnyGrant(GRANT_PREFIX, input);
+
+/**
+ * The device-side counterpart, epoch renamed for the same reason
+ * `MintDeviceTokenInput` renames it. A TV accumulating a neighbour-injected
+ * `fb_device_<id>` cookie is exactly as plausible as a phone accumulating a
+ * `fb_grant_<id>` one, so the any-of-them rule is not optional here either.
+ */
+export const verifyDeviceGrants = (
+  input: Omit<VerifyGrantsInput, "grantEpoch"> & { readonly deviceEpoch: number }
+): Effect.Effect<TokenVerification, ConfigurationError> =>
+  verifyAnyGrant(DEVICE_PREFIX, withDeviceEpoch(input));
+
+const verifyAnyGrant = (
+  prefix: string,
+  input: VerifyGrantsInput
+): Effect.Effect<TokenVerification, ConfigurationError> =>
   Effect.gen(function* () {
     let worst: TokenVerification = malformed;
     for (const token of input.tokens) {
-      const verdict = yield* verifyControllerGrant({
+      const verdict = yield* verifyToken(prefix, {
         token,
         boardId: input.boardId,
         grantEpoch: input.grantEpoch,

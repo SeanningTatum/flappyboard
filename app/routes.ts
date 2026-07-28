@@ -14,10 +14,19 @@ export default [
   route("/api/board-ws", "routes/api/board-ws.ts"),
   route("/api/transcribe", "routes/api/transcribe.ts"),
   route("/api/set-locale", "routes/api/set-locale.ts"),
+  route("/api/tv-ws", "routes/api/tv-ws.ts"),
 
   // TV display — no locale prefix: a kiosk URL is typed once by hand
   route("/b/:boardId", "routes/board/display.tsx"),
   route("/b/:boardId/c", "routes/board/control.tsx"),
+
+  // Device-code pairing. `/tv` is the shortest URL in the app on purpose: it is
+  // typed with a remote control, one character at a time, by someone standing up.
+  route("/tv", "routes/tv.tsx"),
+  route("/tv/claim", "routes/tv.claim.ts"),
+  // `/link` is the owner's side and is auth-gated by its own loader, same as
+  // `/boards`. No locale prefix, for the same reason the board surfaces have none.
+  route("/link", "routes/link.tsx"),
 
   // Public routes at root (default locale)
   index("routes/home.tsx"),

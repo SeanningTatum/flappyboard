@@ -39,11 +39,23 @@ The argument shape becomes readonly fields on the instance. Discriminate via `_t
 
 | Error | Fields | TRPC code |
 |-------|--------|-----------|
-| `PairingTokenInvalidError` | `boardId`, `reason` (`malformed` \| `bad-signature` \| `expired` \| `spent` \| `missing`) | `UNAUTHORIZED` |
+| `PairingTokenInvalidError` | `boardId`, `reason` (`malformed` \| `bad-signature` \| `expired` \| `spent` \| `missing` \| `revoked`) | `UNAUTHORIZED` |
 | `BoardGenerationError` | `stage` (`request` \| `empty`), `cause?` | `INTERNAL_SERVER_ERROR` |
 | `LlmRefusedError` | — | `BAD_REQUEST` |
 | `TranscriptionFailedError` | `reason`, `cause?` | `BAD_REQUEST` |
-| `RateLimitError` | `endpoint` (`generate` \| `transcribe`), `retryAfter` | `TOO_MANY_REQUESTS` |
+| `RateLimitError` | `endpoint` (`generate` \| `transcribe` \| `approve-device`), `retryAfter` | `TOO_MANY_REQUESTS` |
+| `DeviceCodeInvalidError` | `reason` (`unknown` \| `expired` \| `already-approved`) | `NOT_FOUND` |
+
+`DeviceCodeInvalidError` **tells the client its reason**, which looks like it
+contradicts `PairingTokenInvalidError` two rows up and does not. The difference is
+who is asking: a device-code approval comes from an authenticated owner
+nominating a board they own, and the code identifies nothing belonging to anyone
+else — so "that code has already been used" is not an oracle, it is the sentence
+that stops them typing it a third time. What bounds a *guessing* owner is the
+`approve-device` spend cap, not the vagueness of the message. `revoked` on
+`PairingTokenInvalidError` is the one refusal that cannot be judged from the token
+at all: a per-device un-pair deliberately does not move the board's epoch, so the
+grant stays cryptographically valid and the room has to be asked.
 
 `RateLimitError` echoes **both** fields to the client, which is the opposite of `PairingTokenInvalidError` and worth the contrast: a rate-limit refusal describes the caller's own usage of a board they are *already authorised for*, so there is no oracle in it — while a pairing refusal describes a credential, where "expired" vs "bad-signature" is exactly the feedback an attacker wants. `retryAfter` is what lets the phone say something better than "try again later". `/api/transcribe` is not a tRPC route, so it returns its own 429 with a `Retry-After` header rather than going through this mapping.
 

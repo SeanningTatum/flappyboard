@@ -16,7 +16,14 @@ export type PairingRefusal =
   | "bad-signature"
   | "expired"
   | "spent"
-  | "missing";
+  | "missing"
+  /**
+   * The token verifies, but the owner has un-paired *this* device by name. The
+   * only refusal that cannot be judged from the token alone — a signed grant
+   * stays cryptographically valid until its epoch moves, so per-device
+   * revocation is a lookup against the room's records, not a MAC failure.
+   */
+  | "revoked";
 
 export class PairingTokenInvalidError extends Data.TaggedError(
   "PairingTokenInvalidError"
@@ -91,9 +98,29 @@ export class TranscriptionFailedError extends Data.TaggedError(
  */
 export class RateLimitError extends Data.TaggedError("RateLimitError")<{
   /** Which cap was hit — echoed to the client. */
-  readonly endpoint: "generate" | "transcribe";
+  readonly endpoint: "generate" | "transcribe" | "approve-device";
   /** Whole seconds until the window rolls over. Never 0. */
   readonly retryAfter: number;
+}> {}
+
+/**
+ * The owner typed a device code at `/link` and there is no pairing waiting on
+ * it — never issued, already redeemed, or five minutes stale.
+ *
+ * Unlike `PairingTokenInvalidError` the reason IS told to the client, and that
+ * is safe here for a reason worth stating: the caller is an authenticated owner
+ * approving a code against a board they own, the code names no resource of
+ * anyone else's, and "that code has already been used" is precisely the
+ * sentence that stops them typing it a third time. What keeps a *guessing*
+ * owner bounded is the spend cap on the procedure, not the vagueness of this
+ * message.
+ *
+ * Maps to NOT_FOUND in `app/lib/effect-trpc.ts`.
+ */
+export class DeviceCodeInvalidError extends Data.TaggedError(
+  "DeviceCodeInvalidError"
+)<{
+  readonly reason: "unknown" | "expired" | "already-approved";
 }> {}
 
 export type BoardError =
@@ -101,4 +128,5 @@ export type BoardError =
   | BoardGenerationError
   | LlmRefusedError
   | TranscriptionFailedError
-  | RateLimitError;
+  | RateLimitError
+  | DeviceCodeInvalidError;

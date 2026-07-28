@@ -7,10 +7,22 @@ import { BoardAgent } from "@/services/board-agent";
 import { AuthApi } from "@/services/auth";
 import { ConfigurationError, NotFoundError } from "@/models/errors/repository";
 import {
+  DeviceCodeInvalidError,
   PairingTokenInvalidError,
   RateLimitError,
   type PairingRefusal,
 } from "@/models/errors/board";
+import {
+  generateDeviceCode,
+  generateWatcher,
+  normalizeDeviceCode,
+  DEVICE_CODE_LENGTH,
+  DEVICE_CODE_TTL_SECONDS,
+} from "@/lib/board/device-code";
+import {
+  normalizeDeviceName,
+  MAX_DEVICE_NAME_LENGTH,
+} from "@/lib/board/paired-devices";
 import { spenderId, type QuotaEndpoint } from "@/lib/board/quota";
 import type { Board } from "@/db/schema";
 import {
@@ -26,12 +38,20 @@ import {
   UpdateBoardSettingsInput,
 } from "@/lib/schemas/board";
 import {
+  DEFAULT_DEVICE_TTL_SECONDS,
   DEFAULT_GRANT_TTL_SECONDS,
   MAX_TOKEN_LENGTH,
+  generateNonce,
   grantHistoryFloor,
   mintControllerGrant,
+  mintDeviceGrant,
+  mintHandoffToken,
+  mintPairingToken,
+  readDeviceCookies,
   readGrantCookies,
   verifyControllerGrants,
+  verifyDeviceGrants,
+  verifyHandoffToken,
   verifyPairingToken,
 } from "@/lib/board/pairing";
 
@@ -132,6 +152,12 @@ interface BoardAccess {
    * that carries it — see `spenderId` in `@/lib/board/quota`.
    */
   readonly grantNonce: string | null;
+  /**
+   * The name this device was given at pairing, if it gave one. Owner-facing
+   * only — it exists so "un-pair Kai's phone" is a thing the owner can say, and
+   * it is never printed on the board.
+   */
+  readonly deviceName: string | null;
 }
 
 /** The slice of a procedure context authorisation needs, session or not. */
@@ -203,6 +229,7 @@ const requireBoardAccess = (ctx: BoardCallerContext, boardId: string) =>
         grantExpiresAt: null,
         grantIssuedAt: null,
         grantNonce: null,
+        deviceName: null,
       };
       return access;
     }
@@ -237,14 +264,104 @@ const requireBoardAccess = (ctx: BoardCallerContext, boardId: string) =>
       );
     }
 
+    /*
+      The one refusal the token cannot judge for itself.
+
+      A per-device un-pair leaves the grant cookie on that phone
+      cryptographically perfect — the whole point of per-device revocation is
+      that it does *not* move the board's epoch, so every other phone keeps
+      working. Something therefore has to ask the room whether this particular
+      nonce is still one of ours, and this is the only place every authorised
+      call passes through.
+
+      `touchGrant` answers and renews in the same round trip: an unknown nonce is
+      live (every phone paired before records existed has no record — see
+      `decideTouch`), and a live one has its sliding 30-day window pushed
+      forward. It fails closed: an unreachable room raises `ExternalServiceError`
+      rather than answering `live: true`, so a broken room refuses the write
+      instead of ignoring a revocation.
+    */
+    const room = yield* BoardRoom;
+    const device = yield* room.touchGrant({
+      boardId,
+      nonce: verdict.nonce,
+      ttlSeconds: DEFAULT_GRANT_TTL_SECONDS,
+    });
+    if (!device.live) {
+      yield* logRefusal(boardId, "revoked");
+      return yield* Effect.fail(
+        new PairingTokenInvalidError({ boardId, reason: "revoked" })
+      );
+    }
+
     const access: BoardAccess = {
       via: "grant",
       board,
       grantExpiresAt: verdict.expiresAt,
       grantIssuedAt: verdict.issuedAt,
       grantNonce: verdict.nonce,
+      deviceName: device.name,
     };
     return access;
+  });
+
+/**
+ * Owner session **or** a device grant for this exact board — the display's
+ * authorisation, which is deliberately a different question from the
+ * controller's.
+ *
+ * A TV reads; it never writes. So this is a separate gate rather than another
+ * branch inside `requireBoardAccess`: a device grant must not reach
+ * `setMessage` or `generate`, and a controller grant must not keep a screen lit
+ * after the family's phones have been revoked. Two cookies, two epochs, two
+ * gates — the separation is the feature, not an implementation detail.
+ *
+ * Non-enumerability follows exactly the same rule as `requireBoardAccess`: what
+ * the caller *sent* decides which refusal they get, never whether the board is
+ * real.
+ */
+const requireDisplayAccess = (ctx: BoardCallerContext, boardId: string) =>
+  Effect.gen(function* () {
+    const cookies = readDeviceCookies(ctx.headers.get("cookie"), boardId);
+    const board = yield* findBoard(boardId);
+
+    if (
+      board !== null &&
+      ctx.auth !== null &&
+      board.ownerId === ctx.auth.user.id
+    ) {
+      return { via: "owner" as const, board };
+    }
+
+    if (cookies.length === 0) {
+      return yield* Effect.fail(
+        new NotFoundError({ entity: "board", identifier: boardId })
+      );
+    }
+
+    if (board === null) {
+      yield* logRefusal(boardId, "missing");
+      return yield* Effect.fail(
+        new PairingTokenInvalidError({ boardId, reason: "missing" })
+      );
+    }
+
+    const secret = yield* pairingSecret;
+    const verdict = yield* verifyDeviceGrants({
+      tokens: cookies,
+      boardId,
+      deviceEpoch: board.deviceEpoch,
+      secret,
+      now: Date.now(),
+    });
+    if (!verdict.ok) {
+      yield* logRefusal(boardId, verdict.reason);
+      return yield* Effect.fail(
+        new PairingTokenInvalidError({ boardId, reason: verdict.reason })
+      );
+    }
+
+    return { via: "device" as const, board };
   });
 
 /**
@@ -316,9 +433,43 @@ const PairBoardInput = Schema.Struct({
     Schema.minLength(1),
     Schema.maxLength(MAX_TOKEN_LENGTH)
   ),
+  /**
+   * What to call this phone in the owner's device list. Optional by design —
+   * pairing must never be gated behind a text field — and normalised server-side
+   * rather than trusted, because it is written into Durable Object storage.
+   */
+  name: Schema.optional(
+    Schema.String.pipe(Schema.maxLength(MAX_DEVICE_NAME_LENGTH))
+  ),
 });
 
 const ClaimBoardInput = Schema.Struct({ boardId: BoardId });
+
+/** The code as typed by a human: case and spacing are the caller's business. */
+const DeviceCodeInput = Schema.Struct({
+  boardId: BoardId,
+  code: Schema.String.pipe(
+    Schema.minLength(DEVICE_CODE_LENGTH),
+    // Room for the spaces and dashes a phone keyboard will happily add.
+    Schema.maxLength(DEVICE_CODE_LENGTH * 4)
+  ),
+});
+
+const GrantNonceInput = Schema.Struct({
+  boardId: BoardId,
+  nonce: Schema.String.pipe(Schema.minLength(1), Schema.maxLength(128)),
+});
+
+/**
+ * How many codes to draw before giving up on a collision.
+ *
+ * A collision means two TVs drew the same six characters inside five minutes,
+ * which at ~30 bits is vanishingly rare — but it is a real state, and the honest
+ * response is to draw again rather than to steal the room. Three attempts turns
+ * a 1-in-a-billion event into a 1-in-10^27 failure and costs nothing when it
+ * never fires.
+ */
+const CODE_ISSUE_ATTEMPTS = 3;
 
 export const boardRouter = createTRPCRouter({
   create: protectedProcedure
@@ -445,11 +596,17 @@ export const boardRouter = createTRPCRouter({
           */
           const room = yield* BoardRoom;
           const state = yield* room.getState(input.boardId);
+          // The nonce is drawn here rather than inside the mint because the room
+          // has to remember this grant *by* its nonce — that is the identifier
+          // the owner's per-device revoke will name, and it is sealed inside the
+          // signed payload once the token exists.
+          const grantNonce = generateNonce();
           const grant = yield* mintControllerGrant({
             boardId: input.boardId,
             grantEpoch: board.grantEpoch,
             secret,
             now,
+            nonce: grantNonce,
           });
 
           // The TTL is the token's own remaining life — the ledger never has to
@@ -474,6 +631,33 @@ export const boardRouter = createTRPCRouter({
               })
             );
           }
+
+          /*
+            Recording the device is bookkeeping, so it must not be able to fail
+            the pairing that already succeeded.
+
+            By this point the nonce is spent and the grant is minted — the phone
+            is paired whether or not the room manages to write a row for it. A
+            failure here costs the owner the ability to un-pair *this* device by
+            name until it next connects (`touchGrant` re-creates the record), and
+            an unknown nonce is treated as live, so nothing is locked out. That
+            is strictly better than refusing a pairing whose credential has
+            already been issued.
+          */
+          yield* room
+            .recordGrant({
+              boardId: input.boardId,
+              nonce: grantNonce,
+              name: normalizeDeviceName(input.name),
+              ttlSeconds: DEFAULT_GRANT_TTL_SECONDS,
+            })
+            .pipe(
+              Effect.catchAll((cause) =>
+                Effect.logWarning("Paired device could not be recorded").pipe(
+                  Effect.annotateLogs({ boardId: input.boardId, cause })
+                )
+              )
+            );
 
           return {
             grant,
@@ -779,6 +963,342 @@ export const boardRouter = createTRPCRouter({
             })
           );
           return { id: board.id, grantEpoch: board.grantEpoch };
+        })
+      )
+    ),
+
+  /* ------------------------------------------------------------------------ */
+  /* Device codes — the TV's half of pairing                                  */
+  /* ------------------------------------------------------------------------ */
+
+  /**
+   * Draw a code for a TV that has nothing: no session, no cookie, no board.
+   *
+   * `publicProcedure`, necessarily — this is the very first thing a factory-fresh
+   * display can do, and requiring anything at all here would put us back at
+   * typing a password on a D-pad. What keeps it safe is that the code buys
+   * *nothing* on its own: it names a room, and only a signed-in owner nominating
+   * their own board can put a credential in it.
+   *
+   * The returned `watcher` never appears on screen. It is what the TV presents to
+   * open its socket, and it is why a guessed code cannot be camped on: the code
+   * decides which room you reach, the watcher decides whether you are the one
+   * who asked for it.
+   */
+  issueDeviceCode: publicProcedure.mutation(({ ctx }) =>
+    runProcedure(
+      ctx.runtime,
+      Effect.gen(function* () {
+        const room = yield* BoardRoom;
+        const watcher = generateWatcher();
+
+        for (let attempt = 0; attempt < CODE_ISSUE_ATTEMPTS; attempt += 1) {
+          const code = generateDeviceCode();
+          const issued = yield* room.issueDeviceCode({
+            code,
+            watcher,
+            ttlSeconds: DEVICE_CODE_TTL_SECONDS,
+          });
+          if (issued) {
+            return {
+              code,
+              watcher,
+              expiresInSeconds: DEVICE_CODE_TTL_SECONDS,
+            };
+          }
+          yield* Effect.logInfo("Device code collided — drawing another").pipe(
+            Effect.annotateLogs({ attempt })
+          );
+        }
+
+        // Three collisions in a row is not bad luck at ~30 bits; it is a broken
+        // generator or a room refusing every write. Fail loudly rather than
+        // handing the TV a code nobody is holding.
+        return yield* Effect.fail(
+          new ConfigurationError({ service: "DeviceCode", field: "collision" })
+        );
+      })
+    )
+  ),
+
+  /**
+   * The owner approves a code against one of their boards.
+   *
+   * `protectedProcedure` + `requireOwnedBoard`: approving is an act of authority
+   * over a board, so it needs the same standing as `delete` or `rename`. A
+   * controller grant must never reach it — a paired phone being able to point a
+   * stranger's TV at the board would make pairing transitive.
+   *
+   * The handoff is minted **here**, before the room is asked to consume
+   * anything, for two reasons. It keeps `BETTER_AUTH_SECRET` out of a room whose
+   * address is a guessable six characters. And it means the fallible work is
+   * done before the single-use write, so a minting failure cannot burn a code —
+   * the same ordering `pair` already uses for the nonce ledger.
+   */
+  approveDeviceCode: protectedProcedure
+    .input(Schema.standardSchemaV1(DeviceCodeInput))
+    .mutation(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          const board = yield* requireOwnedBoard(
+            input.boardId,
+            ctx.auth.user.id
+          );
+
+          // Metered before anything else happens: this is the only endpoint
+          // where guessing is the attack, and a refused guess must not have cost
+          // a code lookup. See `DEFAULT_QUOTA["approve-device"]`.
+          yield* chargeQuota(
+            {
+              via: "owner",
+              board,
+              grantExpiresAt: null,
+              grantIssuedAt: null,
+              grantNonce: null,
+              deviceName: null,
+            },
+            input.boardId,
+            "approve-device"
+          );
+
+          const code = normalizeDeviceCode(input.code);
+          if (code === null) {
+            return yield* Effect.fail(
+              new DeviceCodeInvalidError({ reason: "unknown" })
+            );
+          }
+
+          const secret = yield* pairingSecret;
+          const handoff = yield* mintHandoffToken({
+            boardId: input.boardId,
+            deviceEpoch: board.deviceEpoch,
+            secret,
+            now: Date.now(),
+          });
+
+          const room = yield* BoardRoom;
+          const outcome = yield* room.approveDeviceCode({
+            code,
+            boardId: input.boardId,
+            handoff,
+          });
+
+          if (outcome !== "approved") {
+            yield* Effect.logInfo("Device code approval refused").pipe(
+              Effect.annotateLogs({ boardId: input.boardId, outcome })
+            );
+            return yield* Effect.fail(
+              new DeviceCodeInvalidError({ reason: outcome })
+            );
+          }
+
+          yield* Effect.logInfo("Device code approved").pipe(
+            Effect.annotateLogs({ boardId: input.boardId })
+          );
+          return { boardId: input.boardId, name: board.name };
+        })
+      )
+    ),
+
+  /**
+   * What the TV asks for once it holds a device grant: the board, the live
+   * state, and a fresh QR token to print.
+   *
+   * A separate procedure from `get` rather than a relaxation of it. `get` is
+   * owner-only and hands back the whole row; this hands back only what a screen
+   * renders, to a caller that may be a cookie with no account behind it.
+   *
+   * It mints the pairing token because the display is where the QR is printed
+   * and a device-granted TV has no session to mint one with — the authority to
+   * print it comes from the device grant itself, which is exactly as strong a
+   * statement as "the owner's screen is showing this board".
+   */
+  display: publicProcedure
+    .input(Schema.standardSchemaV1(ClaimBoardInput))
+    .query(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          const access = yield* requireDisplayAccess(ctx, input.boardId);
+          const room = yield* BoardRoom;
+          const state = yield* room.getState(input.boardId);
+          const secret = yield* pairingSecret;
+
+          // A board that cannot mint is still a board: the screen falls back to
+          // a token-free controller URL, which the owner's own phone can use.
+          const token = yield* mintPairingToken({
+            boardId: input.boardId,
+            grantEpoch: access.board.grantEpoch,
+            secret,
+            now: Date.now(),
+          }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+          return {
+            via: access.via,
+            board: publicBoard(access.board),
+            state,
+            pairingToken: token,
+          };
+        })
+      )
+    ),
+
+  /**
+   * Redeem a handoff for the TV's own long-lived device grant.
+   *
+   * Single-use is enforced exactly as `pair` enforces it — the handoff's nonce
+   * is spent in the *board's* room under `blockConcurrencyWhile`, so a replayed
+   * `/tv/claim?handoff=…` is refused even across a process restart. The code
+   * room that carried the handoff is not consulted: it has already done its one
+   * job and may be long gone.
+   */
+  claimHandoff: publicProcedure
+    .input(
+      Schema.standardSchemaV1(
+        Schema.Struct({
+          boardId: BoardId,
+          handoff: Schema.String.pipe(
+            Schema.minLength(1),
+            Schema.maxLength(MAX_TOKEN_LENGTH)
+          ),
+        })
+      )
+    )
+    .mutation(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          const secret = yield* pairingSecret;
+          const now = Date.now();
+
+          const board = yield* findBoard(input.boardId);
+          if (board === null) {
+            yield* logRefusal(input.boardId, "missing");
+            return yield* Effect.fail(
+              new PairingTokenInvalidError({
+                boardId: input.boardId,
+                reason: "missing",
+              })
+            );
+          }
+
+          const verdict = yield* verifyHandoffToken({
+            token: input.handoff,
+            boardId: input.boardId,
+            deviceEpoch: board.deviceEpoch,
+            secret,
+            now,
+          });
+          if (!verdict.ok) {
+            yield* logRefusal(input.boardId, verdict.reason);
+            return yield* Effect.fail(
+              new PairingTokenInvalidError({
+                boardId: input.boardId,
+                reason: verdict.reason,
+              })
+            );
+          }
+
+          const grant = yield* mintDeviceGrant({
+            boardId: input.boardId,
+            deviceEpoch: board.deviceEpoch,
+            secret,
+            now,
+          });
+
+          // Spent last, and only after everything fallible has succeeded — same
+          // ordering, and the same reasoning, as `pair`.
+          const room = yield* BoardRoom;
+          const spent = yield* room.spendNonce(
+            input.boardId,
+            verdict.nonce,
+            Math.max(1, Math.ceil((verdict.expiresAt - now) / 1000))
+          );
+          if (!spent) {
+            yield* logRefusal(input.boardId, "spent");
+            return yield* Effect.fail(
+              new PairingTokenInvalidError({
+                boardId: input.boardId,
+                reason: "spent",
+              })
+            );
+          }
+
+          return {
+            grant,
+            grantMaxAgeSeconds: DEFAULT_DEVICE_TTL_SECONDS,
+          };
+        })
+      )
+    ),
+
+  /* ------------------------------------------------------------------------ */
+  /* Paired devices                                                           */
+  /* ------------------------------------------------------------------------ */
+
+  /** Every phone paired to this board, for the owner's device list. */
+  pairedDevices: protectedProcedure
+    .input(Schema.standardSchemaV1(ClaimBoardInput))
+    .query(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
+          const room = yield* BoardRoom;
+          return yield* room.listGrants(input.boardId);
+        })
+      )
+    ),
+
+  /**
+   * Un-pair one phone, by the nonce inside its grant.
+   *
+   * The precision instrument next to `revokeControllers`' hammer. It leaves the
+   * board's `grantEpoch` alone, so every other phone in the house keeps working
+   * and nobody re-scans — which is the entire reason per-grant records exist.
+   */
+  revokeDevice: protectedProcedure
+    .input(Schema.standardSchemaV1(GrantNonceInput))
+    .mutation(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
+          const room = yield* BoardRoom;
+          const revoked = yield* room.revokeGrant(input.boardId, input.nonce);
+          yield* Effect.logInfo("Paired device revoked").pipe(
+            Effect.annotateLogs({ boardId: input.boardId, revoked })
+          );
+          return { revoked };
+        })
+      )
+    ),
+
+  /**
+   * Un-pair every TV showing this board, without touching a single phone.
+   *
+   * The display-side twin of `revokeControllers`, and the reason there are two
+   * epochs on the board row at all: an owner who wants the TV in the spare room
+   * to stop showing their board should not have to make the whole household
+   * re-scan a QR to get it.
+   */
+  revokeDevices: protectedProcedure
+    .input(Schema.standardSchemaV1(RevokeControllersInput))
+    .mutation(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
+          const repo = yield* BoardRepository;
+          const board = yield* repo.bumpDeviceEpoch({ boardId: input.boardId });
+          yield* Effect.logInfo("Board displays un-paired").pipe(
+            Effect.annotateLogs({
+              boardId: input.boardId,
+              deviceEpoch: board.deviceEpoch,
+            })
+          );
+          return { id: board.id, deviceEpoch: board.deviceEpoch };
         })
       )
     ),

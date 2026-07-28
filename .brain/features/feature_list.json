@@ -145,7 +145,7 @@
         "feat-007",
         "feat-008"
       ],
-      "status": "planned",
+      "status": "in-progress",
       "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, 6 decisions answered); phase 1. HARD PREREQUISITE: issue #1 rate limiting — a 6-char code is ~30 bits and is safe only because it is short-lived, single-use and attempt-capped.",
       "owners": [
         "sean"

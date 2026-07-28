@@ -48,6 +48,41 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const boards = await context.trpc.board.list();
 
+  /*
+    Paired devices are read here rather than fetched per card on the client.
+
+    One Durable Object round trip per board, in parallel, on a page a household
+    opens occasionally — against a client fetch per card, which would render the
+    list empty first and fill it in afterwards. A device list that flickers in
+    late is worse than one that arrives with the page, because the thing the
+    owner came here to do is *compare* what is paired against what should be.
+
+    A board whose room cannot be reached contributes an empty list rather than
+    failing the page: the rest of `/boards` still works, and the section says
+    "none" instead of taking the board manager down with it.
+  */
+  const devices = await Promise.all(
+    boards.map(async (board) => {
+      const listed = await Effect.runPromiseExit(
+        Effect.tryPromise({
+          try: () => context.trpc.board.pairedDevices({ boardId: board.id }),
+          catch: (cause) => cause,
+        })
+      );
+      return [
+        board.id,
+        Exit.isSuccess(listed)
+          ? listed.value.map((device) => ({
+              nonce: device.nonce,
+              name: device.name,
+              lastSeenAt: device.lastSeenAt,
+            }))
+          : [],
+      ] as const;
+    })
+  );
+  const devicesByBoard = Object.fromEntries(devices);
+
   return {
     boards: boards.map((board) => ({
       id: board.id,
@@ -55,6 +90,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       revision: board.revision,
       // Serialised over the loader boundary; `BoardCard` re-hydrates it.
       createdAt: board.createdAt,
+      devices: devicesByBoard[board.id] ?? [],
     })),
     // The TV needs a host, not a path — taken from the request so it is right on
     // localhost, preview and production without a configured base URL.
@@ -81,6 +117,15 @@ type DeleteResult =
 type RevokeResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: RevokeControllersFailure };
+/**
+ * What the two per-device revokes return to `BoardDevices`. Kept as one shape
+ * because the UI treats them identically — a failure is a line of red under the
+ * relevant control either way.
+ */
+export type DeviceFailure = "revoke_device_failed" | "revoke_displays_failed";
+type DeviceResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: DeviceFailure };
 
 /**
  * Create a board.
@@ -288,6 +333,112 @@ async function revokeControllers(
 }
 
 /**
+ * Un-pair one phone, by the nonce inside its grant.
+ *
+ * The precision instrument next to `revokeControllers`' hammer: the board's
+ * `grantEpoch` does not move, so every other phone in the house keeps working
+ * and nobody re-scans. That is only possible because the room keeps a per-grant
+ * record — see `board.revokeDevice`.
+ */
+async function revokeDevice(
+  formData: FormData,
+  context: Route.ActionArgs["context"]
+): Promise<DeviceResult> {
+  const boardId = formData.get("boardId");
+  const nonce = formData.get("nonce");
+
+  const program = Effect.gen(function* () {
+    if (
+      typeof boardId !== "string" ||
+      boardId.length === 0 ||
+      typeof nonce !== "string" ||
+      nonce.length === 0
+    ) {
+      return {
+        ok: false as const,
+        error: "revoke_device_failed" as DeviceFailure,
+      };
+    }
+
+    yield* Effect.tryPromise({
+      try: () => context.trpc.board.revokeDevice({ boardId, nonce }),
+      catch: (cause) => cause,
+    });
+
+    return { ok: true as const };
+  }).pipe(
+    Effect.tapErrorCause((cause) =>
+      Effect.logError("board.revoke_device_failed", cause)
+    ),
+    Effect.catchAll(() =>
+      Effect.succeed({
+        ok: false as const,
+        error: "revoke_device_failed" as DeviceFailure,
+      })
+    )
+  );
+
+  const exit = await context.runtime.runPromiseExit(program);
+  return Exit.match(exit, {
+    onSuccess: (result) => result,
+    onFailure: () => ({
+      ok: false as const,
+      error: "revoke_device_failed" as DeviceFailure,
+    }),
+  });
+}
+
+/**
+ * Un-pair every TV showing this board, and no phone at all.
+ *
+ * Bumps `deviceEpoch`, the board row's second revocation counter. The whole
+ * reason there are two is that these must not be the same button: revoking the
+ * family's controllers should never black out the television, and un-pairing
+ * the television should never sign out the family.
+ */
+async function revokeDisplays(
+  formData: FormData,
+  context: Route.ActionArgs["context"]
+): Promise<DeviceResult> {
+  const boardId = formData.get("boardId");
+
+  const program = Effect.gen(function* () {
+    if (typeof boardId !== "string" || boardId.length === 0) {
+      return {
+        ok: false as const,
+        error: "revoke_displays_failed" as DeviceFailure,
+      };
+    }
+
+    yield* Effect.tryPromise({
+      try: () => context.trpc.board.revokeDevices({ boardId }),
+      catch: (cause) => cause,
+    });
+
+    return { ok: true as const };
+  }).pipe(
+    Effect.tapErrorCause((cause) =>
+      Effect.logError("board.revoke_displays_failed", cause)
+    ),
+    Effect.catchAll(() =>
+      Effect.succeed({
+        ok: false as const,
+        error: "revoke_displays_failed" as DeviceFailure,
+      })
+    )
+  );
+
+  const exit = await context.runtime.runPromiseExit(program);
+  return Exit.match(exit, {
+    onSuccess: (result) => result,
+    onFailure: () => ({
+      ok: false as const,
+      error: "revoke_displays_failed" as DeviceFailure,
+    }),
+  });
+}
+
+/**
  * One action for the whole `/boards` surface, dispatched by an `intent`
  * field. `create` has none (the existing `BoardCreateForm` predates this and
  * is left untouched), so a missing/unrecognised intent falls through to it —
@@ -302,6 +453,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (intent === "rename") return renameBoard(formData, context);
   if (intent === "delete") return deleteBoard(formData, context);
   if (intent === "revoke") return revokeControllers(formData, context);
+  if (intent === "revoke-device") return revokeDevice(formData, context);
+  if (intent === "revoke-displays") return revokeDisplays(formData, context);
   return createBoard(formData, context);
 }
 

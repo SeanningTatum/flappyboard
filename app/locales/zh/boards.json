@@ -70,6 +70,49 @@
       "delete_failed": "删除失败,请重试。"
     }
   },
+  "link": {
+    "title": "连接电视",
+    "subtitle": "在电视上打开 /tv,然后输入屏幕上显示的代码。",
+    "codeLabel": "电视上的代码",
+    "codePlaceholder": "K7Q2XM",
+    "boardLabel": "显示这块板子",
+    "submit": "配对电视",
+    "submitting": "配对中…",
+    "success": "配对成功,电视正在显示 {{name}}。",
+    "emptyTitle": "还没有板子",
+    "emptyBody": "请先创建一块板子 —— 电视总得有东西可显示。",
+    "emptyAction": "前往板子列表",
+    "failure": {
+      "invalid-code": "代码无效。代码为 6 位,请与电视上显示的完全一致。",
+      "no-board": "请选择电视要显示的板子。",
+      "not-found": "没有电视在等待该代码。请核对代码,或重新加载电视以获取新代码。",
+      "rate-limited": "尝试次数过多,请几分钟后再试。",
+      "failed": "配对失败,请稍后再试。"
+    }
+  },
+  "devices": {
+    "title": "已配对的设备",
+    "description": "可以控制这块板子的手机,以及正在显示它的电视。",
+    "empty": "还没有配对的手机。扫描板子上的二维码即可配对。",
+    "unnamed": "未命名的手机",
+    "lastSeen": "最近使用:{{when}}",
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前",
+    "unpair": "取消配对",
+    "unpairing": "取消配对中…",
+    "unpairOne": "取消配对「{{name}}」?",
+    "unpairOneBody": "这部手机将无法再向板子写入内容。其他已配对的手机不受影响,也无需重新扫码。",
+    "unpairDisplays": "取消配对所有电视",
+    "unpairDisplaysTitle": "取消配对显示「{{name}}」的所有电视?",
+    "unpairDisplaysBody": "所有正在显示这块板子的电视都会回到配对界面。已配对的手机不受影响。",
+    "unpairDisplaysConfirm": "取消配对电视",
+    "error": {
+      "revoke_device_failed": "该设备未能取消配对,请重试。",
+      "revoke_displays_failed": "电视未能取消配对,请重试。"
+    }
+  },
   "dashboard": {
     "nav": "板子",
     "title": "你的板子",

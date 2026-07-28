@@ -30,6 +30,7 @@ const APP_ERROR_TAGS = new Set<AppError["_tag"]>([
   "LlmRefusedError",
   "TranscriptionFailedError",
   "RateLimitError",
+  "DeviceCodeInvalidError",
 ]);
 
 // Compile-time exhaustiveness guard for `appErrorToTRPC`'s switch. Reachable
@@ -207,6 +208,19 @@ const appErrorToTRPC = (e: AppError): TRPCError => {
         // be to scrape it back out of this message string, which is a contract
         // nobody should have to keep.
         cause: e,
+      });
+    // Told in full, unlike a pairing refusal. The caller is a signed-in owner
+    // approving a code against their own board — the code identifies nothing of
+    // anyone else's, so there is no oracle here, and "already used" is exactly
+    // what stops them typing it again. Guessing is bounded by the spend cap on
+    // the procedure, not by this message.
+    case "DeviceCodeInvalidError":
+      return new TRPCError({
+        code: "NOT_FOUND",
+        message:
+          e.reason === "already-approved"
+            ? "That code has already been used — the TV should show a new one"
+            : "No TV is waiting on that code — check it, or reload the TV for a new one",
       });
     default:
       return assertNever(e);

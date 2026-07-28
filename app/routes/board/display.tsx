@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Effect, Exit } from "effect";
 import { useTranslation } from "react-i18next";
-import { useRevalidator } from "react-router";
+import { redirect, useRevalidator } from "react-router";
 
 import type { Route } from "./+types/display";
-import { requireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { useBoardSocket } from "@/hooks/use-board-socket";
+import { useWakeLock } from "@/hooks/use-wake-lock";
 import { createFlapPlayer } from "@/lib/board/sfx";
+import { DEFAULT_PAIRING_TTL_SECONDS } from "@/lib/board/pairing";
 import {
-  DEFAULT_PAIRING_TTL_SECONDS,
-  mintPairingToken,
-} from "@/lib/board/pairing";
+  dimOpacity,
+  driftOffset,
+  shouldReload,
+  DRIFT_INTERVAL_MS,
+  WATCHDOG_MS,
+} from "@/lib/board/kiosk";
 import { BoardGridView } from "@/components/board/board-grid-view";
+import { BoardOffline } from "@/components/board/board-offline";
 import { QrOverlay } from "@/components/board/qr-overlay";
 import { SoundUnlockPrompt } from "@/components/board/sound-unlock-prompt";
 
@@ -49,59 +54,61 @@ export const QR_REFRESH_MS = Math.floor(
 );
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  await requireSession(request, context);
-
   const boardId = params.boardId;
 
-  // Reading through the room (not the latest D1 snapshot) means the TV's first
-  // paint is already the live board, so the socket has nothing to correct.
+  /*
+    Session **or** device grant, via `board.display`.
+
+    This used to be `requireSession`, which meant putting a board on a TV
+    required typing an email and a password with a D-pad — the single largest
+    piece of friction in the product. A television now reaches this route with
+    an `fb_device_<boardId>` cookie and no account at all; the owner's own
+    browser still reaches it with a session, and nothing else reaches it.
+
+    Reading through the room (not the latest D1 snapshot) means the TV's first
+    paint is already the live board, so the socket has nothing to correct.
+  */
   const exit = await Effect.runPromiseExit(
     Effect.tryPromise({
-      try: () => context.trpc.board.get({ boardId }),
+      try: () => context.trpc.board.display({ boardId }),
       catch: (cause) => cause,
     })
   );
 
-  // Missing, not-owned, and "the room is unreachable" all collapse to 404 here.
-  // On a kiosk surface the distinction is not actionable — there is nobody to
-  // read an error page, and a transient failure resolves on the next reload —
-  // while a 404 keeps an unowned board id non-enumerable, same rule as the
-  // tRPC routes and the socket upgrade.
+  /*
+    Every failure sends the screen to `/tv`, and that is a deliberate change from
+    the 404 this used to throw.
+
+    The expected cause is cookie eviction: the runtime this feature targets is a
+    Samsung television's built-in browser, which clears cookies on its own
+    schedule, and the display waking up un-paired is the *normal* end of a
+    pairing rather than an error. A 404 on a wall-mounted panel is a dead end
+    nobody can act on; `/tv` is a six-character code and two taps on a phone.
+
+    A genuinely unknown or unowned board id lands in the same place, which keeps
+    it non-enumerable — the same rule as the tRPC routes and the socket upgrade.
+  */
   if (Exit.isFailure(exit)) {
-    throw new Response(null, { status: 404, statusText: "Board not found" });
+    throw redirect("/tv");
   }
 
   // `/b/:boardId/c?t=<signed pairing token>` — the QR carries a short-lived,
   // single-use token so a phone can claim the board without already holding the
-  // owner's session. Minted here because this loader is the only place that holds
-  // both the owner's session (proving the QR is theirs to print) and the Workers
-  // env; tRPC's context carries neither. Built from the request URL rather than
-  // `window.location` so the QR is identical server- and client-side (no
-  // hydration flicker).
+  // owner's session. Minted inside `board.display`, which is the only place that
+  // holds both the caller's proof of authority over this board and the signing
+  // secret. Built from the request URL rather than `window.location` so the QR
+  // is identical server- and client-side (no hydration flicker).
   const controllerUrl = new URL(
     `/b/${encodeURIComponent(boardId)}/c`,
     request.url
   );
-  // `grantEpoch` comes off the row we just read, so the QR is always minted at
-  // the board's current epoch: after the owner revokes controllers, the next
-  // re-mint tick (`QR_REFRESH_MS`) prints a code that works again, and the codes
-  // printed before it stay dead.
-  const minted = await Effect.runPromiseExit(
-    mintPairingToken({
-      boardId,
-      grantEpoch: exit.value.board.grantEpoch,
-      secret: context.cloudflare.env.BETTER_AUTH_SECRET,
-      now: Date.now(),
-    })
-  );
   // A board that can't mint a token is still a working board: fall back to the
   // token-free URL, which the owner's own signed-in phone can still use.
-  if (Exit.isSuccess(minted)) {
-    controllerUrl.searchParams.set("t", minted.value);
+  if (exit.value.pairingToken !== null) {
+    controllerUrl.searchParams.set("t", exit.value.pairingToken);
   }
 
-  // Only what the screen needs crosses the wire. The board row itself was read
-  // purely to prove ownership, and it carries `ownerId` — no reason to ship it.
+  // Only what the screen needs crosses the wire.
   return {
     boardId,
     state: exit.value.state,
@@ -156,18 +163,123 @@ export default function BoardDisplay({ loaderData }: Route.ComponentProps) {
     });
   }, []);
 
+  /**
+   * One gesture, two jobs: unlock the audio and go fullscreen.
+   *
+   * They ride the same handler rather than getting one each because they are
+   * gated on the same scarce thing. Both Web Audio and the Fullscreen API
+   * require a user gesture, and on a wall-mounted TV there may never be another
+   * one after setup — so the first press of the remote's OK button has to spend
+   * itself on both or one of them never happens at all.
+   *
+   * Fullscreen is attempted once and its refusal is ignored. Decision 2 put this
+   * in a browser with no kiosk mode, and the plan accepts that browser chrome
+   * may simply remain visible: a bar at the top of the screen is not a failure
+   * worth surfacing to a room with nobody in it.
+   */
+  const fullscreenTried = useRef(false);
+  const requestFullscreen = useCallback(() => {
+    if (fullscreenTried.current) return;
+    fullscreenTried.current = true;
+    const element = document.documentElement;
+    if (document.fullscreenElement !== null) return;
+    if (typeof element.requestFullscreen !== "function") return;
+    // No `catch` branch on purpose — see above.
+    void Promise.resolve()
+      .then(() => element.requestFullscreen())
+      .catch(() => undefined);
+  }, []);
+
   // Any gesture counts, not just the prompt — a TV remote's OK button arrives as
   // a keydown, and that is the only input most of these screens will ever get.
   useEffect(() => {
-    if (soundUnlocked) return;
-    const onGesture = () => unlockSound();
+    const onGesture = () => {
+      if (!soundUnlocked) unlockSound();
+      requestFullscreen();
+    };
     window.addEventListener("pointerdown", onGesture);
     window.addEventListener("keydown", onGesture);
     return () => {
       window.removeEventListener("pointerdown", onGesture);
       window.removeEventListener("keydown", onGesture);
     };
-  }, [soundUnlocked, unlockSound]);
+  }, [soundUnlocked, unlockSound, requestFullscreen]);
+
+  /**
+   * Keep the panel awake for as long as this route is mounted.
+   *
+   * `navigator.wakeLock` is feature-detected inside the hook, but the
+   * silent-looping-muted-video fallback is written as the primary path, because
+   * the runtime this targets most likely does not implement the API at all. If
+   * both fail the hook reports `via: "none"` and says nothing further — a
+   * sleeping TV is not an error worth shouting about.
+   */
+  useWakeLock(true);
+
+  /**
+   * Burn-in drift.
+   *
+   * A few pixels on a slow cycle, applied as a transform on the grid rather than
+   * as layout, so it cannot reflow anything or produce the scrollbar the
+   * verification asserts against (`scrollable=false`). The container is
+   * `overflow-hidden`, so the movement is invisible at the edges too.
+   */
+  const [driftTick, setDriftTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(
+      () => setDriftTick((tick) => tick + 1),
+      DRIFT_INTERVAL_MS
+    );
+    return () => clearInterval(timer);
+  }, []);
+  const drift = driftOffset(driftTick);
+
+  /**
+   * Idle dim: the board is still readable at 3am, just no longer the brightest
+   * thing in the room. Re-evaluated every minute rather than scheduled to the
+   * boundary, so a suspended tab that wakes at 23:30 dims immediately instead of
+   * waiting for a timer that never fired.
+   */
+  const [localHour, setLocalHour] = useState(() => new Date().getHours());
+  useEffect(() => {
+    const timer = setInterval(() => setLocalHour(new Date().getHours()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const opacity = dimOpacity(localHour);
+
+  /**
+   * The watchdog. One hard reload after the socket has been dead past the
+   * threshold, and never a second — see `shouldReload`, which owns that rule and
+   * is unit-tested on it. This is for the overnight failure the reconnect loop
+   * cannot fix by itself: a redeployed worker, a rebooted router, a socket
+   * wedged open but dead, with nobody awake to press anything.
+   */
+  const downSince = useRef<number | null>(null);
+  const reloaded = useRef(false);
+  useEffect(() => {
+    if (status === "live") {
+      downSince.current = null;
+      return;
+    }
+    if (downSince.current === null) downSince.current = Date.now();
+
+    const timer = setInterval(() => {
+      if (
+        !shouldReload({
+          status,
+          downSince: downSince.current,
+          now: Date.now(),
+          reloaded: reloaded.current,
+        })
+      ) {
+        return;
+      }
+      reloaded.current = true;
+      window.location.reload();
+    }, Math.floor(WATCHDOG_MS / 4));
+
+    return () => clearInterval(timer);
+  }, [status]);
 
   /**
    * Keep the QR redeemable. The loader mints a ~120s single-use pairing token, so
@@ -245,8 +357,32 @@ export default function BoardDisplay({ loaderData }: Route.ComponentProps) {
       // two make the same fact assertable without a socket listener.
       data-muted={muted ? "true" : "false"}
       data-sound-pack={soundPack}
+      // Both kiosk behaviours are exposed so the soak run can assert them from
+      // the DOM instead of inferring them from a photograph of a television.
+      data-drift={`${drift.x},${drift.y}`}
+      data-dimmed={opacity < 1 ? "true" : "false"}
     >
-      <BoardGridView grid={grid} onMotion={onMotion} />
+      {/*
+        Drift and dim are applied to a wrapper, never to the grid's own layout:
+        a transform cannot reflow, so the 24×6 geometry and the
+        `scrollable=false` assertion both survive with drift active.
+      */}
+      <div
+        className="transition-opacity duration-1000"
+        style={{
+          transform: `translate3d(${drift.x}px, ${drift.y}px, 0)`,
+          opacity,
+        }}
+      >
+        <BoardGridView grid={grid} onMotion={onMotion} />
+      </div>
+
+      {/*
+        The last grid stays on screen while the socket is down — a split-flap
+        board holding its last message is correct. The spinner is a scrim over
+        it, so the board never pretends to be live and never goes blank either.
+      */}
+      <BoardOffline status={status} />
 
       {/*
         A blip must never take the board away, so the connection state is a dim
