@@ -34,9 +34,41 @@ export const BOARD_AGENT_MODEL = "claude-sonnet-5";
 /**
  * Thinking is on by default on this model and `max_tokens` caps thinking *plus*
  * response text, so this is generous relative to the ~200 tokens of JSON we
- * actually want back.
+ * actually want back. Doubled from 4096 when web search landed: a searching turn
+ * emits `server_tool_use` and result blocks into the *output* alongside the JSON,
+ * and a truncation here costs a whole repair cycle.
  */
-export const BOARD_AGENT_MAX_TOKENS = 4096;
+export const BOARD_AGENT_MAX_TOKENS = 8192;
+
+/**
+ * Web search, so "what's the weather" puts today's weather on the board instead
+ * of the model's training-cutoff guess. `_20260318` is the newest variant the
+ * SDK types and this model support; it brings **dynamic filtering**, which runs
+ * the search from inside code execution and filters results before they reach
+ * the context window. That matters here: a raw weather search is ~18k input
+ * tokens, and the board only needs a temperature.
+ *
+ * Do **not** add `code_execution` to this array. `allowed_callers` already
+ * defaults to `["code_execution_20260120"]` on this variant and the API
+ * provisions the execution environment itself; declaring a second one confuses
+ * the model about which to use.
+ *
+ * `max_uses` is a hard cap, not a hint. Three is enough for the questions a
+ * board gets asked (one subject, one fact) and it bounds both the bill — web
+ * search bills per search on top of tokens — and the time someone spends
+ * holding a phone in front of a blank TV.
+ */
+export const BOARD_AGENT_TOOLS: Anthropic.ToolUnion[] = [
+  { type: "web_search_20260318", name: "web_search", max_uses: 3 },
+];
+
+/**
+ * Server tools run in a loop on Anthropic's side, and a long one comes back as
+ * `stop_reason: "pause_turn"` rather than a finished answer. Continuing is just
+ * re-sending the paused turn, so the cap is only a runaway guard — the search
+ * budget above is the real bound.
+ */
+export const BOARD_AGENT_MAX_PAUSES = 3;
 
 /**
  * `low` effort, because the hard part of this task is obeying a 6×24 grid and a
@@ -86,6 +118,12 @@ export const BOARD_AGENT_MAX_ATTEMPTS = 3;
  * - **Naming the subject.** Asked for the weather in Oslo it writes `TODAY'S
  *   OUTLOOK`, because nothing told it the board is read by someone who cannot see
  *   the prompt. A board about a named thing should say which thing.
+ * - **Searching.** The model decides on its own whether a request needs the web,
+ *   and left alone it under-reaches: asked for the weather it will happily invent
+ *   a plausible temperature, which is the one failure mode a board makes look
+ *   authoritative. So the trigger condition is stated, and paired with its
+ *   opposite — a board is six rows, and a model that searches before writing
+ *   `HAPPY BIRTHDAY MUM` has spent ten seconds and two searches on nothing.
  *
  * Colour choice is then a semantic instruction rather than a palette: a
  * temperature coloured by how cold it is carries information, a temperature
@@ -117,6 +155,10 @@ export const BOARD_AGENT_SYSTEM_PROMPT = [
     BOARD_COLS - 2
   } for the text.`,
   "- Decorate only when the request asks for a look, or when a headline is helped by a frame. A plain message stays plain — no gratuitous borders.",
+  "",
+  "FACTS",
+  "- If the board depends on something current — weather, a forecast, a score, a price, a departure time, today's news — search the web for it first and put the real number on the board. Never invent one: a split-flap board reads as fact.",
+  "- If the request needs no outside information — a greeting, a reminder, a joke, a countdown, an edit to what is already up there — do not search. Write the board.",
   "",
   "Be brief and have some personality. Vary the wording, colours and layout each time — never fall back on the same template.",
 ].join("\n");
@@ -265,12 +307,27 @@ export class BoardAgent extends Context.Tag("app/BoardAgent")<
 /** Cap the fed-back decode error so a pathological tree can't blow up the prompt. */
 const MAX_FED_BACK_ERROR = 600;
 
-const textOf = (message: Anthropic.Message): string =>
-  message.content
+/**
+ * The JSON is the **trailing** run of text blocks, not every text block joined.
+ *
+ * Without search there is only ever one, so the two definitions agree. With
+ * search the response is `server_tool_use` / `web_search_tool_result` /
+ * `code_execution_tool_result` / … / text, and the model is free to narrate
+ * before it searches. Joining everything would then hand `JSON.parse` a
+ * sentence glued to an object — a decode failure that reads like a model
+ * mistake and costs a retry, for a response that was actually fine.
+ */
+const textOf = (message: Anthropic.Message): string => {
+  // `findLastIndex` would say this in one line, but it needs lib es2023.
+  let start = message.content.length;
+  while (start > 0 && message.content[start - 1]!.type === "text") start -= 1;
+  return message.content
+    .slice(start)
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
     .map((block) => block.text)
     .join("")
     .trim();
+};
 
 /** JSON.parse throws; `Effect.try` is the only place that's allowed to matter. */
 const parseJson = (text: string) =>
@@ -324,7 +381,24 @@ const finish = (
   };
 };
 
-const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[]) =>
+/** What one completed model turn yields: the JSON, and the turn itself to echo. */
+interface Turn {
+  readonly text: string;
+  /**
+   * The assistant turn verbatim. Echoed rather than reduced to `text` because
+   * search results carry `encrypted_content` that the API decrypts to restore
+   * them on later turns — send the blocks back unchanged and a retry still sees
+   * what was found; send only the text and the model searches all over again.
+   * It also keeps the thinking blocks, which must be replayed unmodified.
+   */
+  readonly content: Anthropic.ContentBlock[];
+}
+
+const callModel = (
+  client: BoardAgentClient,
+  messages: Anthropic.MessageParam[],
+  pauses = 0
+): Effect.Effect<Turn, BoardGenerationError | LlmRefusedError> =>
   Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
       try: () =>
@@ -333,6 +407,7 @@ const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[])
           max_tokens: BOARD_AGENT_MAX_TOKENS,
           system: BOARD_AGENT_SYSTEM_PROMPT,
           messages,
+          tools: BOARD_AGENT_TOOLS,
           output_config: {
             effort: BOARD_AGENT_EFFORT,
             format: {
@@ -355,6 +430,29 @@ const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[])
       );
     }
 
+    // A long search turn is paused, not finished: there is no JSON to read yet,
+    // and continuing is simply re-sending the paused turn with nothing appended.
+    // This is not a retry — the model has made no mistake — so it does not spend
+    // an attempt.
+    if (response.stop_reason === "pause_turn") {
+      if (pauses >= BOARD_AGENT_MAX_PAUSES) {
+        return yield* Effect.fail(
+          new BoardGenerationError({
+            stage: "empty",
+            cause: `model paused ${BOARD_AGENT_MAX_PAUSES} times without finishing`,
+          })
+        );
+      }
+      yield* Effect.logWarning("Board agent turn paused; continuing").pipe(
+        Effect.annotateLogs({ pauses: pauses + 1 })
+      );
+      return yield* callModel(
+        client,
+        [...messages, { role: "assistant", content: response.content }],
+        pauses + 1
+      );
+    }
+
     const text = textOf(response);
     if (text.length === 0) {
       return yield* Effect.fail(
@@ -366,7 +464,7 @@ const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[])
         })
       );
     }
-    return text;
+    return { text, content: response.content };
   });
 
 /**
@@ -395,8 +493,8 @@ const runPipeline = (
   BoardGenerationError | LlmRefusedError
 > =>
   Effect.gen(function* () {
-    const text = yield* callModel(client, messages);
-    const verdict = yield* evaluate(text);
+    const turn = yield* callModel(client, messages);
+    const verdict = yield* evaluate(turn.text);
 
     if (Either.isRight(verdict)) {
       return finish(verdict.right, { attempts: attempt, repaired: false });
@@ -421,7 +519,7 @@ const runPipeline = (
       client,
       [
         ...messages,
-        { role: "assistant", content: text },
+        { role: "assistant", content: turn.content },
         { role: "user", content: retryTurn(verdict.left.error) },
       ],
       attempt + 1

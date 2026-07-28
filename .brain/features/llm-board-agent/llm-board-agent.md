@@ -35,6 +35,35 @@ Model notes: the id is the bare string `claude-sonnet-5` (no date suffix); it re
 `temperature` / `top_p`, so variety comes from the prompt. `ANTHROPIC_API_KEY` is read through the
 `CloudflareEnv` tag — never `process.env`.
 
+### Web search (added 2026-07-28)
+`board.generate` declares the server-side `web_search_20260318` tool, so "what's the weather in
+Oslo" puts today's temperature on the board instead of a training-cutoff guess. Confirmed live:
+web search and `output_config.format` `json_schema` coexist — the turn ends `end_turn` with a
+schema-valid JSON text block.
+
+Three consequences the code has to handle, none of which existed before:
+
+- **The JSON is the *trailing* text run.** A searching response is
+  `server_tool_use` / `web_search_tool_result` / `code_execution_tool_result` / … / text, and the
+  model may narrate before searching. `textOf` therefore reads only the text blocks after the last
+  non-text block; joining all of them would hand `JSON.parse` a sentence glued to an object.
+- **`stop_reason: "pause_turn"`.** A long search turn comes back paused. `callModel` resends the
+  paused turn unchanged (up to `BOARD_AGENT_MAX_PAUSES`) and does **not** spend a retry attempt —
+  the model made no mistake.
+- **Retries echo content blocks, not text.** Search results carry `encrypted_content` the API
+  decrypts to restore them on later turns, so the assistant turn goes back verbatim. Echoing only
+  the text would silently make the model search again (and drop thinking blocks, which must be
+  replayed unmodified).
+
+`max_uses: 3` bounds both the bill (web search is billed per search on top of tokens) and the wait.
+Do **not** add `code_execution` to `tools`: on `_20260318` `allowed_callers` already defaults to
+`["code_execution_20260120"]` for dynamic filtering, and the API provisions that environment
+itself. `max_tokens` went 4096 → 8192 for the extra output blocks.
+
+Measured latency on a real call: ~10s no-search, ~31s with search (two searches + filtering). The
+search path is slow enough to be a UX question, not just a cost one — see the open issue on rate
+limiting / spend caps.
+
 ### Persistence details
 - No new tables. Generated grids are written as `board_snapshot` rows with `source: "llm"` and the
   originating `prompt` retained for history and debugging.
@@ -61,7 +90,7 @@ pre-recorded audio fixture, plus the empty-transcript error path.
 - `[[split-flap-board]]` — schema, compiler, repair, DO write path
 - `[[phone-control]]` — the controller route hosting the button, and the pairing grant
 - CF bindings: `AI` (Whisper, first consumer); new secret `ANTHROPIC_API_KEY`
-- External: `@anthropic-ai/sdk`
+- External: `@anthropic-ai/sdk`; Anthropic-hosted web search (billed per search, separate from tokens)
 
 ## Tagged Errors
 

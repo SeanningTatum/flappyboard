@@ -4,8 +4,10 @@ import { it } from "@effect/vitest";
 import { Cause, Effect, Exit, Layer } from "effect";
 import {
   BOARD_AGENT_MAX_ATTEMPTS,
+  BOARD_AGENT_MAX_PAUSES,
   BOARD_AGENT_MODEL,
   BOARD_AGENT_SYSTEM_PROMPT,
+  BOARD_AGENT_TOOLS,
   BOARD_MESSAGE_JSON_SCHEMA,
   BoardAgent,
   BoardAgentLive,
@@ -84,12 +86,78 @@ const VALID = JSON.stringify({
   ],
 });
 
+/**
+ * A response from a searching turn: the model narrates, searches, and only then
+ * emits the JSON. The narration is the trap — joining every text block would
+ * hand `JSON.parse` a sentence glued to an object.
+ */
+const searchedReply = (text: string): Anthropic.Message =>
+  ({
+    id: "msg_test",
+    type: "message",
+    role: "assistant",
+    model: BOARD_AGENT_MODEL,
+    stop_reason: "end_turn",
+    stop_details: null,
+    content: [
+      { type: "text", text: "I'll look up the weather in Oslo.", citations: null },
+      {
+        type: "server_tool_use",
+        id: "srvtoolu_test",
+        name: "web_search",
+        input: { query: "oslo weather" },
+      },
+      {
+        type: "web_search_tool_result",
+        tool_use_id: "srvtoolu_test",
+        content: [
+          {
+            type: "web_search_result",
+            url: "https://example.test/oslo",
+            title: "Oslo weather",
+            encrypted_content: "ENCRYPTED",
+            page_age: null,
+          },
+        ],
+      },
+      { type: "text", text, citations: null },
+    ],
+  }) as unknown as Anthropic.Message;
+
+/** A turn the server paused mid-search. There is no JSON in it yet. */
+const paused = (): Anthropic.Message =>
+  ({
+    id: "msg_test",
+    type: "message",
+    role: "assistant",
+    model: BOARD_AGENT_MODEL,
+    stop_reason: "pause_turn",
+    stop_details: null,
+    content: [
+      {
+        type: "server_tool_use",
+        id: "srvtoolu_paused",
+        name: "web_search",
+        input: { query: "oslo weather" },
+      },
+    ],
+  }) as unknown as Anthropic.Message;
+
 const lastUserText = (
   params: Anthropic.MessageCreateParamsNonStreaming
 ): string => {
   const last = params.messages[params.messages.length - 1]!;
   return typeof last.content === "string" ? last.content : "";
 };
+
+/** Assistant turns are echoed back as content blocks, not as a flat string. */
+const assistantText = (message: Anthropic.MessageParam): string =>
+  typeof message.content === "string"
+    ? message.content
+    : message.content
+        .filter((block): block is Anthropic.TextBlockParam => block.type === "text")
+        .map((block) => block.text)
+        .join("");
 
 const failureOf = <A, E>(exit: Exit.Exit<A, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -210,6 +278,34 @@ describe("BoardAgent request shape", () => {
     })
   );
 
+  it.effect("offers web search, capped, and does not declare its own code execution", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([reply(VALID)]);
+      yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+
+      const tools = recorded.calls[0]!.tools ?? [];
+      expect(tools).toEqual(BOARD_AGENT_TOOLS);
+      expect(tools).toHaveLength(1);
+      const search = tools[0] as Anthropic.WebSearchTool20260318;
+      expect(search.type).toBe("web_search_20260318");
+      // A hard bound on both the bill and how long someone waits at the TV.
+      expect(search.max_uses).toBe(3);
+      // Dynamic filtering provisions its own execution environment; a second
+      // one only confuses the model about which to call.
+      expect(
+        tools.some((tool) => tool.type?.startsWith("code_execution") ?? false)
+      ).toBe(false);
+    })
+  );
+
+  it("tells the model when to search and, just as importantly, when not to", () => {
+    expect(BOARD_AGENT_SYSTEM_PROMPT).toContain("search the web for it first");
+    expect(BOARD_AGENT_SYSTEM_PROMPT).toContain("do not search");
+  });
+
   it.effect("includes the current board so a follow-up prompt can edit it", () =>
     Effect.gen(function* () {
       const { client, recorded } = stubClient([reply(VALID)]);
@@ -275,6 +371,90 @@ describe("BoardAgent happy path", () => {
   );
 });
 
+describe("BoardAgent with web search", () => {
+  it.effect("reads the JSON that follows the search, not the narration before it", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([searchedReply(VALID)]);
+      const result = yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+
+      // One call: the narration is not a decode failure, so nothing is retried.
+      expect(recorded.calls).toHaveLength(1);
+      expect(result.attempts).toBe(1);
+      expect(result.repaired).toBe(false);
+      expect(result.grid.rows[0]!.map((c) => c.char).join("")).toContain(
+        "GOOD MORNING"
+      );
+    })
+  );
+
+  it.effect("echoes the search results back on a retry instead of searching again", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([
+        searchedReply("not json at all"),
+        reply(VALID),
+      ]);
+      yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+
+      const echoed = recorded.calls[1]!.messages[1]!;
+      expect(echoed.role).toBe("assistant");
+      expect(Array.isArray(echoed.content)).toBe(true);
+      const blocks = echoed.content as Anthropic.ContentBlockParam[];
+      // The result block must go back verbatim — the API decrypts
+      // `encrypted_content` to restore what was found, and a missing or edited
+      // one is a 400.
+      const searchResult = blocks.find(
+        (block) => block.type === "web_search_tool_result"
+      ) as { content: Array<{ encrypted_content: string }> } | undefined;
+      expect(searchResult?.content[0]!.encrypted_content).toBe("ENCRYPTED");
+      expect(blocks.some((block) => block.type === "server_tool_use")).toBe(true);
+    })
+  );
+
+  it.effect("continues a paused turn without spending a retry attempt", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([paused(), reply(VALID)]);
+      const result = yield* makeBoardAgent(client).generate({
+        prompt: "what's the weather in oslo",
+        current: blankGrid(),
+      });
+
+      expect(recorded.calls).toHaveLength(2);
+      // The model made no mistake, so this is not attempt 2.
+      expect(result.attempts).toBe(1);
+      expect(result.repaired).toBe(false);
+
+      // The paused turn goes back unchanged, with nothing appended after it —
+      // a correction here would be answering a question the model never asked.
+      const resumed = recorded.calls[1]!.messages;
+      expect(resumed).toHaveLength(2);
+      expect(resumed[1]!.role).toBe("assistant");
+    })
+  );
+
+  it.effect("gives up on a turn that never stops pausing", () =>
+    Effect.gen(function* () {
+      const { client, recorded } = stubClient([paused()]);
+      const exit = yield* Effect.exit(
+        makeBoardAgent(client).generate({
+          prompt: "what's the weather in oslo",
+          current: blankGrid(),
+        })
+      );
+
+      const error = failureOf(exit);
+      expect(error._tag).toBe("BoardGenerationError");
+      expect(error).toMatchObject({ stage: "empty" });
+      expect(recorded.calls).toHaveLength(BOARD_AGENT_MAX_PAUSES + 1);
+    })
+  );
+});
+
 describe("BoardAgent retry", () => {
   it.effect("retries after malformed JSON and succeeds on the second attempt", () =>
     Effect.gen(function* () {
@@ -313,7 +493,7 @@ describe("BoardAgent retry", () => {
       // The conversation grew by the model's own bad answer plus the correction.
       expect(retry.messages).toHaveLength(3);
       expect(retry.messages[1]!.role).toBe("assistant");
-      expect(retry.messages[1]!.content).toContain("nope");
+      expect(assistantText(retry.messages[1]!)).toContain("nope");
 
       const correction = lastUserText(retry);
       expect(correction).toContain("did not decode as a board message");
