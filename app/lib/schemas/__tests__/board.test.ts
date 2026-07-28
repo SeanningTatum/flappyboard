@@ -9,6 +9,7 @@ import {
   DEFAULT_COLOR,
   decodeBoardGrid,
   decodeBoardMessage,
+  decodeRouterDecision,
   isBoardChar,
 } from "../board";
 
@@ -110,5 +111,42 @@ describe("BoardMessage", () => {
 
   it("accepts an empty board", () => {
     expect(Either.isRight(decodeBoardMessage({ rows: [] }))).toBe(true);
+  });
+});
+
+/**
+ * The router's reply gates whether the search tool is attached, and the agent
+ * falls open to searching on a decode failure. So the property that matters is
+ * that a *truthy* answer is not accepted as a *true* one — coercion here would
+ * silently route every malformed reply to the expensive branch.
+ */
+describe("decodeRouterDecision", () => {
+  it("accepts either boolean", () => {
+    const yes = decodeRouterDecision({ needs_live_data: true });
+    const no = decodeRouterDecision({ needs_live_data: false });
+    expect(Either.isRight(yes)).toBe(true);
+    expect(Either.isRight(no)).toBe(true);
+    if (Either.isRight(yes)) expect(yes.right.needs_live_data).toBe(true);
+    if (Either.isRight(no)) expect(no.right.needs_live_data).toBe(false);
+  });
+
+  it.each([
+    ["a truthy string", "yes"],
+    ["a falsy string", ""],
+    ["a truthy number", 1],
+    ["zero", 0],
+    ["null", null],
+  ])("rejects %s rather than coercing it", (_label, value) => {
+    expect(
+      Either.isLeft(decodeRouterDecision({ needs_live_data: value }))
+    ).toBe(true);
+  });
+
+  it("rejects a missing field", () => {
+    expect(Either.isLeft(decodeRouterDecision({}))).toBe(true);
+  });
+
+  it("rejects a non-object", () => {
+    expect(Either.isLeft(decodeRouterDecision("true"))).toBe(true);
   });
 });

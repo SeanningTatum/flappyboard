@@ -16,6 +16,7 @@ import {
   BOARD_COLS,
   BOARD_ROWS,
   decodeBoardMessage,
+  decodeRouterDecision,
   type BoardGrid,
   type BoardMessage,
 } from "@/lib/schemas/board";
@@ -692,32 +693,29 @@ export const routeFor = (
       return SEARCHING_ROUTE;
     }
 
-    const decision = yield* Effect.either(
-      Effect.try({
-        try: () => {
-          const parsed = JSON.parse(textOf(response.right)) as {
-            needs_live_data?: unknown;
-          };
-          if (typeof parsed.needs_live_data !== "boolean") {
-            throw new Error("needs_live_data was not a boolean");
-          }
-          return parsed.needs_live_data;
-        },
-        catch: (cause) => cause,
-      })
-    );
+    const parsed = yield* Effect.either(parseJson(textOf(response.right)));
+    if (Either.isLeft(parsed)) {
+      yield* Effect.logWarning(
+        "Board router did not return JSON — defaulting to the searching route"
+      ).pipe(Effect.annotateLogs({ cause: parsed.left }));
+      return SEARCHING_ROUTE;
+    }
 
+    // Effect Schema rather than a `typeof` check, so a truthy-but-wrong answer
+    // (`"yes"`, `1`) is a decode failure and therefore falls open, instead of
+    // being coerced into the expensive branch by accident.
+    const decision = decodeRouterDecision(parsed.right);
     if (Either.isLeft(decision)) {
       yield* Effect.logWarning(
-        "Board router returned unusable JSON — defaulting to the searching route"
-      ).pipe(Effect.annotateLogs({ cause: String(decision.left) }));
+        "Board router reply did not decode — defaulting to the searching route"
+      ).pipe(Effect.annotateLogs({ cause: decision.left.message }));
       return SEARCHING_ROUTE;
     }
 
     yield* Effect.logInfo("Board route chosen").pipe(
-      Effect.annotateLogs({ needsLiveData: decision.right })
+      Effect.annotateLogs({ needsLiveData: decision.right.needs_live_data })
     );
-    return decision.right ? SEARCHING_ROUTE : PLAIN_ROUTE;
+    return decision.right.needs_live_data ? SEARCHING_ROUTE : PLAIN_ROUTE;
   });
 
 export const makeBoardAgent = (client: BoardAgentClient): BoardAgentShape => ({
