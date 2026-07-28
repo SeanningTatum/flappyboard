@@ -16,6 +16,7 @@ import {
   BOARD_COLS,
   BOARD_ROWS,
   decodeBoardMessage,
+  decodeRouterDecision,
   type BoardGrid,
   type BoardMessage,
 } from "@/lib/schemas/board";
@@ -34,9 +35,103 @@ export const BOARD_AGENT_MODEL = "claude-sonnet-5";
 /**
  * Thinking is on by default on this model and `max_tokens` caps thinking *plus*
  * response text, so this is generous relative to the ~200 tokens of JSON we
- * actually want back.
+ * actually want back. Doubled from 4096 when web search landed: a searching turn
+ * emits `server_tool_use` and result blocks into the *output* alongside the JSON,
+ * and a truncation here costs a whole repair cycle.
  */
-export const BOARD_AGENT_MAX_TOKENS = 4096;
+export const BOARD_AGENT_MAX_TOKENS = 8192;
+
+/**
+ * Web search, so "what's the weather" puts today's weather on the board instead
+ * of the model's training-cutoff guess.
+ *
+ * **`allowed_callers: ["direct"]` deliberately turns dynamic filtering off**, and
+ * the reason is measured, not assumed. Left on its default the tool runs the
+ * search from inside code execution and filters results before they reach the
+ * context window — which saves tokens and costs a great deal of wall clock,
+ * because the code-execution leg is serial and the phone is waiting on it. Direct
+ * search on the same prompt: **14.5s and ~14k input tokens** against **30–35s** for
+ * the filtered path. Filtering optimises the wrong resource for this feature.
+ *
+ * Turning it off is also what makes `max_uses: 1` viable. A cap of 1 *with*
+ * filtering does not bound the search, it starves it: the single use is spent
+ * inside the code path and the model concludes the tool is broken, writing
+ * `LIVE FEED UNAVAILABLE / SEARCH TOOL OFFLINE` onto the board. Measured twice,
+ * at 73s and 41s. One direct search is what a board actually needs — one subject,
+ * one fact — and it bounds the bill, since search bills per use on top of tokens.
+ *
+ * Do **not** add `code_execution` here. Nothing in this configuration needs it,
+ * and a second execution environment only confuses the model about which to call.
+ */
+export const BOARD_AGENT_TOOLS: Anthropic.ToolUnion[] = [
+  {
+    type: "web_search_20260318",
+    name: "web_search",
+    max_uses: 1,
+    allowed_callers: ["direct"],
+  },
+];
+
+/* -------------------------------------------------------------------------- */
+/* Routing                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Haiku decides one thing: does this request depend on information the model
+ * cannot already know?
+ *
+ * The point is **not** to run the board on a cheaper model — that was measured and
+ * buys nothing. Haiku wrote a board in 16.5s against Sonnet's 14.5s, because the
+ * wall clock is dominated by the search round trip rather than by model tier, and
+ * Haiku's layout was visibly worse (blank rows where Sonnet uses `spread`).
+ *
+ * The point is to decide **whether to attach the search tool at all**. That turns
+ * the do-not-search rule from a line in the prompt into a property of the request:
+ * a plain board physically cannot search, so it cannot spend the time or the money
+ * or invent a figure. The prompt alone does not hold — with direct search enabled,
+ * five of six plain prompts searched anyway, taking a reminder from ~3s to ~9s and
+ * billing a search for it.
+ *
+ * Haiku 4.5 is the router because it is the cheapest model that supports
+ * structured outputs, and one boolean is exactly the shape of work it is good at.
+ * Note it rejects `output_config.effort` with a 400 and has no adaptive thinking,
+ * so neither is sent.
+ */
+export const BOARD_ROUTER_MODEL = "claude-haiku-4-5";
+
+/** One boolean of JSON. The cap is generous purely so a stray token cannot truncate it. */
+export const BOARD_ROUTER_MAX_TOKENS = 256;
+
+export const BOARD_ROUTER_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["needs_live_data"],
+  properties: {
+    needs_live_data: {
+      type: "boolean",
+      description:
+        "True if answering needs current real-world information the model cannot already know — weather, forecast, score, price, departure time, exchange rate, today's news. False for anything self-contained: greetings, reminders, jokes, countdowns, announcements, or edits to the board's current text.",
+    },
+  },
+};
+
+export const BOARD_ROUTER_SYSTEM_PROMPT = [
+  "You route one request and return only JSON.",
+  "",
+  "Decide whether writing this message needs current real-world information that you could not already know — weather, a forecast, a score, a price, a departure time, an exchange rate, today's news.",
+  "",
+  'Answer false when the request is self-contained: a greeting, a reminder ("bin day is Thursday"), a joke, a countdown, an announcement, or an edit to what is already on the board. A date or a day of the week that the request itself supplies is not live data.',
+  "",
+  "Answer true only if a figure or fact would have to be looked up to be correct.",
+].join("\n");
+
+/**
+ * Server tools run in a loop on Anthropic's side, and a long one comes back as
+ * `stop_reason: "pause_turn"` rather than a finished answer. Continuing is just
+ * re-sending the paused turn, so the cap is only a runaway guard — the search
+ * budget above is the real bound.
+ */
+export const BOARD_AGENT_MAX_PAUSES = 3;
 
 /**
  * `low` effort, because the hard part of this task is obeying a 6×24 grid and a
@@ -86,12 +181,18 @@ export const BOARD_AGENT_MAX_ATTEMPTS = 3;
  * - **Naming the subject.** Asked for the weather in Oslo it writes `TODAY'S
  *   OUTLOOK`, because nothing told it the board is read by someone who cannot see
  *   the prompt. A board about a named thing should say which thing.
+ * - **Searching.** The model decides on its own whether a request needs the web,
+ *   and left alone it under-reaches: asked for the weather it will happily invent
+ *   a plausible temperature, which is the one failure mode a board makes look
+ *   authoritative. So the trigger condition is stated, and paired with its
+ *   opposite — a board is six rows, and a model that searches before writing
+ *   `HAPPY BIRTHDAY MUM` has spent ten seconds and two searches on nothing.
  *
  * Colour choice is then a semantic instruction rather than a palette: a
  * temperature coloured by how cold it is carries information, a temperature
  * coloured at random is decoration.
  */
-export const BOARD_AGENT_SYSTEM_PROMPT = [
+const BOARD_AGENT_PROMPT_BODY = [
   `You compose on a physical split-flap board: a grid of ${BOARD_ROWS} rows × ${BOARD_COLS} columns, ${
     BOARD_ROWS * BOARD_COLS
   } tiles. Every tile shows either one character or one solid colour. You are laying out a grid, not writing lines of text.`,
@@ -118,7 +219,42 @@ export const BOARD_AGENT_SYSTEM_PROMPT = [
   } for the text.`,
   "- Decorate only when the request asks for a look, or when a headline is helped by a frame. A plain message stays plain — no gratuitous borders.",
   "",
-  "Be brief and have some personality. Vary the wording, colours and layout each time — never fall back on the same template.",
+].join("\n");
+
+const BOARD_AGENT_PROMPT_TAIL =
+  "\nBe brief and have some personality. Vary the wording, colours and layout each time — never fall back on the same template.";
+
+/**
+ * The prompt sent when the request was routed as needing live data, so the search
+ * tool is actually attached. Telling the model to search is only honest here.
+ */
+export const BOARD_AGENT_SYSTEM_PROMPT = [
+  BOARD_AGENT_PROMPT_BODY,
+  "FACTS",
+  "- If the board depends on something current — weather, a forecast, a score, a price, a departure time, today's news — search the web for it first and put the real number on the board. Never invent one: a split-flap board reads as fact.",
+  "- One search. Read what it gives you and write the board; do not go looking for a second opinion.",
+  BOARD_AGENT_PROMPT_TAIL,
+].join("\n");
+
+/**
+ * The prompt sent when the request was routed as *not* needing live data, so no
+ * search tool is attached at all.
+ *
+ * It is a separate prompt rather than the same one, because a request with no
+ * tool carrying an instruction to "search the web first" is a lie the model acts
+ * on: starve the search and it writes `LIVE FEED UNAVAILABLE / SEARCH TOOL
+ * OFFLINE` onto the board — measured, twice. So the no-tool prompt states the
+ * constraint instead, which turns the one bad case (a live-data request the
+ * router got wrong) into an honest board rather than an invented number. Two
+ * variants also means two stable prompt prefixes, both cacheable; a prompt built
+ * per request would be neither.
+ */
+export const BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH = [
+  BOARD_AGENT_PROMPT_BODY,
+  "FACTS",
+  "- You cannot look anything up on this request. Write the board from what the request already tells you.",
+  "- Never state a number as fact that the request did not give you — no temperature, price, score or departure time. A split-flap board reads as fact, so inventing one is worse than leaving it out. If the request needed a figure you were not given, say plainly on the board that it is unavailable.",
+  BOARD_AGENT_PROMPT_TAIL,
 ].join("\n");
 
 /**
@@ -265,12 +401,27 @@ export class BoardAgent extends Context.Tag("app/BoardAgent")<
 /** Cap the fed-back decode error so a pathological tree can't blow up the prompt. */
 const MAX_FED_BACK_ERROR = 600;
 
-const textOf = (message: Anthropic.Message): string =>
-  message.content
+/**
+ * The JSON is the **trailing** run of text blocks, not every text block joined.
+ *
+ * Without search there is only ever one, so the two definitions agree. With
+ * search the response is `server_tool_use` / `web_search_tool_result` /
+ * `code_execution_tool_result` / … / text, and the model is free to narrate
+ * before it searches. Joining everything would then hand `JSON.parse` a
+ * sentence glued to an object — a decode failure that reads like a model
+ * mistake and costs a retry, for a response that was actually fine.
+ */
+const textOf = (message: Anthropic.Message): string => {
+  // `findLastIndex` would say this in one line, but it needs lib es2023.
+  let start = message.content.length;
+  while (start > 0 && message.content[start - 1]!.type === "text") start -= 1;
+  return message.content
+    .slice(start)
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
     .map((block) => block.text)
     .join("")
     .trim();
+};
 
 /** JSON.parse throws; `Effect.try` is the only place that's allowed to matter. */
 const parseJson = (text: string) =>
@@ -324,15 +475,55 @@ const finish = (
   };
 };
 
-const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[]) =>
+/** What one completed model turn yields: the JSON, and the turn itself to echo. */
+interface Turn {
+  readonly text: string;
+  /**
+   * The assistant turn verbatim. Echoed rather than reduced to `text` because
+   * search results carry `encrypted_content` that the API decrypts to restore
+   * them on later turns — send the blocks back unchanged and a retry still sees
+   * what was found; send only the text and the model searches all over again.
+   * It also keeps the thinking blocks, which must be replayed unmodified.
+   */
+  readonly content: Anthropic.ContentBlock[];
+}
+
+/**
+ * What the router decided, as the two things it changes about the request.
+ *
+ * `tools` is **omitted entirely** rather than sent empty when the board needs no
+ * search: an absent tool is what makes the guardrail structural instead of
+ * advisory, and it keeps the request shape identical to the pre-search one.
+ */
+interface Route {
+  readonly system: string;
+  readonly tools?: Anthropic.ToolUnion[];
+}
+
+export const SEARCHING_ROUTE: Route = {
+  system: BOARD_AGENT_SYSTEM_PROMPT,
+  tools: BOARD_AGENT_TOOLS,
+};
+
+export const PLAIN_ROUTE: Route = {
+  system: BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH,
+};
+
+const callModel = (
+  client: BoardAgentClient,
+  route: Route,
+  messages: Anthropic.MessageParam[],
+  pauses = 0
+): Effect.Effect<Turn, BoardGenerationError | LlmRefusedError> =>
   Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
       try: () =>
         client({
           model: BOARD_AGENT_MODEL,
           max_tokens: BOARD_AGENT_MAX_TOKENS,
-          system: BOARD_AGENT_SYSTEM_PROMPT,
+          system: route.system,
           messages,
+          ...(route.tools ? { tools: route.tools } : {}),
           output_config: {
             effort: BOARD_AGENT_EFFORT,
             format: {
@@ -355,6 +546,30 @@ const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[])
       );
     }
 
+    // A long search turn is paused, not finished: there is no JSON to read yet,
+    // and continuing is simply re-sending the paused turn with nothing appended.
+    // This is not a retry — the model has made no mistake — so it does not spend
+    // an attempt.
+    if (response.stop_reason === "pause_turn") {
+      if (pauses >= BOARD_AGENT_MAX_PAUSES) {
+        return yield* Effect.fail(
+          new BoardGenerationError({
+            stage: "empty",
+            cause: `model paused ${BOARD_AGENT_MAX_PAUSES} times without finishing`,
+          })
+        );
+      }
+      yield* Effect.logWarning("Board agent turn paused; continuing").pipe(
+        Effect.annotateLogs({ pauses: pauses + 1 })
+      );
+      return yield* callModel(
+        client,
+        route,
+        [...messages, { role: "assistant", content: response.content }],
+        pauses + 1
+      );
+    }
+
     const text = textOf(response);
     if (text.length === 0) {
       return yield* Effect.fail(
@@ -366,7 +581,7 @@ const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[])
         })
       );
     }
-    return text;
+    return { text, content: response.content };
   });
 
 /**
@@ -388,6 +603,7 @@ const callModel = (client: BoardAgentClient, messages: Anthropic.MessageParam[])
  */
 const runPipeline = (
   client: BoardAgentClient,
+  route: Route,
   messages: Anthropic.MessageParam[],
   attempt: number
 ): Effect.Effect<
@@ -395,8 +611,8 @@ const runPipeline = (
   BoardGenerationError | LlmRefusedError
 > =>
   Effect.gen(function* () {
-    const text = yield* callModel(client, messages);
-    const verdict = yield* evaluate(text);
+    const turn = yield* callModel(client, route, messages);
+    const verdict = yield* evaluate(turn.text);
 
     if (Either.isRight(verdict)) {
       return finish(verdict.right, { attempts: attempt, repaired: false });
@@ -419,22 +635,100 @@ const runPipeline = (
 
     return yield* runPipeline(
       client,
+      route,
       [
         ...messages,
-        { role: "assistant", content: text },
+        { role: "assistant", content: turn.content },
         { role: "user", content: retryTurn(verdict.left.error) },
       ],
       attempt + 1
     );
   });
 
+/**
+ * Ask Haiku whether this request needs the web, and pick the route.
+ *
+ * **Never fails, and defaults to searching.** Every unhappy path — network error,
+ * refusal, unparseable JSON, a boolean that isn't there — resolves to
+ * `SEARCHING_ROUTE`, because the two ways to be wrong are not symmetric. Route a
+ * plain board to the searching path and it costs a few seconds and one search.
+ * Route a weather board to the plain path and the board either says the figure is
+ * unavailable or, worse, the model reaches for one it cannot have — which is the
+ * exact failure this whole feature exists to remove. So the cheap mistake is the
+ * default and the expensive one has to be earned by an explicit `false`.
+ */
+export const routeFor = (
+  client: BoardAgentClient,
+  prompt: string
+): Effect.Effect<Route> =>
+  Effect.gen(function* () {
+    const response = yield* Effect.either(
+      Effect.tryPromise({
+        try: () =>
+          client({
+            model: BOARD_ROUTER_MODEL,
+            max_tokens: BOARD_ROUTER_MAX_TOKENS,
+            system: BOARD_ROUTER_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: prompt }],
+            // No `effort`: Haiku 4.5 rejects it with a 400.
+            output_config: {
+              format: { type: "json_schema", schema: BOARD_ROUTER_SCHEMA },
+            },
+          }),
+        catch: (cause) => cause,
+      })
+    );
+
+    if (Either.isLeft(response)) {
+      yield* Effect.logWarning(
+        "Board router call failed — defaulting to the searching route"
+      ).pipe(Effect.annotateLogs({ cause: String(response.left) }));
+      return SEARCHING_ROUTE;
+    }
+
+    if (response.right.stop_reason === "refusal") {
+      yield* Effect.logWarning(
+        "Board router refused — defaulting to the searching route"
+      );
+      return SEARCHING_ROUTE;
+    }
+
+    const parsed = yield* Effect.either(parseJson(textOf(response.right)));
+    if (Either.isLeft(parsed)) {
+      yield* Effect.logWarning(
+        "Board router did not return JSON — defaulting to the searching route"
+      ).pipe(Effect.annotateLogs({ cause: parsed.left }));
+      return SEARCHING_ROUTE;
+    }
+
+    // Effect Schema rather than a `typeof` check, so a truthy-but-wrong answer
+    // (`"yes"`, `1`) is a decode failure and therefore falls open, instead of
+    // being coerced into the expensive branch by accident.
+    const decision = decodeRouterDecision(parsed.right);
+    if (Either.isLeft(decision)) {
+      yield* Effect.logWarning(
+        "Board router reply did not decode — defaulting to the searching route"
+      ).pipe(Effect.annotateLogs({ cause: decision.left.message }));
+      return SEARCHING_ROUTE;
+    }
+
+    yield* Effect.logInfo("Board route chosen").pipe(
+      Effect.annotateLogs({ needsLiveData: decision.right.needs_live_data })
+    );
+    return decision.right.needs_live_data ? SEARCHING_ROUTE : PLAIN_ROUTE;
+  });
+
 export const makeBoardAgent = (client: BoardAgentClient): BoardAgentShape => ({
   generate: (params) =>
-    runPipeline(
-      client,
-      [{ role: "user", content: firstUserTurn(params.prompt, params.current) }],
-      1
-    ),
+    Effect.gen(function* () {
+      const route = yield* routeFor(client, params.prompt);
+      return yield* runPipeline(
+        client,
+        route,
+        [{ role: "user", content: firstUserTurn(params.prompt, params.current) }],
+        1
+      );
+    }),
 });
 
 /**
