@@ -1,6 +1,6 @@
 {
   "$schema": "Machine-readable feature state tracker. Source of truth for status; per-feature MD docs are source of truth for design/runtime.",
-  "updated": "2026-07-27",
+  "updated": "2026-07-28",
   "policy": {
     "one_in_progress_at_a_time": true,
     "definition_of_done": "implementation complete + verify-done passed + feature MD updated + brain coherent"
@@ -131,6 +131,54 @@
       ],
       "status": "in-progress",
       "evidence": "planned 2026-07-27 from approved plan plans/2026-07-27-flappyboard-mvp.html (round 2); phases 5-6",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-010",
+      "name": "TV Pairing",
+      "slug": "tv-pairing",
+      "doc": ".brain/features/tv-pairing/tv-pairing.md",
+      "description": "Device-code pairing so a TV reaches a board without the owner's login: /tv shows a short single-use code and holds a WebSocket to the BoardRoom DO, the owner approves from /link on their phone, and a handoff request banks an HttpOnly fb_device_<boardId> grant. Third token family fbd1 alongside the existing fbp1/fbg1.",
+      "dependencies": [
+        "feat-007",
+        "feat-008"
+      ],
+      "status": "planned",
+      "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, 6 decisions answered); phase 1. HARD PREREQUISITE: issue #1 rate limiting — a 6-char code is ~30 bits and is safe only because it is short-lived, single-use and attempt-capped.",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-011",
+      "name": "Family Grants",
+      "slug": "family-grants",
+      "doc": ".brain/features/family-grants/family-grants.md",
+      "description": "Controller grants that survive daily life: 30-day sliding TTL renewed on socket upgrade (up from the 12h DEFAULT_GRANT_TTL_SECONDS), an optional device name captured once at pairing, and per-device revoke on /boards alongside the existing grantEpoch bump.",
+      "dependencies": [
+        "feat-008",
+        "feat-010"
+      ],
+      "status": "planned",
+      "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, decisions 3 and 4); phase 2",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-012",
+      "name": "Kiosk Display",
+      "slug": "kiosk-display",
+      "doc": ".brain/features/kiosk-display/kiosk-display.md",
+      "description": "Make /b/:boardId survive months on a wall: Wake Lock with a silent-video fallback as the primary path, fullscreen on the existing keydown gesture, a single-shot socket watchdog reload, a reconnect spinner over the retained grid, and pixel drift plus idle dim for burn-in.",
+      "dependencies": [
+        "feat-007",
+        "feat-010"
+      ],
+      "status": "planned",
+      "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, decisions 2 and 5); phases 3-4. Runtime is the Samsung built-in browser per decision 2 (chosen against the recommendation), which caps this feature: no autostart, no chrome suppression, aggressive cookie eviction, Wake Lock likely absent.",
       "owners": [
         "sean"
       ]

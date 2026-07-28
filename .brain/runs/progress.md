@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-07-28 — TV living-room plan reviewed and approved (round 1, plans/2026-07-28-tv-living-room.html). All 6 decisions answered: device-code pairing for the TV (/tv + /link, WebSocket approval not polling); runtime is the Samsung BUILT-IN BROWSER, chosen against the recommendation of a kiosk stick — no native Tizen/webOS app either way; 30-day sliding controller grants (up from 12h); device name captured at pairing, owner-visible; pixel drift + idle dim for burn-in; and feat-009 llm-board-agent gets closed out FIRST rather than being parked blocked. Three open questions resolved in review (socket over polling, one board for now, spinner while offline); one still open — where an unapproved device code lives before it is bound to a board. Registered feat-010 tv-pairing, feat-011 family-grants, feat-012 kiosk-display as planned with feature docs. Working in git worktree .claude/worktrees/tv-living-room on branch worktree-tv-living-room, based on merged main (v0.1.0). No app code touched yet.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Decision 6 governs the order: close feat-009 llm-board-agent first — it needs a browser-level verdict doc, and its issue #1 (rate limiting / spend caps on board.generate and /api/transcribe) is ALSO a hard prerequisite for feat-010, since a 6-char device code is only safe when attempt-capped. Then phase 1 (feat-010 tv-pairing). Two owner-only tests are decisive and cannot be faked in CI: power-cycle the real Samsung TV to see whether the fb_device_ cookie survives (if it does not, decision 2 is wrong and the runtime must be revisited), and drive voice on a real phone over HTTPS.
+
+---
+
 ## 2026-07-28 — v0.1.0 released. PR #2 squash-merged to main as f8ae90f and tagged v0.1.0 (https://github.com/SeanningTatum/flappyboard/releases/tag/v0.1.0) — first tag on the repo. README rewritten from the starter boilerplate into a flappyboard product page with six real screenshots reused from the verification walks plus one watermarked setup mockup. Merged with Deploy preview red, knowingly: the worker version uploads fine, the job dies extracting a preview URL because flappyboard-preview has never had a real wrangler deploy so preview URLs are not enabled on it. Baseline/Build/E2E/sweep all green.
 - branch: `main`
 - in-progress feature: none
