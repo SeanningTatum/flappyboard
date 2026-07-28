@@ -13,9 +13,11 @@ import {
   declaredLengthOver,
   readBoundedBody,
   formatElapsed,
+  formatWaitEnglish,
   isAllowedAudioContentType,
   normalizeTranscript,
   pickRecorderMimeType,
+  readGenerateFailure,
   readTranscribeOutcome,
 } from "../voice";
 
@@ -156,6 +158,104 @@ describe("readTranscribeOutcome", () => {
       reason: null,
     });
     expect(readTranscribeOutcome(500, null)).toEqual({ ok: false, reason: null });
+  });
+});
+
+describe("formatWaitEnglish", () => {
+  it("keeps a short wait in seconds", () => {
+    expect(formatWaitEnglish(1)).toBe("1 second");
+    expect(formatWaitEnglish(45)).toBe("45 seconds");
+    expect(formatWaitEnglish(59)).toBe("59 seconds");
+  });
+
+  it("switches to minutes past a minute — 1065 seconds is a number, not an answer", () => {
+    expect(formatWaitEnglish(60)).toBe("1 minute");
+    expect(formatWaitEnglish(1065)).toBe("18 minutes");
+    expect(formatWaitEnglish(1238)).toBe("21 minutes");
+  });
+
+  it("rounds up, so the advice is never early", () => {
+    expect(formatWaitEnglish(61)).toBe("2 minutes");
+    expect(formatWaitEnglish(30.2)).toBe("31 seconds");
+  });
+
+  it("never says zero or a negative", () => {
+    expect(formatWaitEnglish(0)).toBe("1 second");
+    expect(formatWaitEnglish(-10)).toBe("1 second");
+  });
+
+  it("gets the singular right", () => {
+    expect(formatWaitEnglish(1)).not.toContain("seconds");
+    expect(formatWaitEnglish(60)).not.toContain("minutes");
+  });
+});
+
+describe("readGenerateFailure", () => {
+  /** The shape tRPC's error formatter actually produces on the client. */
+  const trpcError = (data: unknown) => ({ data });
+
+  it("recognises a cap refusal and its wait", () => {
+    expect(
+      readGenerateFailure(
+        trpcError({ code: "TOO_MANY_REQUESTS", retryAfter: 1484 })
+      )
+    ).toEqual({ kind: "rate-limited", retryAfter: 1484 });
+  });
+
+  it("still reports the cap when the wait did not come through", () => {
+    // A proxy that rewrote the body, or an older deployment. The phone can say
+    // "you have hit the limit" even without a number — that is the part that
+    // stops someone hammering the button.
+    for (const retryAfter of [undefined, null, "60", 0, -5, Number.NaN]) {
+      expect(
+        readGenerateFailure(trpcError({ code: "TOO_MANY_REQUESTS", retryAfter }))
+      ).toEqual({ kind: "rate-limited", retryAfter: null });
+    }
+  });
+
+  it("rounds a fractional wait up, never down", () => {
+    expect(
+      readGenerateFailure(
+        trpcError({ code: "TOO_MANY_REQUESTS", retryAfter: 30.2 })
+      )
+    ).toEqual({ kind: "rate-limited", retryAfter: 31 });
+  });
+
+  it("leaves every other failure generic", () => {
+    expect(
+      readGenerateFailure(trpcError({ code: "INTERNAL_SERVER_ERROR" }))
+    ).toEqual({ kind: "other" });
+    expect(readGenerateFailure(trpcError({ code: "BAD_REQUEST" }))).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("is total — a shape it does not know degrades to generic", () => {
+    // This runs inside an error handler. Throwing here would replace a handled
+    // failure with an unhandled one.
+    for (const junk of [
+      undefined,
+      null,
+      "boom",
+      42,
+      {},
+      { data: null },
+      { data: "nope" },
+      { message: "TOO_MANY_REQUESTS" },
+      new Error("TOO_MANY_REQUESTS"),
+    ]) {
+      expect(readGenerateFailure(junk)).toEqual({ kind: "other" });
+    }
+  });
+
+  it("does not mistake the message for the code", () => {
+    // The code is the contract; the message is copy and will be reworded.
+    expect(
+      readGenerateFailure({
+        message: "Board generate limit reached. Try again in 60s.",
+        data: { code: "INTERNAL_SERVER_ERROR" },
+      })
+    ).toEqual({ kind: "other" });
   });
 });
 

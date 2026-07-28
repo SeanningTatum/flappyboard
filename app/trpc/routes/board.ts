@@ -11,11 +11,7 @@ import {
   RateLimitError,
   type PairingRefusal,
 } from "@/models/errors/board";
-import {
-  DEFAULT_QUOTA,
-  spenderId,
-  type QuotaEndpoint,
-} from "@/lib/board/quota";
+import { spenderId, type QuotaEndpoint } from "@/lib/board/quota";
 import type { Board } from "@/db/schema";
 import {
   BoardId,
@@ -279,7 +275,8 @@ const chargeQuota = (
         ownerId: access.board.ownerId,
         grantNonce: access.grantNonce,
       }),
-      policy: DEFAULT_QUOTA[endpoint],
+      // One shot: there is no body to validate here, so nothing to peek for.
+      mode: "charge",
     });
 
     if (!verdict.allowed) {

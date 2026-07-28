@@ -44,10 +44,14 @@ export type QuotaEndpoint = (typeof QUOTA_ENDPOINTS)[number];
  */
 export const MAX_SPENDER_LENGTH = 128;
 
-/** Longest window the room will honour. An hour of headroom over the defaults. */
+/**
+ * Sanity bounds on `DEFAULT_QUOTA` itself, asserted by a unit test.
+ *
+ * These no longer guard the wire — limits are not caller-supplied any more — so
+ * their only job is to make an implausible edit to the policy below fail a test
+ * rather than ship.
+ */
 export const MAX_QUOTA_WINDOW_SECONDS = 3600;
-
-/** Highest cap the room will honour, so a bad caller cannot ask for "unlimited". */
 export const MAX_QUOTA_LIMIT = 10_000;
 
 /**
@@ -174,27 +178,37 @@ export const readCount = (value: unknown): number =>
 /* Wire shapes                                                                */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * `peek` decides without writing; `charge` decides and increments when allowed.
+ *
+ * The split exists for `/api/transcribe`, which must refuse an over-cap caller
+ * *before* reading a megabyte of audio, but must not consume allowance for a body
+ * that then fails validation. So it peeks first and charges only once the body is
+ * known good. The two calls are not one atomic unit and do not need to be: the
+ * charge is the authoritative one, and a peek that passes followed by a charge
+ * that refuses is a correct (if unlucky) outcome, not a bug.
+ */
+export const QUOTA_MODES = ["peek", "charge"] as const;
+export type QuotaMode = (typeof QUOTA_MODES)[number];
+
+/**
+ * The wire carries **only who and where** — never the limits.
+ *
+ * Limits used to ride along in the body, which made the Durable Object enforce
+ * whatever its caller asked for: a future call site that forgot `DEFAULT_QUOTA`
+ * would have silently got its own numbers, and the "cap" would have been a
+ * call-site convention rather than a property of the enforcer. The DO now looks
+ * the policy up itself, so the only way to change a limit is to change
+ * `DEFAULT_QUOTA`. It also means `windowSeconds` can no longer differ between two
+ * callers and split one board's counters into two.
+ */
 export const SpendQuotaRequest = Schema.Struct({
   endpoint: Schema.Literal(...QUOTA_ENDPOINTS),
   spender: Schema.String.pipe(
     Schema.minLength(1),
     Schema.maxLength(MAX_SPENDER_LENGTH)
   ),
-  spenderLimit: Schema.Number.pipe(
-    Schema.int(),
-    Schema.greaterThanOrEqualTo(1),
-    Schema.lessThanOrEqualTo(MAX_QUOTA_LIMIT)
-  ),
-  boardLimit: Schema.Number.pipe(
-    Schema.int(),
-    Schema.greaterThanOrEqualTo(1),
-    Schema.lessThanOrEqualTo(MAX_QUOTA_LIMIT)
-  ),
-  windowSeconds: Schema.Number.pipe(
-    Schema.int(),
-    Schema.greaterThanOrEqualTo(1),
-    Schema.lessThanOrEqualTo(MAX_QUOTA_WINDOW_SECONDS)
-  ),
+  mode: Schema.Literal(...QUOTA_MODES),
 });
 export type SpendQuotaRequest = typeof SpendQuotaRequest.Type;
 

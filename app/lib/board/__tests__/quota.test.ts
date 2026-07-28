@@ -210,13 +210,47 @@ describe("parseSpendQuotaRequest", () => {
   const valid = {
     endpoint: "generate",
     spender: "grant:abc",
-    spenderLimit: 20,
-    boardLimit: 60,
-    windowSeconds: 3600,
+    mode: "charge",
   };
 
   it("round-trips a well-formed request", () => {
     expect(parseSpendQuotaRequest(JSON.stringify(valid))).toEqual(valid);
+  });
+
+  it("accepts both modes", () => {
+    for (const mode of ["peek", "charge"]) {
+      expect(parseSpendQuotaRequest(JSON.stringify({ ...valid, mode }))).toEqual({
+        ...valid,
+        mode,
+      });
+    }
+  });
+
+  it("refuses a missing or unknown mode", () => {
+    expect(
+      parseSpendQuotaRequest(JSON.stringify({ ...valid, mode: undefined }))
+    ).toBeNull();
+    expect(
+      parseSpendQuotaRequest(JSON.stringify({ ...valid, mode: "refund" }))
+    ).toBeNull();
+  });
+
+  it("gives a caller no way to state a limit", () => {
+    // The whole point of the shape: limits are the Durable Object's to know.
+    // A caller that sends them must not have them honoured — they are not part
+    // of the decoded value at all, so the DO cannot even see them.
+    const smuggled = parseSpendQuotaRequest(
+      JSON.stringify({
+        ...valid,
+        spenderLimit: 10_000,
+        boardLimit: 10_000,
+        windowSeconds: 1,
+      })
+    );
+    expect(smuggled).toEqual(valid);
+    for (const forbidden of ["spenderLimit", "boardLimit", "windowSeconds"]) {
+      expect(smuggled && forbidden in smuggled).toBe(false);
+    }
   });
 
   it("rejects invalid JSON without throwing", () => {
@@ -243,32 +277,6 @@ describe("parseSpendQuotaRequest", () => {
     ).toBeNull();
   });
 
-  it("refuses a caller asking for an effectively unlimited cap", () => {
-    for (const field of ["spenderLimit", "boardLimit"] as const) {
-      expect(
-        parseSpendQuotaRequest(
-          JSON.stringify({ ...valid, [field]: MAX_QUOTA_LIMIT + 1 })
-        )
-      ).toBeNull();
-      expect(
-        parseSpendQuotaRequest(JSON.stringify({ ...valid, [field]: 0 }))
-      ).toBeNull();
-    }
-  });
-
-  it("refuses a window beyond the ceiling", () => {
-    expect(
-      parseSpendQuotaRequest(
-        JSON.stringify({ ...valid, windowSeconds: MAX_QUOTA_WINDOW_SECONDS + 1 })
-      )
-    ).toBeNull();
-  });
-
-  it("refuses non-integer limits", () => {
-    expect(
-      parseSpendQuotaRequest(JSON.stringify({ ...valid, spenderLimit: 1.5 }))
-    ).toBeNull();
-  });
 });
 
 describe("parseQuotaSpend", () => {
@@ -303,20 +311,20 @@ describe("DEFAULT_QUOTA", () => {
     }
   });
 
-  it("stays inside the bounds the wire schema will accept", () => {
+  it("stays inside the sanity bounds", () => {
+    // These no longer guard the wire — nothing caller-supplied reaches a limit
+    // any more — so this exists purely to make an implausible edit to the
+    // policy fail here rather than ship.
     for (const endpoint of QUOTA_ENDPOINTS) {
       const policy = DEFAULT_QUOTA[endpoint];
-      expect(
-        parseSpendQuotaRequest(
-          JSON.stringify({
-            endpoint,
-            spender: "grant:abc",
-            spenderLimit: policy.spenderLimit,
-            boardLimit: policy.boardLimit,
-            windowSeconds: policy.windowSeconds,
-          })
-        )
-      ).not.toBeNull();
+      for (const limit of [policy.spenderLimit, policy.boardLimit]) {
+        expect(Number.isInteger(limit)).toBe(true);
+        expect(limit).toBeGreaterThanOrEqual(1);
+        expect(limit).toBeLessThanOrEqual(MAX_QUOTA_LIMIT);
+      }
+      expect(Number.isInteger(policy.windowSeconds)).toBe(true);
+      expect(policy.windowSeconds).toBeGreaterThanOrEqual(1);
+      expect(policy.windowSeconds).toBeLessThanOrEqual(MAX_QUOTA_WINDOW_SECONDS);
     }
   });
 });

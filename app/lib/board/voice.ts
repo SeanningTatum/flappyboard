@@ -298,6 +298,79 @@ export const readTranscribeOutcome = (
 };
 
 /* -------------------------------------------------------------------------- */
+/* waits                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A wait a person can act on, in plain English.
+ *
+ * `/api/transcribe` is a plain `fetch` route, not a tRPC procedure: the phone
+ * renders its `error` string verbatim, so the wording has to be finished on the
+ * server. That also means it is English-only, which is a pre-existing property of
+ * every message this route produces (`TOO_LARGE_REASON` and friends) rather than
+ * something introduced here.
+ *
+ * Rounds **up**, so the advice is never early, and switches to minutes past 60s —
+ * "try again in 1065 seconds" is a number, not an answer.
+ */
+export const formatWaitEnglish = (seconds: number): string => {
+  const safe = Math.max(1, Math.ceil(seconds));
+  if (safe < 60) return `${safe} second${safe === 1 ? "" : "s"}`;
+  const minutes = Math.ceil(safe / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+};
+
+/* -------------------------------------------------------------------------- */
+/* generate refusals                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Why a `board.generate` call failed, as far as the phone needs to care.
+ *
+ * `retryAfter` is `null` when the server refused on the cap but the wait did not
+ * come through — a proxy that rewrote the body, an older deployment. The phone
+ * can still say "you have hit the limit", which is the part that matters; it
+ * just cannot say when.
+ */
+export type GenerateFailure =
+  | { readonly kind: "rate-limited"; readonly retryAfter: number | null }
+  | { readonly kind: "other" };
+
+/**
+ * Classify a tRPC mutation error.
+ *
+ * Reads the structured `data` the error formatter shapes — `data.code` and
+ * `data.retryAfter` — rather than parsing the human-readable message. The
+ * message is copy and will be reworded; the code and the number are the
+ * contract.
+ *
+ * Total by construction: anything unrecognised is `other`, so a shape change
+ * degrades to today's generic message instead of throwing inside an error
+ * handler.
+ */
+export const readGenerateFailure = (error: unknown): GenerateFailure => {
+  if (typeof error !== "object" || error === null) return { kind: "other" };
+  const data = (error as { data?: unknown }).data;
+  if (typeof data !== "object" || data === null) return { kind: "other" };
+
+  const { code, retryAfter } = data as {
+    code?: unknown;
+    retryAfter?: unknown;
+  };
+  if (code !== "TOO_MANY_REQUESTS") return { kind: "other" };
+
+  return {
+    kind: "rate-limited",
+    retryAfter:
+      typeof retryAfter === "number" &&
+      Number.isFinite(retryAfter) &&
+      retryAfter > 0
+        ? Math.ceil(retryAfter)
+        : null,
+  };
+};
+
+/* -------------------------------------------------------------------------- */
 /* base64                                                                     */
 /* -------------------------------------------------------------------------- */
 

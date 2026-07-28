@@ -111,6 +111,23 @@ ledger, so simultaneous presses cannot lose increments to a race.
 | Per-spender | `owner:<id>` or `grant:<nonce>` | Fairness — one guest cannot eat another's allowance, and the owner's budget is separate. The nonce is covered by the grant's MAC, so it cannot be chosen, forged, or stripped. |
 | Per-board | the board | The ceiling. Per-spender alone is bypassable by re-pairing: every fresh redemption mints a fresh nonce and therefore a fresh allowance. |
 
+**The DO owns the policy.** The request body carries only `endpoint`, `spender`
+and `mode` — never a limit. An earlier revision took the limits off the wire,
+which meant the object enforced whatever its caller asked for, so a future call
+site that forgot `DEFAULT_QUOTA` would silently have got its own numbers and the
+cap would have been a call-site convention rather than something the enforcer
+guarantees. A unit test asserts a caller cannot even express a limit.
+
+**`peek` vs `charge`.** `peek` decides without writing. `/api/transcribe` needs it
+because the two obvious orderings are each wrong in one direction: charging before
+the body read lets an oversized *chunked* body (no `Content-Length`, so the cheap
+header check cannot refuse it) consume a slot and then 413 — free budget drain,
+and 200 of those kill transcription for the household; charging only after the read
+lets an already-over-cap caller push a megabyte through the isolate first. So it
+peeks, reads, then charges. The two calls are not atomic together and need not be —
+the charge is the authoritative one, and a peek that passes followed by a charge
+that refuses is a correct outcome.
+
 Defaults per hour: **20/60** generations (spender/board), **60/200**
 transcriptions. Fixed windows rather than a sliding log — a window boundary
 allows up to 2× burst, which is the right trade for two integers of storage
@@ -121,11 +138,18 @@ against a cap whose job is bounding a runaway bill, not smoothing traffic.
 increments nothing — counting refusals would let a caller already over the limit
 hold the board bucket down on traffic that never cost anything.
 
-Ordering matters at both call sites and is asserted by comment:
-`board.generate` charges after `requireBoardAccess` and before the model call;
-`/api/transcribe` charges after the free content-type and content-length checks
-(a 415 must not burn allowance) and before `readBoundedBody` (an over-cap caller
-must not push a megabyte through the isolate).
+Ordering at the call sites: `board.generate` charges after `requireBoardAccess`
+and before the model call (no body, so nothing to peek for);
+`/api/transcribe` runs content-type → content-length → **peek** →
+`readBoundedBody` → **charge** → Whisper. A 415 or a 413 costs no allowance; an
+over-cap caller is refused before sending anything expensive.
+
+**What the phone shows.** A cap refusal gets its own copy — "that's this board's
+turn used up for now", plus the wait in minutes when the server sent one — and not
+the generic "the board didn't take it, try again", because retrying is futile until
+the window rolls. Getting the number there needed `cause: e` on the `TRPCError` and
+a line in `errorFormatter`; see `rules/errors.md` for why the client reads
+`data.retryAfter` rather than parsing the message.
 
 ## Deferred
 Automations (a cron refreshing the board each morning) are a paid feature, out of MVP scope. Two

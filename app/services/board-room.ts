@@ -5,7 +5,7 @@ import { decodeBoardGrid, type BoardGrid, type BoardMessage, type BoardSource } 
 import {
   parseQuotaSpend,
   type QuotaEndpoint,
-  type QuotaPolicy,
+  type QuotaMode,
   type QuotaSpendResult,
 } from "@/lib/board/quota";
 
@@ -90,7 +90,14 @@ export interface SpendQuotaParams {
   readonly endpoint: QuotaEndpoint;
   /** `owner:<id>` or `grant:<nonce>` — see `spenderId` in `@/lib/board/quota`. */
   readonly spender: string;
-  readonly policy: QuotaPolicy;
+  /**
+   * `charge` to spend, `peek` to ask without spending.
+   *
+   * There is deliberately no `policy` field: the limits are the Durable Object's
+   * to know, not its callers'. Passing them would make the cap a convention here
+   * rather than a guarantee there.
+   */
+  readonly mode: QuotaMode;
 }
 
 export class BoardRoom extends Context.Tag("app/BoardRoom")<
@@ -268,9 +275,7 @@ export const BoardRoomLive = Layer.effect(
             postJson({
               endpoint: params.endpoint,
               spender: params.spender,
-              spenderLimit: params.policy.spenderLimit,
-              boardLimit: params.policy.boardLimit,
-              windowSeconds: params.policy.windowSeconds,
+              mode: params.mode,
             })
           );
           const result = parseQuotaSpend(body);

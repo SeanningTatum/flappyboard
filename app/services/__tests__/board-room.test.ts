@@ -292,7 +292,7 @@ describe("BoardRoomLive", () => {
     )
   );
 
-  it.effect("spendQuota posts the endpoint, spender and policy to the board's room", () => {
+  it.effect("spendQuota posts only who and where — never the limits", () => {
     const calls: Recorded[] = [];
     return Effect.gen(function* () {
       const room = yield* BoardRoom;
@@ -300,7 +300,7 @@ describe("BoardRoomLive", () => {
         boardId: "board-42",
         endpoint: "generate",
         spender: "grant:nonce-1",
-        policy: { spenderLimit: 20, boardLimit: 60, windowSeconds: 3600 },
+        mode: "charge",
       });
       expect(verdict.allowed).toBe(true);
       const call = calls[0]!;
@@ -308,13 +308,18 @@ describe("BoardRoomLive", () => {
       // only atomic inside the one object that owns this board.
       expect(call.url).toContain("/spend-quota?boardId=board-42");
       expect(call.init?.method).toBe("POST");
-      expect(JSON.parse(String(call.init?.body))).toEqual({
+      // Exactly three fields. A limit on the wire would mean the Durable
+      // Object enforces whatever its caller asked for, which is the bug this
+      // shape exists to make impossible — so this asserts the absence.
+      const body = JSON.parse(String(call.init?.body));
+      expect(body).toEqual({
         endpoint: "generate",
         spender: "grant:nonce-1",
-        spenderLimit: 20,
-        boardLimit: 60,
-        windowSeconds: 3600,
+        mode: "charge",
       });
+      for (const forbidden of ["spenderLimit", "boardLimit", "windowSeconds"]) {
+        expect(forbidden in body).toBe(false);
+      }
     }).pipe(
       Effect.provide(
         provideRoom(
@@ -334,7 +339,7 @@ describe("BoardRoomLive", () => {
         boardId: "board-42",
         endpoint: "transcribe",
         spender: "owner:u1",
-        policy: { spenderLimit: 1, boardLimit: 1, windowSeconds: 3600 },
+        mode: "charge",
       });
       // Being over the cap is an ordinary answer, not a failure — the route
       // turns it into a 429 with the wait attached.
@@ -359,7 +364,7 @@ describe("BoardRoomLive", () => {
           boardId: "board-42",
           endpoint: "generate",
           spender: "owner:u1",
-          policy: { spenderLimit: 20, boardLimit: 60, windowSeconds: 3600 },
+          mode: "charge",
         })
       );
       // Never a permissive `allowed: true`: a broken counter must refuse the
@@ -390,7 +395,7 @@ describe("BoardRoomLive", () => {
           boardId: "board-42",
           endpoint: "generate",
           spender: "owner:u1",
-          policy: { spenderLimit: 20, boardLimit: 60, windowSeconds: 3600 },
+          mode: "charge",
         })
       );
       expect(Exit.isFailure(exit)).toBe(true);

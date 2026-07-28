@@ -8,12 +8,13 @@ import {
   type QueryError,
 } from "@/models/errors/repository";
 import { readGrantCookies, verifyControllerGrants } from "@/lib/board/pairing";
-import { DEFAULT_QUOTA, spenderId } from "@/lib/board/quota";
+import { spenderId } from "@/lib/board/quota";
 import { BoardRoom } from "@/services/board-room";
 import {
   MAX_AUDIO_BYTES,
   isAllowedAudioContentType,
   declaredLengthOver,
+  formatWaitEnglish,
   readBoundedBody,
 } from "@/lib/board/voice";
 import { Transcription, TranscriptionLive } from "@/services/transcription";
@@ -77,7 +78,13 @@ const notFound = () => new Response("Not found", { status: 404 });
 const rateLimited = (retryAfter: number) =>
   Response.json(
     {
-      error: `Voice limit reached for this board. Try again in ${retryAfter}s.`,
+      // Worded to match the controller's own cap copy rather than dumping raw
+      // seconds: the phone renders this string verbatim, so "1065s" would have
+      // been what a person actually read. `Retry-After` keeps the exact seconds
+      // for machines.
+      error: `That's this board's voice turn used up for now. Try again in ${formatWaitEnglish(
+        retryAfter
+      )} — or type your message above.`,
       retryAfter,
     },
     { status: 429, headers: { "retry-after": String(retryAfter) } }
@@ -145,47 +152,64 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     /* ---------------------------------------------------------------------- */
-    /* 3. Charge the spend cap, before a byte of audio is read                */
+    /* 3. Peek at the spend cap — refuse early, but do not charge yet         */
     /* ---------------------------------------------------------------------- */
 
-    // Placement is deliberate, between the two cheap header checks above and the
-    // body read below.
+    // Split into peek-then-charge because the two obvious orderings are each
+    // wrong in one direction.
     //
-    // *After* the header checks, because those are free and reading them costs
-    // nothing: a caller who sends the wrong content-type has not spent money, so
-    // they should not spend allowance either — otherwise a buggy client could
-    // burn a household's evening budget on 415s.
+    // Charging *before* the body read means a caller who omits `Content-Length`
+    // (chunked, so the header check above cannot refuse them) and sends an
+    // oversized body gets their slot consumed and then a 413 — no inference, no
+    // cost to anyone but the counter. Two hundred of those and transcription is
+    // dead for the whole household until the window rolls.
     //
-    // *Before* `readBoundedBody`, because a caller who is already over the cap
-    // must not get to push a megabyte through the isolate on their way to being
-    // told no.
+    // Charging only *after* the read means an already-over-cap caller gets to
+    // push a megabyte through the isolate before being told no.
     //
-    // Fails closed: an unreachable ledger raises `ExternalServiceError`, which
-    // lands on the 503 below rather than waving an unmetered call through.
+    // So: peek here, which refuses an over-cap caller before they send anything
+    // expensive and increments nothing; charge below, once the body is known
+    // good. The two calls are not atomic together and need not be — the charge
+    // is the authoritative one.
+    //
+    // Fails closed at both points: an unreachable ledger raises
+    // `ExternalServiceError`, which lands on the 503 below rather than waving an
+    // unmetered call through.
     const room = yield* BoardRoom;
-    const quota = yield* room.spendQuota({
+    const refuseOverCap = (retryAfter: number) =>
+      Effect.logWarning("Board spend cap reached").pipe(
+        Effect.annotateLogs({ boardId, endpoint: "transcribe", retryAfter }),
+        Effect.as(rateLimited(retryAfter))
+      );
+
+    const peek = yield* room.spendQuota({
       boardId,
       endpoint: "transcribe",
       spender: authorised.spender,
-      policy: DEFAULT_QUOTA.transcribe,
+      mode: "peek",
     });
-    if (!quota.allowed) {
-      yield* Effect.logWarning("Board spend cap reached").pipe(
-        Effect.annotateLogs({
-          boardId,
-          endpoint: "transcribe",
-          retryAfter: quota.retryAfter,
-        })
-      );
-      return rateLimited(quota.retryAfter);
-    }
+    if (!peek.allowed) return yield* refuseOverCap(peek.retryAfter);
+
+    /* ---------------------------------------------------------------------- */
+    /* 4. Read the body, then charge for it                                  */
+    /* ---------------------------------------------------------------------- */
 
     const read = yield* readBoundedBody(request.body, MAX_AUDIO_BYTES);
     if (!read.ok) return refuse(TOO_LARGE_REASON, 413);
     const body = read.bytes;
 
+    const charge = yield* room.spendQuota({
+      boardId,
+      endpoint: "transcribe",
+      spender: authorised.spender,
+      mode: "charge",
+    });
+    // Reachable when someone else spent the last slot between the peek and here.
+    // Refusing is correct: nothing has been sent to Whisper yet.
+    if (!charge.allowed) return yield* refuseOverCap(charge.retryAfter);
+
     /* ---------------------------------------------------------------------- */
-    /* 4. Transcribe                                                         */
+    /* 5. Transcribe                                                         */
     /* ---------------------------------------------------------------------- */
 
     const transcription = yield* Transcription;

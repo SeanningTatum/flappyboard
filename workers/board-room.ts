@@ -25,11 +25,13 @@ import {
 import {
   boardQuotaKey,
   decideQuota,
+  isQuotaEntry,
   parseSpendQuotaRequest,
   quotaSpendResult,
   readCount,
   spenderQuotaKey,
   windowStart,
+  DEFAULT_QUOTA,
   QUOTA_KEY_PREFIX,
   type QuotaEntry,
 } from "@/lib/board/quota";
@@ -299,6 +301,16 @@ export class BoardRoom extends DurableObject<Env> {
    * nothing). The decision itself is pure and lives in `@/lib/board/quota`; this
    * method is storage glue.
    *
+   * **The policy is read here, not received.** The request body carries only
+   * `endpoint`, `spender` and `mode`; the limits come from `DEFAULT_QUOTA`. An
+   * earlier version took the limits off the wire, which meant the object enforced
+   * whatever its caller asked for — so a future call site that forgot to pass
+   * `DEFAULT_QUOTA` would have quietly got its own numbers, and the cap would have
+   * been a convention rather than something this object guarantees.
+   *
+   * `mode: "peek"` decides without writing, for a caller that needs to refuse an
+   * over-cap request before doing expensive work it would then have to throw away.
+   *
    * Answers `{ type: "quota", allowed, retryAfter }`. Any storage failure is a
    * 500, which the caller treats as a refusal (fail closed) — an unmetered
    * endpoint is exactly what this exists to prevent.
@@ -316,9 +328,10 @@ export class BoardRoom extends DurableObject<Env> {
       return BoardRoom.json(errorEvent("invalid_command"), 400);
     }
 
+    const policy = DEFAULT_QUOTA[spend.endpoint];
     const now = Date.now();
-    const start = windowStart(now, spend.windowSeconds);
-    const expiresAt = start + spend.windowSeconds * 1000;
+    const start = windowStart(now, policy.windowSeconds);
+    const expiresAt = start + policy.windowSeconds * 1000;
     const sKey = spenderQuotaKey(spend.endpoint, spend.spender, start);
     const bKey = boardQuotaKey(spend.endpoint, start);
 
@@ -327,19 +340,41 @@ export class BoardRoom extends DurableObject<Env> {
         this.ctx.blockConcurrencyWhile(async () => {
           await this.pruneQuotas(now);
 
+          const sRaw = await this.ctx.storage.get(sKey);
+          const bRaw = await this.ctx.storage.get(bKey);
+
+          // `readCount` treats an unreadable slot as zero, which fails *open* —
+          // deliberate, because bricking a family's board over corrupt
+          // bookkeeping is worse than letting a window's worth of calls
+          // through, and the other bucket still bounds the damage. But silent
+          // is not acceptable: on the board bucket a reset briefly removes the
+          // ceiling that blocks the re-pairing bypass, so it gets said out loud.
+          for (const [label, raw] of [
+            ["spender", sRaw],
+            ["board", bRaw],
+          ] as const) {
+            if (raw !== undefined && !isQuotaEntry(raw)) {
+              log.warn(
+                { bucket: label, endpoint: spend.endpoint },
+                "Quota counter unreadable — treated as zero for this window"
+              );
+            }
+          }
+
           const decision = decideQuota({
-            spenderCount: readCount(await this.ctx.storage.get(sKey)),
-            boardCount: readCount(await this.ctx.storage.get(bKey)),
-            spenderLimit: spend.spenderLimit,
-            boardLimit: spend.boardLimit,
+            spenderCount: readCount(sRaw),
+            boardCount: readCount(bRaw),
+            spenderLimit: policy.spenderLimit,
+            boardLimit: policy.boardLimit,
             now,
-            windowSeconds: spend.windowSeconds,
+            windowSeconds: policy.windowSeconds,
           });
 
           // A refusal writes nothing: counting refused calls would let a caller
           // who is already over the limit hold the board bucket down on traffic
-          // that never cost anything.
-          if (decision.allowed) {
+          // that never cost anything. A peek writes nothing either, by
+          // definition — it is a question, not a spend.
+          if (decision.allowed && spend.mode === "charge") {
             const sEntry: QuotaEntry = {
               count: decision.spenderCount,
               expiresAt,
