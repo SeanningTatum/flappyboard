@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-07-28 — Issue #1 closed — spend caps on board.generate and /api/transcribe, committed as abd0eea on worktree-tv-living-room. Atomic per-spender + per-board check-and-increment in the BoardRoom Durable Object (no new binding; same blockConcurrencyWhile as the spent-nonce ledger), new RateLimitError -> TOO_MANY_REQUESTS, 429 + Retry-After on the non-tRPC transcribe route. Gate: typecheck 0, 892 tests (from 849), build 0, e2e 2/2, harness 7/7. Four claims proven live against a real DO, not reasoned about: cap bites at 21 with a usable retryAfter; 30 concurrent calls at a limit of 20 admitted exactly 20 (no lost increments — the reason it lives in the DO); an exhausted owner still left a freshly paired grant its own full 20; and a 4th grant with a brand-new nonce was refused on its first call at 60/60, closing the re-pairing bypass. Verdict doc at .brain/features/llm-board-agent/verifications/2026-07-28.md, deliberately scoped — it says the endpoints are bounded, NOT that the LLM feature works. Also fixed a recipe trap: effect-trpc gates on a runtime APP_ERROR_TAGS set that nothing type-checks against the AppError union, so a new error compiles fine and still returns a generic 500; recipes/add-tagged-error.md now names that step.
+- branch: `worktree-tv-living-room`
+- in-progress feature: llm-board-agent
+- run note: features/llm-board-agent/runs/2026-07-28-progress.md
+- next: feat-009 stays in-progress: it still owes a browser walk of the actual voice-to-board golden path, which needs ANTHROPIC_API_KEY and the remote AI binding — owner-only. Also unproven: /api/transcribe's 429 (same spendQuota call and ledger, but reaching it needs the AI binding) and fail-closed against a live broken DO (unit-tested at the service boundary only). Once feat-009 has that verdict, decision 6 releases the TV living-room work and phase 1 (feat-010 tv-pairing) starts — its device-code endpoint inherits this limiter.
+
+---
+
 ## 2026-07-28 — Kickoff: issue #1 rate limiting / spend caps on board.generate and /api/transcribe — Phase 0 of the TV living-room plan and the last hard blocker on a real-key deploy. Domain: mixed (cloudflare DO + routes + errors). Scope: both. Affects feat-009 llm-board-agent, the one in-progress feature, so no scope-policy conflict. Runbook: recipes/add-tagged-error (whose worked example is literally a RateLimitError) plus rules/cloudflare for the DO side. Baseline green after 'bun install' in the worktree — the first run's TS2742 on app/trpc/client.tsx was an empty-node_modules artifact of the fresh worktree, not a regression.
 - branch: `worktree-tv-living-room`
 - in-progress feature: llm-board-agent
