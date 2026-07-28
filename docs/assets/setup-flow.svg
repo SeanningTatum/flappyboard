@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1390" viewBox="0 0 900 1390" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <style>.mono{font-size:13px;white-space:pre}</style>
+  <rect width="900" height="1390" rx="10" fill="#1e2127"/>
+  <path d="M0 10a10 10 0 0 1 10-10h880a10 10 0 0 1 10 10v26H0z" fill="#2c313a"/>
+  <circle cx="20" cy="18" r="6" fill="#ff5f57"/>
+  <circle cx="40" cy="18" r="6" fill="#febc2e"/>
+  <circle cx="60" cy="18" r="6" fill="#28c840"/>
+  <text x="450" y="22" text-anchor="middle" fill="#5c6370" font-size="12">bun run setup — zero to a live board on Cloudflare</text>
+  <text x="884" y="22" text-anchor="end" fill="#5c6370" font-size="10" font-style="italic">example output</text>
+  <text x="20" y="67.0" xml:space="preserve" class="mono"><tspan fill="#c678dd" font-weight="bold">$ </tspan><tspan fill="#d8dee9" font-weight="bold">bun run setup</tspan></text>
+  <text x="20" y="87.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="107.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">Checking Wrangler authentication...</tspan></text>
+  <text x="20" y="127.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ Authenticated with Cloudflare</tspan></text>
+  <text x="20" y="147.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ Using account: </tspan><tspan fill="#5c6370">a1b2c3d4e5f60718293a4b5c6d7e8f90</tspan></text>
+  <text x="20" y="167.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="187.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">📝 Step 1: Project Configuration</tspan></text>
+  <text x="20" y="207.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  Enter your project name </tspan><tspan fill="#d8dee9">› flappyboard</tspan></text>
+  <text x="20" y="227.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  Enable R2 file storage (uploads)? </tspan><tspan fill="#d8dee9">› no</tspan></text>
+  <text x="20" y="247.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="267.0" xml:space="preserve" class="mono"><tspan fill="#e5c07b">Resource names:</tspan></text>
+  <text x="20" y="287.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  • Project: flappyboard</tspan></text>
+  <text x="20" y="307.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  • Database: flappyboard-db</tspan></text>
+  <text x="20" y="327.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  • Database (preview): flappyboard-db-preview</tspan></text>
+  <text x="20" y="347.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  • R2 file storage: disabled</tspan></text>
+  <text x="20" y="367.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  Continue with these names? </tspan><tspan fill="#d8dee9">› yes</tspan></text>
+  <text x="20" y="387.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="407.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">☁️  Step 2: Creating Cloudflare Resources</tspan></text>
+  <text x="20" y="427.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓</tspan><tspan fill="#d8dee9"> d1  flappyboard-db          </tspan><tspan fill="#5c6370">d84888c9-bcb1-490f-9f17-6bd155954841</tspan></text>
+  <text x="20" y="447.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓</tspan><tspan fill="#d8dee9"> d1  flappyboard-db-preview  </tspan><tspan fill="#5c6370">d27f409a-dc44-4b7a-ba2d-3d1097ba69e6</tspan></text>
+  <text x="20" y="467.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="487.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">🔐 Step 3: Authentication Setup</tspan></text>
+  <text x="20" y="507.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ Generated BETTER_AUTH_SECRET</tspan></text>
+  <text x="20" y="527.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ Created .env file</tspan></text>
+  <text x="20" y="547.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="567.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">📝 Step 4: Creating Configuration Files</tspan></text>
+  <text x="20" y="587.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ Updated wrangler.jsonc</tspan><tspan fill="#5c6370">   BOARD (Durable Object) · AI (Whisper) · DATABASE</tspan></text>
+  <text x="20" y="607.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="627.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">📦 Step 5: Installing Dependencies</tspan></text>
+  <text x="20" y="647.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ 524 packages</tspan></text>
+  <text x="20" y="667.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="687.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">🔧 Step 6: Generating Cloudflare Types</tspan></text>
+  <text x="20" y="707.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ worker-configuration.d.ts</tspan></text>
+  <text x="20" y="727.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="747.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">🗄️  Step 7: Database Migrations</tspan></text>
+  <text x="20" y="767.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ 4 migrations applied</tspan><tspan fill="#5c6370">   board · board_snapshot · auth tables</tspan></text>
+  <text x="20" y="787.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="807.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">🚀 Step 8: Deploy to Cloudflare (production)</tspan></text>
+  <text x="20" y="827.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ https://flappyboard.&lt;subdomain&gt;.workers.dev</tspan></text>
+  <text x="20" y="847.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="867.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">🚀 Step 9: Deploy to Cloudflare (preview)</tspan></text>
+  <text x="20" y="887.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ https://flappyboard-preview.&lt;subdomain&gt;.workers.dev</tspan></text>
+  <text x="20" y="907.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="927.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">🔑 Step 10: Uploading Secrets</tspan></text>
+  <text x="20" y="947.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ BETTER_AUTH_SECRET</tspan><tspan fill="#98c379">   ✓ </tspan><tspan fill="#98c379">ANTHROPIC_API_KEY</tspan></text>
+  <text x="20" y="967.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="987.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">🤖 Step 11: GitHub Actions CI/CD credentials</tspan></text>
+  <text x="20" y="1007.0" xml:space="preserve" class="mono"><tspan fill="#98c379">✓ CLOUDFLARE_ACCOUNT_ID</tspan><tspan fill="#98c379">   ✓ CLOUDFLARE_API_TOKEN</tspan></text>
+  <text x="20" y="1027.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="1047.0" xml:space="preserve" class="mono"><tspan fill="#56b6c2">✅ Setup Complete!</tspan></text>
+  <text x="20" y="1067.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="1087.0" xml:space="preserve" class="mono"><tspan fill="#98c379">Next steps:</tspan></text>
+  <text x="20" y="1107.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9">  1. For local development:</tspan></text>
+  <text x="20" y="1127.0" xml:space="preserve" class="mono"><tspan fill="#e5c07b">     bun run dev</tspan></text>
+  <text x="20" y="1147.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="1167.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9">  2. Your production site is live at:</tspan></text>
+  <text x="20" y="1187.0" xml:space="preserve" class="mono"><tspan fill="#e5c07b">     https://flappyboard.&lt;subdomain&gt;.workers.dev</tspan></text>
+  <text x="20" y="1207.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="1227.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9">  3. CI/CD (GitHub Actions):</tspan></text>
+  <text x="20" y="1247.0" xml:space="preserve" class="mono"><tspan fill="#e5c07b">     .github/workflows/deploy.yml</tspan><tspan fill="#5c6370"> — push to main auto-deploys</tspan></text>
+  <text x="20" y="1267.0" xml:space="preserve" class="mono"><tspan fill="#e5c07b">     .github/workflows/preview.yml</tspan><tspan fill="#5c6370"> — every PR gets a preview</tspan></text>
+  <text x="20" y="1287.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="1307.0" xml:space="preserve" class="mono"><tspan fill="#c678dd">✨ Happy building! 🎉</tspan></text>
+  <text x="20" y="1327.0" xml:space="preserve" class="mono"><tspan fill="#d8dee9"></tspan></text>
+  <text x="20" y="1347.0" xml:space="preserve" class="mono"><tspan fill="#c678dd" font-weight="bold">$ </tspan><tspan fill="#d8dee9" font-weight="bold">open https://flappyboard.&lt;subdomain&gt;.workers.dev/boards</tspan></text>
+  <text x="20" y="1367.0" xml:space="preserve" class="mono"><tspan fill="#5c6370">  → create a board, open its URL on the TV, scan the QR with your phone.</tspan></text>
+</svg>
