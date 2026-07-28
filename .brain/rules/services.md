@@ -42,14 +42,60 @@ The runtime composes services into a single Layer in `app/runtime.ts` via `makeA
 | Service | File | Tag id | Shape |
 |---------|------|--------|-------|
 | `Database` | `app/services/database.ts` | `app/Database` | `{ db: DrizzleD1 }` (drizzle over D1) |
-| `Bucket` | `app/services/bucket.ts` | `app/Bucket` | `{ bucket: R2Bucket }` (raw R2 binding) |
+| `Bucket` | `app/services/bucket.ts` | `app/Bucket` | `{ bucket: R2Bucket }` (raw R2 binding) — provided **ad-hoc** in `routes/api/upload-file.ts`, **not** in the global runtime |
+| `BoardRoom` | `app/services/board-room.ts` | `app/BoardRoom` | `{ getState, setMessage, updateSettings, spendNonce }` — request-side wrapper over the `BoardRoom` Durable Object stub |
+| `BoardAgent` | `app/services/board-agent.ts` | `app/BoardAgent` | `{ generate }` — `claude-sonnet-5` structured output + decode/retry/repair. **Never fails construction** (see below) |
+| `Transcription` | `app/services/transcription.ts` | `app/Transcription` | `{ transcribe }` — Workers AI Whisper. Provided **ad-hoc** by `routes/api/transcribe.ts`, **not** in the global runtime |
 | `AuthApi` | `app/services/auth.ts` | `app/AuthApi` | `{ auth: Auth, api: Auth["api"] }` — Layer built via factory `AuthApiLive(baseURL?)`, not a bare Layer |
 | `Workflows` | `app/services/workflows.ts` | `app/Workflows` | `{ exampleWorkflow, triggerExample }` |
 | `Session` | `app/services/session.ts` | `app/Session` | `{ session, user }` — built ad-hoc via `SessionLive(headers)`, **not** in the global runtime |
 | `CloudflareEnv` | `app/services/cloudflare.ts` | `app/CloudflareEnv` | The raw `Env` |
 | `Logger` | `app/services/logger.ts` | — (no Tag) | `LoggerLive` + `MinLogLevelLive` Layers — replace Effect's default Logger |
 
-Repos / procedures composition lives in `app/runtime.ts` (`AppServices` union: `Database | Bucket | AuthApi | Workflows | UserRepository | AnalyticsRepository | BucketRepository`).
+Repos / procedures composition lives in `app/runtime.ts` (`AppServices` union: `Database | AuthApi | Workflows | BoardRoom | BoardAgent | UserRepository | AnalyticsRepository | BoardRepository`).
+
+### Layer wiring — what belongs in the global runtime
+
+**Every member of a merged layer is constructed when the runtime is built.** One service whose
+binding is missing therefore fails *all* of them: a missing `BUCKET` surfaced as
+`Failed to construct AuthApi` and 500'd every request, including routes that never touch R2.
+Do not assume layers are lazy — they are not.
+
+So the rule is: **a service whose binding may legitimately be absent does not go in the global
+runtime.** Provide it ad-hoc in the route that needs it, the way `SessionLive(headers)` already
+is (2026-07-27: `Bucket` + `BucketRepository` moved out of `AppServices` for exactly this reason;
+they're now built per-request inside `app/routes/api/upload-file.ts`):
+
+```typescript
+const bucketLayer = BucketRepository.Default.pipe(
+  Layer.provide(BucketLive),
+  Layer.provide(CloudflareEnvLive(context.cloudflare.env))
+);
+const exit = await context.runtime.runPromiseExit(
+  program.pipe(Effect.provide(bucketLayer))
+);
+```
+
+A service in the global runtime must have a binding that is always declared — `DATABASE`,
+`BOARD`, `EXAMPLE_WORKFLOW`. When you add one, declare the binding in **both** the default and
+`preview` env blocks of `wrangler.jsonc`, or preview deploys break in a way local dev won't show.
+
+### Secrets are not bindings — the third option
+
+`ANTHROPIC_API_KEY` is a *secret*, not a declared binding, which puts it awkwardly between the two
+rules above: it can legitimately be absent (a deploy without it), but there is no route-local `env`
+to build it from either, because the consumer is a tRPC procedure rather than a resource route.
+
+`BoardAgentLive` resolves this with a third pattern worth reusing: **it never fails construction.**
+On a missing key it logs a warning and returns a shape whose `generate` fails with the same
+`ConfigurationError` a fail-fast layer would have raised. So it is safe to merge into the global
+runtime — a keyless deploy serves the whole app and breaks exactly one procedure, instead of
+500ing every request the way the missing `BUCKET` binding did. Two tests cover both halves: the
+layer constructs, and `generate` fails typed.
+
+Choosing between the three: **binding always declared** → global runtime. **Binding may be absent
+and the consumer is a route** → provide ad-hoc (R2). **Secret may be absent and the consumer is a
+procedure** → global runtime, but the layer must degrade instead of failing.
 
 > **Not present in this repo:** Stripe, PostHog, Resend, external AI SDKs. If a feature needs one, follow "Adding a new service" below and document under [`../high-level-architecture/integrations.md`](../high-level-architecture/integrations.md).
 

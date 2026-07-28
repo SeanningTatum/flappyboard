@@ -1,0 +1,1 @@
+ALTER TABLE `board` ADD `grant_epoch` integer DEFAULT 0 NOT NULL;

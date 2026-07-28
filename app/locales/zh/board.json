@@ -1,0 +1,114 @@
+{
+  "status": {
+    "connecting": "连接中",
+    "reconnecting": "重新连接中",
+    "offline": "已离线"
+  },
+  "sound": {
+    "unlock": "点击开启声音"
+  },
+  "qr": {
+    "scan": "扫码控制",
+    "alt": "扫描二维码打开此看板的手机控制页"
+  },
+  "error": {
+    "title": "看板不可用",
+    "body": "无法加载此看板。请检查屏幕上的地址。"
+  },
+  "control": {
+    "rescan": {
+      "title": "请重新扫码",
+      "body": "此链接已失效。请用手机重新扫描看板上的二维码以获得控制权。",
+      "retry": "重试"
+    },
+    "status": {
+      "sent": "已发送到看板",
+      "trimmed": "已发送——内容已裁剪以适应看板",
+      "failed": "发送失败，请重试。",
+      "rescan": "访问权限已过期，请重新扫描看板上的二维码。"
+    },
+    "header": {
+      "rev": "版本"
+    },
+    "send": "发送到看板",
+    "sending": "发送中…",
+    "voice": {
+      "title": "语音",
+      "hold": "按住说话",
+      "release": "松开即发送",
+      "hint": "按住按钮，说出你想让看板显示的内容。",
+      "recording": "正在录音——请继续按住",
+      "transcribing": "正在识别你说的话…",
+      "generating": "正在生成看板内容…",
+      "done": "已显示在看板上",
+      "trimmed": "已显示在看板上——内容已裁剪以适应",
+      "repaired": "已显示在看板上——已整理以适应网格",
+      "error": {
+        "denied": "无法使用麦克风。请在浏览器设置中允许，或直接在上方输入内容。",
+        "unsupported": "此浏览器无法录音。请改用上方的输入框。",
+        "too_short": "录音太短了。说话时请一直按住按钮。",
+        "mic": "麦克风无法启动。请检查是否有其他程序正在占用。",
+        "transcribe": "没有听清。请按住按钮再试一次。",
+        "generate": "看板未接收此内容，请重试。",
+        "insecure": "语音输入需要安全连接。请通过 https 打开此页面（或在运行服务器的设备上打开）——也可以直接在上方输入文字。"
+      }
+    },
+    "editor": {
+      "title": "消息",
+      "row_placeholder": "第 {{number}} 行",
+      "row_detail": "第 {{number}} 行",
+      "segment_placeholder": "…接着这段",
+      "color_label": "行颜色",
+      "segment_color_label": "第 {{number}} 段的颜色",
+      "align_label": "行对齐方式",
+      "clear": "清空",
+      "add_segment": "+ 颜色",
+      "remove_segment": "删除本行第 {{number}} 段",
+      "align": {
+        "left": "左对齐",
+        "center": "居中",
+        "right": "右对齐",
+        "spread": "两端"
+      }
+    },
+    "preview": {
+      "title": "预览",
+      "truncated": "已裁剪以适应"
+    },
+    "paint": {
+      "toggle": "上色",
+      "color_label": "画笔颜色",
+      "hint": "先选颜色，然后点按单个格子、拖动涂满一段，或点按行号涂满整行。单独在空白处上色的格子会靠到最左边。",
+      "cell": "为第 {{row}} 行第 {{col}} 列上色——当前为{{color}}",
+      "row": "用{{color}}涂满第 {{row}} 行"
+    },
+    "sound": {
+      "title": "声音",
+      "pack_label": "音效包",
+      "mute_label": "静音看板",
+      "muted": "已静音",
+      "unmuted": "声音已开启"
+    },
+    "history": {
+      "title": "看板历史",
+      "empty": "此看板还没有显示过内容。",
+      "blank": "空白看板",
+      "replay": "将第 {{revision}} 版重新显示到看板",
+      "source": {
+        "manual": "手动输入",
+        "llm": "AI 生成",
+        "automation": "自动化"
+      }
+    },
+    "colors": {
+      "white": "白色",
+      "red": "红色",
+      "orange": "橙色",
+      "yellow": "黄色",
+      "green": "绿色",
+      "blue": "蓝色",
+      "violet": "紫色",
+      "black": "未点亮"
+    }
+  }
+}

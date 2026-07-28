@@ -11,6 +11,8 @@ export const namespaces = [
   "home",
   "validation",
   "upload",
+  "board",
+  "boards",
 ] as const;
 
 export const localeCookieName = "i18next";

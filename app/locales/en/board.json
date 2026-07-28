@@ -1,0 +1,114 @@
+{
+  "status": {
+    "connecting": "Connecting",
+    "reconnecting": "Reconnecting",
+    "offline": "Offline"
+  },
+  "sound": {
+    "unlock": "Tap for sound"
+  },
+  "qr": {
+    "scan": "Scan to control",
+    "alt": "QR code linking to the phone controller for this board"
+  },
+  "error": {
+    "title": "Board unavailable",
+    "body": "This board could not be loaded. Check the address on the screen."
+  },
+  "control": {
+    "rescan": {
+      "title": "Scan the board again",
+      "body": "This link has expired. Point your phone at the code on the board to take control again.",
+      "retry": "Try again"
+    },
+    "status": {
+      "sent": "Sent to the board",
+      "trimmed": "Sent — trimmed to fit the board",
+      "failed": "That didn't reach the board. Try again.",
+      "rescan": "Your access expired. Scan the code on the board again."
+    },
+    "header": {
+      "rev": "Rev"
+    },
+    "send": "Send to board",
+    "sending": "Sending…",
+    "voice": {
+      "title": "Voice",
+      "hold": "Hold to talk",
+      "release": "Release to send",
+      "hint": "Hold the button and say what the board should say.",
+      "recording": "Recording — keep holding",
+      "transcribing": "Working out what you said…",
+      "generating": "Writing the board…",
+      "done": "On the board",
+      "trimmed": "On the board — trimmed to fit",
+      "repaired": "On the board — tidied up to fit the grid",
+      "error": {
+        "denied": "No microphone access. Allow it in your browser settings — or just type your message above.",
+        "unsupported": "This browser can't record audio. Type your message above instead.",
+        "too_short": "That was too short. Hold the button down while you speak.",
+        "mic": "The microphone wouldn't start. Check nothing else is using it.",
+        "transcribe": "That didn't come through. Hold the button and try again.",
+        "generate": "The board didn't take it. Try again.",
+        "insecure": "Voice needs a secure connection. Open this page over https (or on the same device as the server) — or just type your message above."
+      }
+    },
+    "editor": {
+      "title": "Message",
+      "row_placeholder": "Row {{number}}",
+      "row_detail": "Row {{number}}",
+      "segment_placeholder": "…then this",
+      "color_label": "Row colour",
+      "segment_color_label": "Colour of part {{number}}",
+      "align_label": "Row alignment",
+      "clear": "Clear",
+      "add_segment": "+ Colour",
+      "remove_segment": "Remove part {{number}} of this row",
+      "align": {
+        "left": "Left",
+        "center": "Centre",
+        "right": "Right",
+        "spread": "Spread"
+      }
+    },
+    "preview": {
+      "title": "Preview",
+      "truncated": "Trimmed to fit"
+    },
+    "paint": {
+      "toggle": "Paint",
+      "color_label": "Paint colour",
+      "hint": "Pick a colour, then tap a tile, drag across a run of them, or tap a row number to fill that row. A tile painted into empty space snaps to the left edge.",
+      "cell": "Paint row {{row}}, column {{col}} — currently {{color}}",
+      "row": "Fill row {{row}} with {{color}}"
+    },
+    "sound": {
+      "title": "Sound",
+      "pack_label": "Sound pack",
+      "mute_label": "Mute the board",
+      "muted": "Muted",
+      "unmuted": "Sound on"
+    },
+    "history": {
+      "title": "Recently on the board",
+      "empty": "Nothing has been on this board yet.",
+      "blank": "Blank board",
+      "replay": "Put revision {{revision}} back on the board",
+      "source": {
+        "manual": "Typed",
+        "llm": "Written by AI",
+        "automation": "Automated"
+      }
+    },
+    "colors": {
+      "white": "White",
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "blue": "Blue",
+      "violet": "Violet",
+      "black": "Unlit"
+    }
+  }
+}

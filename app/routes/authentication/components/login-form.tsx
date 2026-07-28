@@ -68,7 +68,21 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" data-testid="login-form">
+            {/*
+              `method="post"` is a security control, not a formality. A <form>
+              defaults to GET, so before hydration (or if the JS bundle fails to
+              load) a submit navigates to `?email=…&password=…` — putting the
+              password in the URL, browser history and any onward Referer. This
+              was observed for real during phase 3 verification when Vite served
+              a stale dep bundle and the page never hydrated. POST keeps the
+              credentials in the request body whatever happens to the JS.
+            */}
+            <form
+              method="post"
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-6"
+              data-testid="login-form"
+            >
               <FormField
                 control={form.control}
                 name="email"

@@ -25,6 +25,10 @@ const APP_ERROR_TAGS = new Set<AppError["_tag"]>([
   "BucketListError",
   "BucketValidationError",
   "WorkflowTriggerError",
+  "PairingTokenInvalidError",
+  "BoardGenerationError",
+  "LlmRefusedError",
+  "TranscriptionFailedError",
 ]);
 
 // Compile-time exhaustiveness guard for `appErrorToTRPC`'s switch. Reachable
@@ -89,12 +93,21 @@ const appErrorToTRPC = (e: AppError): TRPCError => {
         message: `Failed to query ${e.entity}`,
         cause: e.cause,
       });
+    // Which piece of deployment configuration is missing is *our* problem, not
+    // the caller's, and naming it is a free reconnaissance win: `pair` and
+    // `generate` take no session, so an unauthenticated caller could learn
+    // "BETTER_AUTH_SECRET is unset" or "ANTHROPIC_API_KEY is unset" — i.e. which
+    // half of the deployment to keep poking at. `service` and `field` stay in the
+    // server log; the client gets the same generic 500 as any other internal
+    // fault, so a config gap is not even distinguishable from a bug.
     case "ConfigurationError":
+      loggers.trpc.error(
+        { service: e.service, field: e.field ?? null },
+        "Configuration error — deployment config is missing"
+      );
       return new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: `Configuration error for ${e.service}${
-          e.field ? ` (${e.field})` : ""
-        }`,
+        message: "Internal Server Error",
       });
     case "ExternalServiceError":
       return new TRPCError({
@@ -146,6 +159,40 @@ const appErrorToTRPC = (e: AppError): TRPCError => {
         code: "INTERNAL_SERVER_ERROR",
         message: `Failed to trigger workflow: ${e.name}`,
         cause: e.cause,
+      });
+    // The client is told to rescan and nothing else. `e.reason`
+    // (malformed / bad-signature / expired / spent / missing) is deliberately
+    // NOT in the message: distinguishing those for a caller turns pairing into
+    // an oracle for probing tokens. The reason is logged where it is raised.
+    case "PairingTokenInvalidError":
+      return new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "Pairing is no longer valid — rescan the code on the board",
+      });
+    // The model call itself failed. Never raised for a badly-shaped board —
+    // those are retried and then repaired — so reaching here means there was
+    // no usable response at all, which is ours to fix, not the caller's.
+    case "BoardGenerationError":
+      return new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "The board agent could not be reached — try again",
+        cause: e.cause,
+      });
+    // A refusal is about what was *asked*, so 400 and not 500: retrying the same
+    // prompt verbatim cannot succeed. `e.category` (cyber / bio / …) stays in the
+    // log — a policy label is not something the phone can act on.
+    case "LlmRefusedError":
+      return new TRPCError({
+        code: "BAD_REQUEST",
+        message: "The board agent declined that prompt — try rephrasing it",
+      });
+    // Also the caller's input rather than a server fault: the recording was
+    // unusable, so the phone should prompt for another one. `reason` is written
+    // to be client-safe, so it is included.
+    case "TranscriptionFailedError":
+      return new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Could not transcribe the recording: ${e.reason}`,
       });
     default:
       return assertNever(e);

@@ -1,528 +1,274 @@
-# cf-saas-starter-react-router
-
-[![Release](https://img.shields.io/github/v/release/SeanningTatum/cf-saas-starter-react-router?label=release&color=blue)](https://github.com/SeanningTatum/cf-saas-starter-react-router/releases/latest)
-[![Cloudflare Workers](https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
-[![React Router](https://img.shields.io/badge/framework-React%20Router%20v7-CA4245?logo=reactrouter&logoColor=white)](https://reactrouter.com/)
-[![Effect TS](https://img.shields.io/badge/typed-Effect%20TS-1E1E2C)](https://effect.website/)
-[![TypeScript](https://img.shields.io/badge/typescript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-
-> **The harness-first, AI-first SaaS starter.** Cloudflare Workers + React Router v7 + tRPC + D1 + Drizzle + Better Auth + Effect TS + ShadCN. Same runtime on your laptop and at the edge. Drop in any agent (Claude Code, Cursor, Codex) and ship real features by following retrieval-based docs, paste-able recipes, and deterministic verification gates.
+<h1 align="center">flappyboard</h1>
 
 <p align="center">
-  <img src="docs/assets/harness-loop.gif" alt="The Harness Loop — /start-task → work → /verify-done → /ship-feature, gated by typecheck, test, and brain-sync" width="720">
-  <br>
-  <em>Every task runs the same loop. Deterministic gates keep the agent coherent across sessions.</em>
+  <strong>A split-flap message board for the TV you already own — driven from your phone.</strong><br>
+  Type what it says, or hold a button and let an LLM write it.
 </p>
 
-**Three pillars:**
-1. **Harness-first** — agents stay coherent across sessions via the [5-subsystem framework](.brain/HARNESS.md): instructions, state, verification, scope, lifecycle.
-2. **AI-first** — five project-local sub-agents, eight paste-able recipes, four deterministic slash commands, five grep-checkable non-negotiables.
-3. **DX that just works** — `bun install` + `bun run dev` and you're live. `bun run scripts/first-time-setup.ts` gets you from zero to deployed Worker in ~3 minutes. Local dev runs the same Workers runtime that ships to production.
+<p align="center">
+  <a href="https://workers.cloudflare.com/"><img src="https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white" alt="Cloudflare Workers"></a>
+  <a href="https://reactrouter.com/"><img src="https://img.shields.io/badge/framework-React%20Router%20v7-CA4245?logo=reactrouter&logoColor=white" alt="React Router v7"></a>
+  <a href="https://effect.website/"><img src="https://img.shields.io/badge/typed-Effect%20TS-1E1E2C" alt="Effect TS"></a>
+  <img src="https://img.shields.io/badge/tests-849%20passing-3fb950" alt="849 tests passing">
+</p>
 
-📦 **Latest release:** [`v1.2.0` — The Boilerplate Audited Itself](https://github.com/SeanningTatum/cf-saas-starter-react-router/releases/tag/v1.2.0)
-
-If you're a human, scroll to [Quick Start](#quick-start). If you're an agent, scroll to [How To Work In This Repo](#how-to-work-in-this-repo) — it tells you which docs to open before writing code.
-
----
-
-## What's in the box
-
-**Stack**
-- **Runtime:** Cloudflare Workers (no Node), React Router v7 SSR
-- **Server logic:** tRPC v11 procedures wrapped in Effect TS
-- **Persistence:** D1 (SQLite) via Drizzle ORM 0.45, R2 for files
-- **Auth:** Better Auth 1.4 with Drizzle adapter + admin plugin (RBAC)
-- **Validation:** Effect Schema everywhere — no Zod
-- **Errors:** `Data.TaggedError` mapped to tRPC codes via `tagToTRPC`
-- **UI:** ShadCN/Radix + Tailwind v4 (oklch), next-themes, react-hook-form + Effect resolver
-- **i18n:** remix-i18next + i18next, route-level namespaces, fully typed
-- **Testing:** Vitest 3 (unit) + Playwright 1.58 (e2e) + `@effect/vitest`
-- **Background:** Cloudflare Workflows (`ExampleWorkflow`)
-
-**Agent harness**
-- `.brain/` — retrieval-first docs (rules, architecture, features, recipes, runs)
-- `.brain/recipes/` — paste-able runbooks bookended by `00-before-task.md` (init) and `99-verify-done.md` (termination check)
-- `.brain/runs/` — per-task continuity log so multi-session work survives compaction
-- `.githooks/pre-commit` — typecheck + tests block broken commits (no-dep, auto-installs)
-- `.claude/hooks/brain-reminder.sh` — staged-path → relevant-doc reminder before commit
-- `.claude/commands/verify-done.md` — `/verify-done` slash command runs the full termination checklist
-- `CLAUDE.md` / `AGENTS.md` — kept byte-identical, both are the agent entry point
+<p align="center">
+  <img src="docs/assets/board-lit.png" alt="A 6x24 split-flap board on a TV reading FLAPPYBOARD / DEPARTURES 14:05 GATE 24 / OSLO ON TIME / LISBON DELAYED, in per-cell colour" width="820">
+</p>
 
 ---
 
-## In the wild
+## The pitch
 
-Real apps built on this starter — same runtime, same harness, same conventions:
+A [Vestaboard](https://www.vestaboard.com/) is a beautiful thing that costs about **$3,000** and hangs on one wall.
 
-| Project | What it is |
-|---------|------------|
-| [**home-karaoke**](https://github.com/SeanningTatum/home-karaoke) 🎤 | Open-source group karaoke — host a room on the big screen, guests scan a QR to search YouTube and add songs to a live shared queue. Extends the base with Cloudflare Durable Objects for the real-time queue. |
-| [**portfolio-v3**](https://github.com/SeanningTatum/portfolio-v3) | Sean's personal portfolio — the starter stripped down to a content-first site on the edge. |
+flappyboard is the same idea running on a TV you already own. You open one URL on the TV and leave it there. Everyone else scans the QR code in the corner with their phone and starts typing — no app to install, no account to create, no password to share. The board flips, clatters, and settles, and everyone in the room watches it happen.
 
-Shipped something on it? Open a PR adding it here.
+It is the family-message-board / departures-board / passive-aggressive-roommate-note appliance, for the cost of a browser tab.
 
 ---
 
-## Quick Start
+## How it works
 
-### Prerequisites
+### 1. The TV opens a URL and never touches it again
+
+<p align="center">
+  <img src="docs/assets/tv-qr.png" alt="The TV display showing a live board with a QR code overlay in the bottom-right corner labelled SCAN TO CONTROL" width="700">
+</p>
+
+Six rows, twenty-four columns, full-bleed, every cell with its own character *and* its own colour. A QR code sits in the corner. That is the whole TV-side interaction — you type the URL once with the remote and you are done forever.
+
+### 2. Your phone scans the QR and becomes the keyboard
+
+<p align="center">
+  <img src="docs/assets/phone-controller.png" alt="The phone controller: six numbered text inputs for the six board rows, a live preview grid beneath them, and per-row alignment and colour controls" width="330">
+  &nbsp;&nbsp;
+  <img src="docs/assets/row-paint.png" alt="Paint mode on the phone: tapping cells in the preview grid to colour them individually" width="330">
+</p>
+
+**Six bare text inputs — one per row.** Type, hit send, watch the TV. That's the fast path, and it's the whole thing for most messages.
+
+Underneath is a live preview of the actual grid, which doubles as the colouring surface: switch to **Paint** and tap cells to colour them, or set a whole row at once. Alignment is per-row — left, centre, right, or spread.
+
+The phone that scanned the QR gets a **12-hour grant** to write to that one board. It never sees your account. You can revoke every outstanding grant from the owner's side at any time, and the QR itself is single-use — a token that's already been redeemed is refused.
+
+### 3. Or hold the button and just talk
+
+Hold the push-to-talk button, say *"put up tonight's dinner plan and make it sarcastic"*, let go.
+
+The audio goes to Whisper on Workers AI, the transcript goes to `claude-sonnet-5` with the board's JSON schema attached, and the board writes itself. If the model returns something that doesn't decode, the error is fed back and it retries twice; if it still doesn't fit, a deterministic repair pass clamps it. **The board always ends up renderable** — worst case you get clipped text, never a failed request or a broken grid.
+
+---
+
+## The board actually travels
+
+This is the part that's easy to fake and worth not faking. A real split-flap doesn't cross-fade — each tile steps *forward through the alphabet* until it reaches the letter it wants, and it clatters the whole way.
+
+<p align="center">
+  <img src="docs/assets/board-mid-flip.png" alt="The board mid-travel: tiles showing genuine intermediate glyphs like ZZZZZ and 33333 and partial words, not the final text" width="820">
+  <br>
+  <em>Caught mid-travel. Those aren't the final letters — the tiles are genuinely passing through the drum.</em>
+</p>
+
+The numbers, from the code and confirmed by a browser walk that sampled `requestAnimationFrame` at 84 frames over 1400ms:
+
+| | |
+|---|---|
+| Time per flap | `72ms`, plus a `200ms` landing flip |
+| Stagger between tiles | `14ms × (row + col)` — the ripple runs diagonally across the board |
+| Worst-case full travel | `55 × 72 + 200 = 4,160ms` — a tile going all the way around the drum |
+| Peak tiles in flight | 42 faces mid-`rotateX` at once, measured |
+
+A **colour-only** change is deliberately *not* a full revolution. On a physical board, colour and glyph share one drum, so recolouring a tile without changing its letter means 57 flaps and four seconds of scrambling text the reader is already reading. flappyboard flutters five flaps and lands back on the same glyph instead. It's an honest compromise, and it's the difference between "painting a row red" costing 488ms and costing four seconds.
+
+---
+
+## Quick start
+
+### Run it locally
 
 ```bash
-# Bun (package manager + runtime)
-curl -fsSL https://bun.sh/install | bash
-
-# Cloudflare CLI
-bun add -g wrangler
-wrangler login
-```
-
-### Option A — Automated setup (recommended)
-
-```bash
-bun run scripts/first-time-setup.ts
-```
-
-The wizard creates your D1 database, R2 bucket, optional KV namespace, generates a `BETTER_AUTH_SECRET`, writes `wrangler.jsonc` + `.env`, runs migrations, and deploys. ~3 min end-to-end.
-
-### Option B — Manual
-
-```bash
-bun install                 # also runs cf-typegen + git hooks install
-bun run db:migrate:local    # apply migrations to local D1
-bun run db:seed             # seed local D1 with admin/user/banned fixtures
+bun install                 # also runs cf-typegen + installs git hooks
+cp .dev.vars.example .dev.vars
+bun run db:migrate:local
+bun run db:seed             # admin/user fixtures + a demo board
 bun run dev                 # http://localhost:5173
 ```
 
----
+Sign in, go to `/boards`, create one, and open its URL in a second window — that's your "TV". The QR in the corner points at the controller.
 
-## How To Work In This Repo
+The AI features need an `ANTHROPIC_API_KEY` in `.dev.vars`; everything else works without one.
 
-### For humans
-
-Read [`CLAUDE.md`](CLAUDE.md) once. It points to everything else.
-
-### For agents
-
-You're working in a codebase with strict conventions. Skipping the brain will cost rework. Every non-trivial task has three phases — each gated by a slash command.
-
-**1. Init — [`/start-task`](.claude/commands/start-task.md)** (or [`.brain/recipes/00-before-task.md`](.brain/recipes/00-before-task.md))
-- Runs `./init.sh --baseline` to capture pre-change typecheck + test state
-- Reads the brain (matching `.brain/<folder>/index.md` + triggered files)
-- Frames task: intent, domain, scope, affected feature(s)
-- Reads brain state via the `brain` CLI (`brain`, `brain progress`, `brain docs`, `brain search`)
-- Validates scope policy via `brain features --status in-progress` (`brain check` enforces one-in-progress) — refuses if >1 feature in progress
-- Opens run note (`.brain/runs/<date>-<slug>.md`) for >30min work
-- Appends entry to [`.brain/runs/progress.md`](.brain/runs/progress.md)
-
-**2. Work — pick the runbook**
-- Adding code → matching recipe in [`.brain/recipes/index.md`](.brain/recipes/index.md)
-- Refactor / bugfix → the layer's rule file in [`.brain/rules/index.md`](.brain/rules/index.md)
-- Feature work → existing memo in [`.brain/features/<slug>.md`](.brain/features/index.md), plus past attempts in [`.brain/runs/`](.brain/runs/)
-
-**3. Verify — [`/verify-done`](.claude/commands/verify-done.md)** (or [`.brain/recipes/99-verify-done.md`](.brain/recipes/99-verify-done.md))
-- typecheck + test + e2e (if cross-component) + build (if CF-touching) + manual UI smoke (if UI)
-- Brain coherence: every diffed path → owning brain doc updated
-- Five non-negotiables grep-clean
-- Close the run note if you opened one
-
-**Shipping a feature — [`/ship-feature`](.claude/commands/ship-feature.md)**
-- Runs `/verify-done`, then `brain ship <slug> --evidence "..."` (flips `feature_list.json` to `"shipped"`, screenshot-check, checkpoint, `brain check`), updates per-feature MD changelog, closes run note. Refuses on red.
-
-**The five non-negotiables** (also in [`.brain/codebase/effect-ts.md`](.brain/codebase/effect-ts.md)):
-
-1. **Effect TS by default.** No `throw`. No `try/catch` outside `Effect.tryPromise`.
-2. **Effect Schema for validation.** No Zod.
-3. **Tagged errors only.** All in `app/models/errors/`. Map every one in `app/lib/effect-trpc.ts`.
-4. **Unit test every helper, repository, and service.** See [`.brain/codebase/testing.md`](.brain/codebase/testing.md).
-5. **Cloudflare Workers, not Node.** Bindings via the `CloudflareEnv` Tag. Never `process.env`.
-
----
-
-## Harness — the system around the agent
-
-This repo follows the [walkinglabs 5-subsystem harness framework](https://github.com/walkinglabs/learn-harness-engineering/tree/main/skills/harness-creator). The harness is everything that keeps coding agents reliable across sessions: instructions, state, verification, scope, and lifecycle.
-
-The `.brain/` harness is driven by the **[brain-axi](https://github.com/SeanningTatum/brain-axi) CLI** (`brain`) — it reads/writes brain state (features, checkpoints, docs, runs, verifications) with token-efficient TOON output, so agents prefer it over hand-editing files. Install: `npx skills add SeanningTatum/brain-axi --skill brain`.
-
-Single explainer: [`.brain/HARNESS.md`](.brain/HARNESS.md). The 5 subsystems mapped to actual files (and the `brain` commands that drive them):
-
-| Subsystem | Artifacts |
-|-----------|-----------|
-| **Instructions** | [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md), [`.brain/`](.brain/) (rules, recipes, features) — via `brain docs` / `brain search` |
-| **State** | [`.brain/features/feature_list.json`](.brain/features/feature_list.json) (via `brain features` / `set-status` / `ship`), [`.brain/runs/progress.md`](.brain/runs/progress.md) (via `brain progress`), per-task run notes (via `brain runs`) |
-| **Verification** | [`.brain/recipes/99-verify-done.md`](.brain/recipes/99-verify-done.md), [`/verify-done`](.claude/commands/verify-done.md), `brain check` + [`scripts/harness-check.sh`](scripts/harness-check.sh), `brain playbook verify` |
-| **Scope** | One in-progress feature at a time (enforced by `brain check` + [`harness-check.sh`](scripts/harness-check.sh)); ≤2 features per diff |
-| **Lifecycle** | [`init.sh`](init.sh), [`.claude/hooks/session-start.sh`](.claude/hooks/session-start.sh) (SessionStart hook), [`.claude/hooks/brain-reminder.sh`](.claude/hooks/brain-reminder.sh) (PreToolUse hook) |
-
-### Slash commands (deterministic gates)
-
-| Command | What it does |
-|---------|--------------|
-| [`/start-task`](.claude/commands/start-task.md) | Kickoff: `init.sh --baseline` + brain read + framing + run note + progress entry. Refuses if scope policy violated. |
-| [`/verify-done`](.claude/commands/verify-done.md) | Full verification: typecheck/test/e2e/build/UI/brain coherence/non-negotiables + `brain check`. |
-| [`/ship-feature`](.claude/commands/ship-feature.md) | Close out: `/verify-done` + `brain ship <slug> --evidence` (flip + checkpoint + `brain check`) + update feature MD + close run note. |
-| [`/harness-check`](.claude/commands/harness-check.md) | `brain check` (brain-state invariants) + repo supplement (sync rule, sub-agent frontmatter, dead links) via [`scripts/harness-check.sh`](scripts/harness-check.sh) — no LLM, exits non-zero on drift. |
-
-`scripts/harness-check.sh` wraps `brain check` and adds the repo-only invariants; run it (or `init.sh`) yourself anytime to verify state without invoking Claude. Requires the `brain` CLI on PATH (`npm i -g github:SeanningTatum/brain-axi#v0.1.0`).
-
-### Project-local sub-agents ([`.claude/agents/`](.claude/agents/))
-
-Five subagents wrap specific harness pieces. The main thread delegates to these so it doesn't have to re-load harness rules every turn.
-
-| Agent | Use when |
-|-------|----------|
-| [`brain-navigator`](.claude/agents/brain-navigator.md) | Before writing code — get the reading list for a task |
-| [`recipe-runner`](.claude/agents/recipe-runner.md) | Adding code that matches one of the 8 `add-*` recipes |
-| [`effect-ts-enforcer`](.claude/agents/effect-ts-enforcer.md) | After writing — review diff against the 5 non-negotiables |
-| [`verify-done-runner`](.claude/agents/verify-done-runner.md) | Before declaring done — runs the full verification checklist |
-| [`feature-tracker`](.claude/agents/feature-tracker.md) | Status changes (start / ship / block / scope a feature) |
-
-See [`.claude/agents/README.md`](.claude/agents/README.md) for invocation flow + complementary plugin agents.
-
----
-
-## The `.brain/` directory
-
-Retrieval-over-recall. Each subdirectory has an `index.md` that signals "read me when X". Don't open files at random — start at the index.
-
-```
-.brain/
-├── HARNESS.md                 The harness, explained — single overview of the 5 subsystems
-├── high-level-architecture/   System layers, data flow, security, integrations
-├── codebase/                  Effect TS programming model, helpers, tests, i18n, tRPC API
-├── rules/                     7 layer-aligned rules (frontend / cloudflare / repository /
-│                               services / routes / library / errors)
-├── recipes/                   Paste-able runbooks (00-before-task / 99-verify-done bookends + add-*)
-├── runs/                      progress.md (rolling cursor) + per-task <date>-<slug>.md work logs
-├── features/                  Per-feature memory + feature_list.json (machine-readable status)
-├── transcripts/               Meeting notes / decision logs (the "why")
-├── emails/                    Stakeholder correspondence
-└── CHANGELOG.md               Architectural + brain shifts (not a code changelog)
-```
-
-### When to read what
-
-| Task | Open |
-|------|------|
-| Adding any code | [`recipes/index.md`](.brain/recipes/index.md) → pick a recipe |
-| Editing UI / forms / Tailwind | [`rules/frontend.md`](.brain/rules/frontend.md) |
-| Editing a repository | [`rules/repository.md`](.brain/rules/repository.md) |
-| Editing a service | [`rules/services.md`](.brain/rules/services.md) |
-| Editing a tRPC route or page loader | [`rules/routes.md`](.brain/rules/routes.md) |
-| Editing wrangler / bindings / Workflows | [`rules/cloudflare.md`](.brain/rules/cloudflare.md) |
-| Adding a tagged error | [`rules/errors.md`](.brain/rules/errors.md) + [`recipes/add-tagged-error.md`](.brain/recipes/add-tagged-error.md) |
-| Helpers / Effect Schema / tests | [`rules/library.md`](.brain/rules/library.md) |
-| Designing a feature | [`features/index.md`](.brain/features/index.md) → `_TEMPLATE.md` → existing examples |
-| Tracing a constraint with no obvious "why" | [`transcripts/`](.brain/transcripts/) and [`emails/`](.brain/emails/) |
-
----
-
-## Recipes — paste-able runbooks
-
-Each recipe is a deterministic checklist with code snippets, brain-doc updates, and a "definition of done". Designed for one-shot agent execution.
-
-| Recipe | When |
-|--------|------|
-| [`00-before-task.md`](.brain/recipes/00-before-task.md) | **Bookend.** Run at the start of every non-trivial task |
-| [`99-verify-done.md`](.brain/recipes/99-verify-done.md) | **Bookend.** Run before declaring a task done. Also `/verify-done` |
-| [`add-trpc-endpoint.md`](.brain/recipes/add-trpc-endpoint.md) | New tRPC procedure (query/mutation) |
-| [`add-db-table.md`](.brain/recipes/add-db-table.md) | New D1 table + Drizzle schema + repository |
-| [`add-tagged-error.md`](.brain/recipes/add-tagged-error.md) | New domain error + `tagToTRPC` mapping |
-| [`add-cf-binding.md`](.brain/recipes/add-cf-binding.md) | New Cloudflare binding (KV, DO, Queue, Vectorize, etc.) |
-| [`add-service.md`](.brain/recipes/add-service.md) | New Effect service (external client, lifecycle-bearing) |
-| [`add-route.md`](.brain/recipes/add-route.md) | New React Router page (loader / action / UI / i18n) |
-| [`add-feature.md`](.brain/recipes/add-feature.md) | End-to-end feature combining the above |
-
-[`recipes/index.md`](.brain/recipes/index.md) also has decision trees (e.g. "tRPC vs Workflow vs Queue?", "D1 vs R2 vs KV?") to disambiguate before you start.
-
----
-
-## Guardrails
-
-These run automatically — you do not need to remember them.
-
-### Pre-commit gate ([`.githooks/pre-commit`](.githooks/pre-commit))
-
-Triggered on `git commit`. Skips entirely if no `.ts/.tsx/.js/.jsx` files are staged. Otherwise:
+### Deploy it to Cloudflare
 
 ```bash
-bun run typecheck     # cf-typegen + react-router typegen + tsc -b
-bun run test          # vitest run (123+ unit tests)
+bun run setup
 ```
 
-Auto-installed via `postinstall` (sets `core.hooksPath = .githooks`). Re-install manually with `bun run hooks:install`. Bypass for an emergency commit:
+One wizard: creates the D1 databases, generates a `BETTER_AUTH_SECRET`, writes `wrangler.jsonc`, runs migrations, deploys production **and** a preview environment, and wires the GitHub Actions credentials.
+
+<p align="center">
+  <img src="docs/assets/setup-flow.svg" alt="Terminal transcript of bun run setup, stepping through Cloudflare auth, resource creation, migrations, and deploy" width="820">
+  <br>
+  <em>Illustrative mockup of a typical <code>bun run setup</code> run — your IDs and subdomain will differ.</em>
+</p>
+
+Then push the API key to both environments, since local files never reach Cloudflare:
 
 ```bash
-SKIP_HOOKS=1 git commit -m "..."
+wrangler secret put ANTHROPIC_API_KEY
+wrangler secret put ANTHROPIC_API_KEY --env preview
 ```
-
-### Brain reminder ([`.claude/hooks/brain-reminder.sh`](.claude/hooks/brain-reminder.sh))
-
-Fires from Claude Code's `PreToolUse` hook on `git commit*`. Looks at staged paths and prints which `.brain/` docs likely need updating. Cheap shell script — no LLM call, never blocks.
-
-Example output:
-
-```
-🧠 Brain-update reminder (commit not blocked):
-  • app/db/schema.ts → .brain/high-level-architecture/data-models.md + .brain/codebase/api.md
-  • app/repositories/ → .brain/rules/repository.md
-```
-
-### CLAUDE.md ↔ AGENTS.md sync
-
-Both files are byte-identical by design — `CLAUDE.md` for Claude Code, `AGENTS.md` for AGENTS-spec tools (Codex, Aider). When you edit one, mirror to the other:
-
-```bash
-cp CLAUDE.md AGENTS.md
-```
-
-(There's no CI check yet — that's tracked.)
 
 ---
 
-## Project layout
+## Managing boards
 
+<p align="center">
+  <img src="docs/assets/boards-page.png" alt="The boards page: a create-board form and cards for each board showing its TV URL with a copy button, plus Open display and Control from phone actions" width="760">
+</p>
+
+One account, many boards — kitchen, office, the one you point at your flatmate. Each card hands you the URL to type into that TV's browser, a copy button, and direct links to the display and the controller.
+
+Deleting a board cascades its snapshot history with it, and every grant that pointed at it stops working in the same instant — a grant is verified against the board row, so once the row is gone there is nothing left to verify against.
+
+---
+
+## Four ideas worth stealing
+
+These are the design decisions that did real work. Each one is written up in `.brain/` with the incident that earned it.
+
+### The compiler owns the 6×24 invariant, and nothing else may
+
+Writers — the phone, a socket, the model — produce a loose `BoardMessage`: up to six rows, each an alignment plus a list of `{ text, color }` segments. `compileMessage` is the **only** bridge to a strict `BoardGrid`. It folds the charset, word-wraps to 24, applies alignment, and pads to exactly 144 cells.
+
+So no caller can construct an invalid board. This paid off twice: structured outputs turned out to reject array size bounds (`maxItems` caps at 400), which means the model *cannot* be constrained to six rows by schema — and a layout bug reported from a photo of a real TV turned out to be layout logic that had leaked into the editor, somewhere the model couldn't reach.
+
+### One Durable Object per board is the only live writer
+
+The Worker never holds board state. It validates, compiles, and hands the grid to `BoardRoom`, which fans it out over WebSocket Hibernation — so an idle board costs nothing — and persists a snapshot to D1. A read that can't reach the DO falls back to the last snapshot, so the display always has something to render.
+
+Writes are last-write-wins on an advisory revision; the loser learns the truth from the echoed state. Two-client sync measured **1.5ms** against a 300ms bar in local dev.
+
+### Pairing is one HMAC primitive, used twice
+
+The signed message is `prefix|boardId.length|boardId|grantEpoch|payload`.
+
+- The **prefix** authenticates *purpose* — a write grant can't be replayed as a pairing token, and it fails before the key is even consulted.
+- The **board id** is a MAC *audience*, not something compared after the fact.
+- **Length framing** keeps the encoding injective, so no two different inputs can produce the same signed bytes.
+- The **grant epoch** is what makes revocation instant: bump it and every outstanding grant for that board is dead.
+
+Single-use is an atomic check-and-set inside the room's `blockConcurrencyWhile`. Six concurrent redemptions of one token return `200 401 401 401 401 401`.
+
+### An unowned board is a 404, never a 403
+
+A `FORBIDDEN` confirms the id is real, which makes boards enumerable. Every ownership failure is a `NotFoundError`. Relatedly: destructive procedures check board *ownership* and never the write-path guard — a pairing grant authorises writing **to** a board, never destroying it.
+
+---
+
+## Stack
+
+| Layer | Choice |
+|---|---|
+| Runtime | Cloudflare Workers — same runtime local and deployed, no Node |
+| Framework | React Router v7 (SSR) |
+| Realtime | Durable Objects + WebSocket Hibernation, one DO per board |
+| API | tRPC v11, every procedure wrapped in Effect TS |
+| Data | D1 (SQLite) via Drizzle ORM |
+| Auth | Better Auth with the Drizzle adapter + admin plugin |
+| Validation | Effect Schema — no Zod, anywhere |
+| Errors | `Data.TaggedError`, mapped to tRPC codes by `tagToTRPC` |
+| AI | `claude-sonnet-5` (structured output) + Whisper on Workers AI |
+| UI | ShadCN/Radix + Tailwind v4 |
+| Tests | Vitest 3 + `@effect/vitest`, Playwright for smoke + verification walks |
+
+Built on [cf-saas-starter-react-router](https://github.com/SeanningTatum/cf-saas-starter-react-router).
+
+---
+
+## Verification
+
+`typecheck` 0 · **849 tests across 44 files** · `build` 0 · `harness-check` 7/7 · e2e smoke green.
+
+Beyond the unit suite, user-visible flows get a **browser walk**: a headless run against the live app that drives the golden path plus an error path, screenshots every step, and writes a verdict doc to `.brain/features/<slug>/verifications/`. Every screenshot in this README came out of one of those runs.
+
+The MVP shipped on **two independent walks that agreed on all seven behavioural checks**, plus a third re-verifying pairing and revocation after a change to the HMAC. A single green run wasn't accepted. Those runs proved, among other things, that the QR encodes the real controller URL — by pixel-comparing it against a freshly generated code (0 of 262,144 pixels differing, versus 28.6% for a control) rather than just checking that `src` was non-empty.
+
+---
+
+## Status
+
+**MVP.** Everything above works and is verified. Known gaps, honestly:
+
+- 🔴 **[Issue #1](https://github.com/SeanningTatum/flappyboard/issues/1) — no rate limiting on the two paid endpoints.** `board.generate` and `/api/transcribe` both cost money per call and are reachable by anyone holding a 12-hour grant. **Do not deploy with a real API key until this lands.**
+- The voice path hasn't been driven on a real phone yet — `mediaDevices` needs a secure context, so that's an HTTPS-deploy test.
+- The display hasn't been walked on the actual living-room TV, only at TV resolution in a headless browser.
+- Two sound packs ship (`classic`, `soft`), switchable from the phone. The registry takes more.
+
+---
+
+## Working in this repo
+
+This repo runs an **agent harness** — a `.brain/` directory of retrieval-first docs, deterministic slash-command gates, and machine-checkable state, so that Claude Code / Cursor / Codex stay coherent across sessions instead of re-deriving conventions every time.
+
+<p align="center">
+  <img src="docs/assets/harness-loop.gif" alt="The harness loop: /start-task, work, /verify-done, /ship-feature, gated by typecheck, test, and brain-sync" width="640">
+</p>
+
+**If you are a human:** read [`AGENTS.md`](AGENTS.md) once. It points at everything else.
+
+**If you are an agent:** read [`AGENTS.md`](AGENTS.md) *first*, then use the `brain` CLI rather than reading `.brain/` files by hand.
+
+```bash
+brain                     # dashboard — features, what's in progress, last checkpoint
+brain progress            # rolling session cursor
+brain docs <section>      # rules / recipes / architecture / codebase
+brain search "<query>"    # find anything in the brain
+brain check               # brain-state invariants
 ```
-app/
-├── auth/             Better Auth server config + client
-├── components/       UI — shadcn primitives in ui/, feature components alongside
-├── db/               Drizzle schema + connection
-├── hooks/            React hooks
-├── i18n/             SSR + client i18next setup, types
-├── lib/              Helpers — schemas/, logger, effect-trpc, effect-utils
-├── locales/en/       Translation JSON files (one per namespace)
-├── models/errors/    Tagged error classes
-├── repositories/     Drizzle-backed Effect.Service repositories
-├── routes/           React Router v7 file-based routes
-├── services/         Effect Tag/Layer services (Database, Bucket, AuthApi, etc.)
-├── trpc/             tRPC router + procedures + middleware
-├── routes.ts         Route config
-├── runtime.ts        ManagedRuntime composition (services + repos)
-├── root.tsx          Root layout
-└── entry.{client,server}.tsx
-.brain/               Agent-readable docs (see above) — includes HARNESS.md
-.githooks/            Git hooks (pre-commit gate)
-.claude/              Claude Code config — settings, hooks, agents/, commands/
-drizzle/              SQL migrations
-e2e/                  Playwright tests
-public/               Static assets
-scripts/              Setup / teardown / seed + harness-check.sh
-workers/app.ts        Cloudflare Workers entrypoint
-workflows/            Cloudflare Workflow definitions
-init.sh               Harness bootstrap — install + migrate + typecheck + test
-```
+
+Non-trivial work is bookended by `/start-task` and `/verify-done`. Five non-negotiables are enforced by grep and by the `effect-ts-enforcer` sub-agent: Effect TS by default, Effect Schema (no Zod), tagged errors mapped in `tagToTRPC`, a unit test for every helper and repository, and Workers bindings via the `CloudflareEnv` tag (never `process.env`).
 
 ---
 
 ## Commands
 
 ```bash
-./init.sh                     # Harness bootstrap — install + migrate + typecheck + test
-./init.sh --baseline          # Baseline only (typecheck + test) — used by /start-task
-./init.sh --quick             # Skip install + migrate (assume already done)
-./scripts/harness-check.sh    # 10 deterministic harness invariants (also: /harness-check)
-
-bun run dev                   # Dev server (auto-runs local DB migrations) → :5173
-bun run build                 # Production build
-bun run deploy                # Build + deploy to Cloudflare Workers
-bun run preview               # Build + serve locally via the Cloudflare Vite plugin (vite preview)
-
-bun run typecheck             # cf-typegen + react-router typegen + tsc -b
-bun run test                  # Vitest (one-shot)
-bun run test:watch            # Vitest watch
-bun run test:e2e              # Playwright
-bun run test:e2e:ui           # Playwright UI mode
-bun run test:e2e:report       # Open last Playwright report
-
-bun run db:generate           # Generate Drizzle migration from schema
-bun run db:migrate:local      # Apply migrations to local D1
-bun run db:migrate:remote     # Apply migrations to remote D1
-bun run db:seed               # Seed local D1 with admin/user/banned fixtures
-bun run db:seed:preview       # Seed the preview-env D1 with the same fixtures
-bun run db:studio             # Drizzle Studio (visual DB editor)
-
-bun run cf-typegen            # Regenerate worker-configuration.d.ts
-bun run hooks:install         # Re-install pre-commit gate
-bun run setup                 # First-time wizard
-bun run teardown              # Tear down Cloudflare resources
+bun run dev                 # dev server, auto-migrates local D1 → localhost:5173
+bun run build               # production build
+bun run deploy              # build + deploy to Cloudflare
+bun run deploy:preview      # deploy the -preview worker
+bun run typecheck           # cf-typegen + react-router typegen + tsc -b
+bun run test                # Vitest unit suite
+bun run test:e2e            # Playwright smoke
+bun run db:generate         # generate a Drizzle migration
+bun run db:migrate:local    # apply migrations to local D1
+bun run db:seed             # seed fixtures + a demo board
+bun run db:studio           # Drizzle Studio
+bun run sfx:generate        # regenerate the flap sound pack
+./scripts/harness-check.sh  # brain invariants + repo supplement
 ```
 
 ---
 
-## Authentication
-
-[Better Auth](https://better-auth.com/) 1.4 with the Drizzle adapter and `admin()` plugin for RBAC.
-
-- Auth handler: `/api/auth/*` ([`app/routes/api/auth.$.ts`](app/routes/api/auth.$.ts))
-- Server config: [`app/auth/server.ts`](app/auth/server.ts)
-- Client: [`app/auth/client.ts`](app/auth/client.ts) (uses `adminClient()` plugin)
-- Session reading in loaders: `context.auth.api.getSession({ headers: request.headers })`
-- Session reading in Effects: yield the `Session` Tag from [`app/services/session.ts`](app/services/session.ts)
-
-**RBAC — admin role enforcement is two-layered:**
-
-- **Page-level** — admin route loaders redirect non-admins (see [`app/routes/admin/_layout.tsx`](app/routes/admin/_layout.tsx))
-- **Procedure-level** — `adminProcedure` middleware in [`app/trpc/index.ts`](app/trpc/index.ts) rejects non-admins server-side
-
-Never trust the page guard alone — UI hiding doesn't equal authorization.
-
-**Set the production secret:**
-
-```bash
-openssl rand -base64 32
-wrangler secret put BETTER_AUTH_SECRET
-```
-
-**Promote a user to admin** — Drizzle Studio:
-
-```bash
-bun run db:studio
-# Open user table → edit `role` cell → change "user" → "admin" → save
-```
-
-Or remote:
-
-```bash
-bunx wrangler d1 execute YOUR_DB_NAME --remote \
-  --command "UPDATE user SET role = 'admin' WHERE email = 'user@example.com'"
-```
-
-Or seed the fixture accounts locally:
-
-```bash
-bun run db:seed
-```
-
-Gives you `admin@preview.local` / `Password123!` (plus `user@preview.local`
-and `banned@preview.local`). See [Database](#database) below and
-[`.brain/rules/repository.md`](.brain/rules/repository.md) ("Seed data").
-
----
-
-## Database
-
-D1 (SQLite) accessed through Drizzle. Schema lives in [`app/db/schema.ts`](app/db/schema.ts) — single file at current scale.
-
-**Workflow for schema changes:**
-
-```bash
-# 1. Edit app/db/schema.ts
-# 2. Generate migration
-bun run db:generate
-# 3. Review SQL in drizzle/<NNNN>_<name>.sql
-# 4. Apply locally
-bun run db:migrate:local
-# 5. After PR merge, apply to prod
-bun run db:migrate:remote
-```
-
-> Use SQL defaults for timestamps (`unixepoch('subsecond') * 1000`), not JS-side `new Date()`. See [`recipes/add-db-table.md`](.brain/recipes/add-db-table.md).
-
----
-
-## UI / Design system
-
-ShadCN primitives in [`app/components/ui/`](app/components/ui/). Compose into feature components elsewhere. Tailwind v4 with oklch CSS variables in [`app/app.css`](app/app.css).
-
-Add a shadcn component:
-
-```bash
-bunx shadcn@latest add <component-name>
-```
-
-**Forms — always Effect Schema + `effectResolver`** (no Zod resolver):
-
-```ts
-import { effectResolver } from "@hookform/resolvers/effect-ts";
-import { LoginSchema, type LoginInput } from "@/lib/schemas/auth";
-
-const form = useForm<LoginInput>({
-  resolver: effectResolver(LoginSchema),
-});
-```
-
-**Dark mode** is wired via `next-themes` (`attribute="class"`, `defaultTheme="system"`).
-
-**i18n** — every route declares its namespaces and uses the matching `useTranslation()`:
-
-```ts
-export const handle = { i18n: ["dashboard", "common"] };
-// Inside the component:
-const { t } = useTranslation("dashboard");
-```
-
-Strings live in [`app/locales/en/<namespace>.json`](app/locales/en/). Types in [`app/i18n/i18n.d.ts`](app/i18n/i18n.d.ts).
-
----
-
-## Deployment
-
-```bash
-bun run deploy                    # Build + deploy to production
-bunx wrangler versions deploy     # Promote an uploaded version to production
-```
-
-Observability is enabled in [`wrangler.jsonc`](wrangler.jsonc) (logs, 100% head sampling). Smart placement is on.
-
-### Preview deployments (per-PR)
-
-Every pull request can get its own live preview, isolated from production.
-
-**How it works** — [`wrangler.jsonc`](wrangler.jsonc) declares a `preview` wrangler environment: its own Worker (`<name>-preview`), a shared preview R2 bucket, and a D1 binding that CI repoints at a per-PR database. [`.github/workflows/preview.yml`](.github/workflows/preview.yml) builds against that environment and uploads a Worker *version* tagged with a stable alias, `pr-<N>`, so the preview URL for a given PR doesn't change across pushes:
+## Layout
 
 ```
-https://pr-<N>-<worker>-preview.<subdomain>.workers.dev
+app/
+├── components/board/   FlapTile, BoardGridView, QrOverlay, PushToTalkButton
+├── lib/board/          compile.ts (the 6×24 compiler), repair.ts, flap-travel.ts,
+│                       pairing.ts (the HMAC primitive), sfx.ts
+├── lib/schemas/        Effect Schema — BoardMessage, BoardGrid, palette, charset
+├── routes/board/       display.tsx (the TV), control.tsx (the phone)
+├── routes/boards/      board management
+├── repositories/       Drizzle-backed Effect.Service repos
+├── services/           board-agent.ts (LLM), transcription.ts (Whisper), board-room.ts
+├── trpc/routes/        board.ts — get, setMessage, generate, history, pairing
+└── models/errors/      tagged errors
+
+workers/
+└── board-room.ts       the BoardRoom Durable Object — grid, WS fanout, hibernation
+
+.brain/                 the agent harness (see AGENTS.md)
 ```
-
-The Action also comments the URL (and a per-commit version URL) on the PR.
-
-**Data isolation** — each PR gets its **own D1 database** (`<name>-db-pr-<N>`). On PR open (and every push), [`scripts/ci/setup-preview-db.ts`](scripts/ci/setup-preview-db.ts) creates the database if needed and patches the CI checkout's `wrangler.jsonc` to point the preview `DATABASE` binding at it (the patch is never committed); CI then applies migrations **and seeds fixtures** ([`scripts/seed-preview.ts`](scripts/seed-preview.ts) `--preview`) before uploading the version, so every preview URL has representative, logged-in-ready data from the first push. On PR close, [`.github/workflows/preview-cleanup.yml`](.github/workflows/preview-cleanup.yml) deletes that database. The preview **R2 bucket is shared** across all PR previews — not per-PR, because wrangler can't delete non-empty buckets, so per-PR buckets would accumulate as orphans. `bun run teardown` also sweeps up any leftover `-db-pr-*` databases.
-
-**Test accounts** — every preview and local D1 gets the same three fixtures (`bun run db:seed` / `bun run db:seed:preview`, password `Password123!` for all):
-
-| Email | Role | Notes |
-|-------|------|-------|
-| `admin@preview.local` | admin | admin dashboard access |
-| `user@preview.local` | user | regular account |
-| `banned@preview.local` | user | `banned = true`, for testing the ban UI |
-
-Seeding is idempotent (`INSERT OR IGNORE` on fixed `seed-*` ids) — safe to rerun on every PR synchronize. See [`.brain/rules/repository.md`](.brain/rules/repository.md) ("Seed data") for the rule that new tables/features must extend these fixtures.
-
-> **Free plan note:** Cloudflare's D1 free plan caps you at 10 databases, so per-PR databases assume a paid plan. On the free plan, revert the "Provision per-PR D1" step in `preview.yml` back to migrating the shared `<name>-db-preview` database (a one-line change).
-
-**One-time enablement for your repo** — previews ship disabled. To turn them on:
-
-1. Set the repo **variable** `CLOUDFLARE_ACCOUNT_ID` (Settings → Secrets and variables → Actions → Variables tab).
-2. Set the repo **secret** `CLOUDFLARE_API_TOKEN` (same page → Secrets tab), created from the "Edit Cloudflare Workers" API token template plus `D1:Edit` added (migrations need it).
-3. `bun run setup` already provisions the `preview` Worker/R2 resources (plus the shared `-db-preview` D1 used for manual preview work) alongside production; per-PR D1 databases are created automatically by CI — there's nothing else to create.
-
-**Manual commands** — useful for a one-off preview without opening a PR:
-
-```bash
-bun run deploy:preview                                    # Build + deploy the preview Worker directly
-bun run db:migrate:preview                                # Apply migrations to the preview D1
-CLOUDFLARE_ENV=preview bun run build \
-  && bunx wrangler versions upload --preview-alias my-branch  # Build + upload a one-off preview URL
-```
-
-> **Gotcha:** `wrangler deploy --env preview` does **not** work with the Cloudflare Vite plugin. The plugin selects the environment at *build* time via the `CLOUDFLARE_ENV` env var and writes a redirected config to `build/server/wrangler.json` that has no `env` block — so any `--env` flag passed to a post-build `wrangler` command has nothing to select. Always set `CLOUDFLARE_ENV` before building instead (as `deploy:preview` and the commands above do).
-
----
-
-## Editor integrations
-
-- **VS Code / Cursor** — uses the local TypeScript server. The `typescript-lsp` Claude plugin (auto-enabled in `.claude/settings.json`) gives agents diagnostics inline.
-- **MCP servers** — optional. If you want richer tool access (Tavily search, Playwright control, etc.), set them up via Claude Code's `/plugin` system instead of repo-local config.
-
----
-
-## Contributing
-
-1. Branch off `main`
-2. Read the relevant `.brain/recipes/` runbook before starting
-3. Pre-commit gate runs typecheck + tests automatically
-4. Update the `.brain/` doc that owns your change (the brain-reminder hook will tell you which)
-5. Append a one-line entry to [`.brain/CHANGELOG.md`](.brain/CHANGELOG.md)
-6. Open the PR
-
-When in doubt: read first, code second.

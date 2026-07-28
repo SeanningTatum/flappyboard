@@ -27,6 +27,7 @@ const requestHandler = createRequestHandler(
 );
 
 export { ExampleWorkflow } from "../workflows/example";
+export { BoardRoom } from "./board-room";
 
 export default {
   async fetch(request, env, ctx) {

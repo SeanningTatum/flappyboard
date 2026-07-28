@@ -1,0 +1,79 @@
+{
+  "eyebrow": "板子",
+  "title": "你的板子",
+  "subtitle": "板子就是一块翻页显示屏:在电视上一直开着,用手机来控制 —— 自己打字,或者让 AI 来写。",
+  "back": "仪表盘",
+  "list": {
+    "title": "这个账号下的板子"
+  },
+  "empty": {
+    "title": "还没有板子",
+    "body": "板子就是一块翻页显示屏:在电视上打开它,用手机来控制 —— 自己打字,或者让 AI 来写。"
+  },
+  "create": {
+    "title": "新建板子",
+    "description": "起个名字,方便区分不同的板子。留空也可以。",
+    "name_label": "板子名称",
+    "name_placeholder": "厨房",
+    "name_hint": "可选 —— 留空就叫 \"flappyboard\"。",
+    "submit": "创建板子",
+    "first_submit": "创建第一块板子",
+    "submitting": "创建中…",
+    "error": {
+      "name_too_long": "名称太长了 —— 最多 {{max}} 个字符。",
+      "create_failed": "板子没有创建成功,请重试。"
+    }
+  },
+  "card": {
+    "new": "刚刚创建",
+    "revision": "第 {{revision}} 版",
+    "never_written": "还没写过内容",
+    "created": "创建于 {{date}}",
+    "tv_label": "在电视浏览器里输入这个地址",
+    "copy": "复制",
+    "copied": "已复制",
+    "copy_manual": "已选中 —— 用键盘复制",
+    "open": "打开显示屏",
+    "control": "用手机控制",
+    "rename": "重命名",
+    "revoke": "解除手机配对",
+    "delete": "删除"
+  },
+  "rename": {
+    "title": "重命名板子",
+    "description": "给这块板子换个名字。它的地址和历史记录都不会变。",
+    "submit": "保存名称",
+    "submitting": "保存中…",
+    "error": {
+      "name_too_long": "名称太长了 —— 最多 {{max}} 个字符。",
+      "name_empty": "请给板子起个名字。",
+      "rename_failed": "重命名失败,请重试。"
+    }
+  },
+  "revoke": {
+    "title": "解除所有手机与\"{{name}}\"的配对?",
+    "description": "所有扫码配对过这块板子的手机都会立即失去控制权,电视上的二维码也会暂时失效,几秒后显示屏刷新出新的。板子的名字和历史记录都会保留。需要重新控制的人扫新码即可。",
+    "cancel": "保持配对",
+    "confirm": "解除配对",
+    "revoking": "解除中…",
+    "error": {
+      "revoke_failed": "解除配对失败,请重试。"
+    }
+  },
+  "delete": {
+    "title": "删除\"{{name}}\"?",
+    "description": "这会删除这块板子以及它曾经显示过的一切 —— 所有历史记录都会一起消失,且无法恢复。",
+    "cancel": "取消",
+    "confirm": "删除板子",
+    "deleting": "删除中…",
+    "error": {
+      "delete_failed": "删除失败,请重试。"
+    }
+  },
+  "dashboard": {
+    "nav": "板子",
+    "title": "你的板子",
+    "description": "创建一块翻页板,在电视上打开它的地址,然后用手机控制它。",
+    "cta": "打开板子列表"
+  }
+}

@@ -17,8 +17,19 @@ Available bindings (declared in `wrangler.jsonc`, typed in `worker-configuration
 | Binding | Type | Purpose |
 |---------|------|---------|
 | `DATABASE` | D1 | SQLite via Drizzle |
-| `BUCKET` | R2 | Object storage |
-| `AI` | Workers AI | Native model inference (binding present, no consumers yet) |
+| `BUCKET` | R2 | Object storage — **not declared in `wrangler.jsonc` today** (setup ran without R2). See the warning below. |
+| `BOARD` | Durable Object | `BoardRoom` — one live board per instance; SQLite-backed (`new_sqlite_classes`), declared in both the default and `preview` env |
+| `AI` | Workers AI | Whisper transcription for the walkie-talkie — `@cf/openai/whisper-large-v3-turbo`, consumed by `app/services/transcription.ts` via `app/routes/api/transcribe.ts`. **Always hits remote resources**, even under `wrangler dev` (wrangler warns as much), so it needs a reachable Cloudflare account in local dev |
+
+> ⚠️ **A missing binding can take down the whole app — know where a service is wired.**
+> Every member of a merged Effect layer is constructed when the runtime is built, so
+> one service whose binding is absent fails *all* of them. A missing `BUCKET` surfaced
+> as `Failed to construct AuthApi` and 500'd every request, including routes that
+> never touch R2. Consequence, and the rule going forward: a service whose binding
+> may legitimately be absent does **not** belong in the global runtime — provide it
+> ad-hoc in the route that needs it (`BucketLive` + `BucketRepository` in
+> `app/routes/api/upload-file.ts`, the same way `SessionLive` is provided). See
+> [`services.md`](services.md) "Layer wiring".
 | `EXAMPLE_WORKFLOW` | Workflow | Sample workflow class `ExampleWorkflow` |
 | `ASSETS` | Assets | Static assets directory (`build/client`) |
 | `BETTER_AUTH_SECRET` | secret | Auth signing (set via `wrangler secret put`) |

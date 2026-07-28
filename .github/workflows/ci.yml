@@ -133,18 +133,34 @@ jobs:
             exit 0
           fi
           ADDED=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+          # Comment-only added lines are prose, not code. The rules and the
+          # brain docs quote `process.env` precisely in order to forbid it, so
+          # sweeping raw added lines flags the documentation of a rule as a
+          # breach of it. Added lines carry a `+` prefix, so a line-comment
+          # reads `+  // ...`, a block-comment opener `+ /* ...`, and a
+          # block-comment continuation `+ * ...` — strip all three before
+          # looking for violations. Code with a trailing comment survives,
+          # so a real violation cannot hide behind one.
+          CODE=$(echo "$ADDED" | grep -vE '^\+[[:space:]]*(//|/\*|\*)' || true)
           VIOLATIONS=""
-          # Allowed throws: inside Effect.tryPromise, comments, and
-          # `throw new TRPCError` — tRPC's middleware/errorFormatter contract
-          # requires throwing at the boundary (see app/trpc/index.ts and
-          # app/lib/effect-trpc.ts, the designated Effect→tRPC edge).
-          if echo "$ADDED" | grep -E '\bthrow new\b' | grep -vE 'tryPromise|//|throw new TRPCError'; then
+          # Allowed throws — each is a framework contract that *requires*
+          # throwing at a boundary, not an error raised in place of Effect.fail:
+          #   Effect.tryPromise  — the sanctioned Promise→Effect edge.
+          #   throw new TRPCError — tRPC's middleware/errorFormatter contract
+          #     (see app/trpc/index.ts and app/lib/effect-trpc.ts, the
+          #     designated Effect→tRPC edge).
+          #   throw new Response  — React Router's documented mechanism for a
+          #     loader/action to hand a status to the nearest ErrorBoundary
+          #     (see app/routes/board/display.tsx's loader → its ErrorBoundary,
+          #     and root.tsx's isRouteErrorResponse). Same class of exemption
+          #     as TRPCError: the framework, not our error channel.
+          if echo "$CODE" | grep -E '\bthrow new\b' | grep -vE 'tryPromise|throw new TRPCError|throw new Response'; then
             VIOLATIONS="$VIOLATIONS\n- Bare \`throw\` (use Effect.fail)"
           fi
-          if echo "$ADDED" | grep -E 'process\.env'; then
+          if echo "$CODE" | grep -E 'process\.env'; then
             VIOLATIONS="$VIOLATIONS\n- process.env (use CloudflareEnv Tag)"
           fi
-          if echo "$ADDED" | grep -E 'from "zod"|from \"zod/'; then
+          if echo "$CODE" | grep -E 'from "zod"|from \"zod/'; then
             VIOLATIONS="$VIOLATIONS\n- Zod import (use Effect Schema)"
           fi
           if [ -n "$VIOLATIONS" ]; then

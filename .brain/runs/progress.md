@@ -21,6 +21,60 @@
 
 ---
 
+## 2026-07-27 — Plan is nearly complete. feat-007 split-flap-board and feat-008 phone-control shipped; feat-009 llm-board-agent in-progress with phase 5 (generation) landed at 20/20 valid grids on the real model. Board management shipped too (create/list/rename/delete + copyable TV URL), and the TV display plus phone controller were both restyled to a measured Vestaboard-industrial language. 643 tests green.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Two agents in flight: phase 6 voice input (Whisper + hold-to-talk, first consumer of the AI binding — must report whether it is reachable locally) and realistic multi-step flap travel + clatter (3-5s, one rAF loop, measured frame timings). Then: per-cell colour control in the editor (needs control.tsx + message-editor + locales, blocked on the voice agent; no schema change required since segments are already an array), export the tile pigment constants from flap-tile.tsx so console.tsx stops duplicating them, re-verify the display because the phase 3 flip timings go stale, then ship feat-009.
+
+---
+
+## 2026-07-27 — shipped phone-control: Phase 4 complete and verified. feature-verifier verdict PASS (.brain/features/phone-control/verifications/2026-07-27.md)
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-27 — shipped split-flap-board: Phases 1-3 complete. feature-verifier verdict PASS (.brain/features/split-flap-board/verifications/2026-07-27.md), 8 scr
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-27 — Phase 2 (persistence + realtime room) landed and verified live: D1 board/board_snapshot + BoardRepository, BoardRoom Durable Object with WS hibernation, BOARD binding in both envs, pure protocol module, tRPC board router, /api/board-ws upgrade route. 417 tests green, typecheck 0, build 0. Two-client sync measured 1.5ms vs a <300ms bar; board isolation and socket-path D1 persistence both proven (board.revision=4 matching snapshots 1-4). Also fixed a CRITICAL latent bug: a merged Effect layer builds every member, so the missing R2 binding was failing AuthApi and 500ing every request — Bucket is now provided ad-hoc, not globally.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Phase 3: TV display route /b/:boardId — 144 flap tiles, CSS flip animation, per-cell colour, WS subscribe, QR overlay, SFX pack + one-time audio-unlock tap, visibilitychange wake-resync. Samsung Tizen browser is the target so keep CSS conservative. Acceptance: feature-verifier PASS with screenshots (idle, mid-flip, QR, audio prompt) + a manual pass on the real TV.
+
+---
+
+## 2026-07-27 — Baseline unblocked: typecheck exit 0, 294/294 tests green. R2 gap parked per decision — file-upload code kept, bucket.test.ts envLayer widened with { BUCKET?: R2Bucket } to match the existing pattern in app/services/bucket.ts; gap recorded in feat-003 evidence with the exact steps to undo when R2 returns.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Phase 2 of split-flap-board: D1 board + board_snapshot tables (Drizzle migration), BoardRepository (Effect.Service), BoardRoom Durable Object with WebSocket hibernation, BOARD binding + migrations tag in wrangler.jsonc for default and preview envs, tRPC board.get/setMessage/history. Acceptance: two tabs sync under 300ms, boards isolated by id, bun run build passes.
+
+---
+
+## 2026-07-27 — split-flap-board phase 1 (domain core) landed: app/lib/schemas/board.ts + app/lib/board/{compile,repair}.ts with 43 new unit tests — 294/294 green. Compiler owns the 6x24 invariant (charset fold, colored-space-is-a-tile wrap rule, greedy wrap + hard split, align, loss reporting); repairMessage is total over a 24-case adversarial fuzz corpus.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Decide on the pre-existing typecheck failure (bucket.test.ts BUCKET not in Env — starter shipped file-upload with no r2_buckets binding), then start phase 2: D1 board/board_snapshot tables + BoardRepository + BoardRoom Durable Object + BOARD binding.
+
+---
+
+## 2026-07-27 — flappyboard MVP plan approved (round 2): 6x24 split-flap board, Durable Object realtime, QR scan-to-pair phone controller, walkie-talkie LLM generation on claude-sonnet-5 with schema decode + retry-twice-then-repair. 7 decisions answered in brain review; features feat-007 split-flap-board / feat-008 phone-control / feat-009 llm-board-agent registered as planned.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Start phase 1 of split-flap-board: Effect Schema (BoardMessage/BoardGrid, palette, charset) + layout compiler + repair pass + unit/fuzz tests. No UI, no network.
+
+---
+
 ## 2026-07-23 — Harness adopts brain-axi CLI as primary interface (hybrid): slash commands + harness-check.sh wrap brain check/ship/progress; docs (AGENTS/HARNESS/README/recipes) rewritten; CI installs brain-axi
 - branch: `docs/readme-harness-loop-in-the-wild`
 - in-progress feature: none

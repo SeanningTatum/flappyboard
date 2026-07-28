@@ -1,6 +1,8 @@
-import { Effect, Exit, Schema } from "effect";
+import { Effect, Exit, Layer, Schema } from "effect";
 import { data } from "react-router";
 import { BucketRepository } from "@/repositories/bucket";
+import { BucketLive } from "@/services/bucket";
+import { CloudflareEnvLive } from "@/services/cloudflare";
 import { ExternalServiceError, ValidationError } from "@/models/errors/repository";
 import { BucketValidationError } from "@/models/errors/bucket";
 import {
@@ -98,7 +100,17 @@ export async function action({ request, context }: Route.ActionArgs) {
     })
   );
 
-  const exit = await context.runtime.runPromiseExit(program);
+  // R2 is deliberately absent from the global runtime — a missing binding there
+  // fails every service in the merged layer, not just this one. Provide it here,
+  // per-request, so an R2-less deployment breaks only file upload.
+  const bucketLayer = BucketRepository.Default.pipe(
+    Layer.provide(BucketLive),
+    Layer.provide(CloudflareEnvLive(context.cloudflare.env))
+  );
+
+  const exit = await context.runtime.runPromiseExit(
+    program.pipe(Effect.provide(bucketLayer))
+  );
   return Exit.match(exit, {
     onSuccess: (response) => response,
     onFailure: () =>

@@ -8,7 +8,9 @@
 //                                             # top-level prod D1 (refuses without the flag)
 //
 // Seeds three Better Auth email/password fixtures (admin / user / banned),
-// all sharing password `Password123!`. Fixture rows use fixed `seed-*` ids
+// all sharing password `Password123!`, plus one demo `board` owned by the admin
+// fixture and the `board_snapshot` that renders on it. Fixture rows use fixed
+// `seed-*` ids
 // and `INSERT OR IGNORE`, so this is safe to rerun on every `bun run dev`
 // invocation and on every PR synchronize in CI — it never overwrites rows a
 // human or test has since modified.
@@ -33,6 +35,58 @@ interface Fixture {
 }
 
 const PASSWORD = "Password123!";
+
+/* --------------------------------- board ---------------------------------- */
+
+// Kept in sync with `app/lib/schemas/board.ts` by hand: this script is plain
+// Bun/Node and deliberately imports nothing from `app/`, so the 6x24 shape is
+// re-stated here. If the board dimensions change, change these too — the
+// `board_snapshot.cells` blob must still decode as a `BoardGrid`.
+const BOARD_ROWS = 6;
+const BOARD_COLS = 24;
+
+const SEED_BOARD_ID = "seed-board";
+const SEED_BOARD_SNAPSHOT_ID = "seed-board-snapshot";
+const SEED_BOARD_OWNER_ID = "seed-admin";
+const SEED_BOARD_NAME = "Demo Board";
+const SEED_BOARD_REVISION = 1;
+
+interface SeedCell {
+  char: string;
+  color: string;
+}
+
+/** A blank tile is always `{ char: " ", color: "black" }` (the off tile). */
+const blankCell = (): SeedCell => ({ char: " ", color: "black" });
+
+/** Centres `text` on a 24-column row; anything off the row is dropped. */
+function seedRow(text: string, color: string): SeedCell[] {
+  const upper = text.toUpperCase().slice(0, BOARD_COLS);
+  const leftPad = Math.max(0, Math.floor((BOARD_COLS - upper.length) / 2));
+  const line = " ".repeat(leftPad) + upper;
+  return Array.from({ length: BOARD_COLS }, (_, i) => {
+    const char = line[i] ?? " ";
+    return char === " " ? blankCell() : { char, color };
+  });
+}
+
+const blankRow = (): SeedCell[] =>
+  Array.from({ length: BOARD_COLS }, () => blankCell());
+
+const SEED_BOARD_GRID: { rows: SeedCell[][] } = {
+  rows: [
+    blankRow(),
+    seedRow("FLAPPYBOARD", "yellow"),
+    seedRow("SEEDED DEMO BOARD", "white"),
+    blankRow(),
+    seedRow("TYPE SOMETHING", "green"),
+    blankRow(),
+  ],
+};
+
+const seedGridIsWellFormed = (): boolean =>
+  SEED_BOARD_GRID.rows.length === BOARD_ROWS &&
+  SEED_BOARD_GRID.rows.every((row) => row.length === BOARD_COLS);
 
 const FIXTURES: Fixture[] = [
   {
@@ -149,6 +203,45 @@ async function buildSql(): Promise<string> {
     );
   }
 
+  if (!seedGridIsWellFormed()) {
+    fail(`Seed board grid must be exactly ${BOARD_ROWS}x${BOARD_COLS} cells.`);
+  }
+
+  // One demo board owned by the admin fixture, plus the snapshot that renders
+  // on it. `board.revision` mirrors the snapshot revision so the Durable Object
+  // and D1 agree on the first read. `grant_epoch` is stated explicitly rather
+  // than left to the column default: the fixture is what a fresh board looks
+  // like, and a fresh board has revoked nothing.
+  lines.push(
+    `INSERT OR IGNORE INTO board (id, owner_id, name, sound_pack, muted, revision, grant_epoch, created_at, updated_at) VALUES (` +
+      [
+        sqlString(SEED_BOARD_ID),
+        sqlString(SEED_BOARD_OWNER_ID),
+        sqlString(SEED_BOARD_NAME),
+        sqlString("classic"),
+        0,
+        SEED_BOARD_REVISION,
+        0,
+        now,
+        now,
+      ].join(", ") +
+      `);`,
+  );
+
+  lines.push(
+    `INSERT OR IGNORE INTO board_snapshot (id, board_id, revision, cells, source, prompt, created_at) VALUES (` +
+      [
+        sqlString(SEED_BOARD_SNAPSHOT_ID),
+        sqlString(SEED_BOARD_ID),
+        SEED_BOARD_REVISION,
+        sqlString(JSON.stringify(SEED_BOARD_GRID)),
+        sqlString("manual"),
+        "NULL",
+        now,
+      ].join(", ") +
+      `);`,
+  );
+
   return lines.join("\n") + "\n";
 }
 
@@ -194,9 +287,20 @@ function describeMarkdown(): string {
     lines.push(`| \`${f.email}\` | ${f.role} | ${state} |`);
   }
   lines.push("");
+  lines.push("#### Seeded board");
+  lines.push("");
+  lines.push(
+    `One \`board\` row (\`${SEED_BOARD_ID}\`, "${SEED_BOARD_NAME}", owned by ` +
+      `\`${SEED_BOARD_OWNER_ID}\`, sound pack \`classic\`, unmuted) at ` +
+      `revision ${SEED_BOARD_REVISION}, plus the matching \`board_snapshot\` ` +
+      `row (\`${SEED_BOARD_SNAPSHOT_ID}\`, source \`manual\`) holding a ` +
+      `${BOARD_ROWS}x${BOARD_COLS} grid that reads FLAPPYBOARD / SEEDED DEMO ` +
+      "BOARD / TYPE SOMETHING.",
+  );
+  lines.push("");
   lines.push(
     "Seeded data: the accounts above (Better Auth `user` + credential " +
-      "`account` rows) — no other tables are seeded yet. Fixtures are " +
+      "`account` rows) and the demo board + snapshot. Fixtures are " +
       "idempotent (`INSERT OR IGNORE`, fixed `seed-*` ids), so data you " +
       "create on the preview survives new pushes to this PR.",
   );
@@ -231,7 +335,9 @@ async function main(): Promise<void> {
 
     execSync(command, { stdio: "inherit", env: process.env });
 
-    console.log(`\x1b[32m✓ Seeded ${target.label} D1 with ${FIXTURES.length} fixture users\x1b[0m`);
+    console.log(
+      `\x1b[32m✓ Seeded ${target.label} D1 with ${FIXTURES.length} fixture users + 1 demo board\x1b[0m`,
+    );
     printCredentialsTable();
   } catch (error: any) {
     failure = error?.message ?? String(error);
