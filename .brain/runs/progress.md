@@ -21,6 +21,29 @@
 
 ---
 
+## 2026-07-28 — v0.1.0 released. PR #2 squash-merged to main as f8ae90f and tagged v0.1.0 (https://github.com/SeanningTatum/flappyboard/releases/tag/v0.1.0) — first tag on the repo. README rewritten from the starter boilerplate into a flappyboard product page with six real screenshots reused from the verification walks plus one watermarked setup mockup. Merged with Deploy preview red, knowingly: the worker version uploads fine, the job dies extracting a preview URL because flappyboard-preview has never had a real wrangler deploy so preview URLs are not enabled on it. Baseline/Build/E2E/sweep all green.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Owner-only, one-time: run 'bun run deploy:preview' locally to bootstrap the preview worker — that turns Deploy preview green for every future PR. Still blocking a real-key deploy: issue #1 (rate limiting / spend caps on board.generate and /api/transcribe). Still outstanding: drive voice on a real phone over HTTPS, walk the display on the actual Samsung TV. feat-009 stays in-progress until it has a browser-level verdict doc.
+
+---
+
+## 2026-07-27 — flappyboard MVP shipped as PR #2 (https://github.com/SeanningTatum/flappyboard/pull/2). 12 commits, 849 tests across 44 files, typecheck 0, build 0, harness 7/7. Three browser verification runs: two independent walks agreed 7/7 each, plus a third re-verifying scan-to-pair and revoke after the grantEpoch HMAC change. Pre-PR review: Greptile could not run (deterministic 30s API timeouts on a ~50-file diff), substituted by effect-ts-enforcer + an adversarial security pass; all 13 actionable findings fixed in 245c888, including revocable controller grants, production stack traces, a 100MB unbounded body, and a board-existence oracle.
+- branch: `feat/flappyboard-mvp`
+- in-progress feature: none
+- run note: none
+- next: Blocking before any deploy with a real key: issue #1 (rate limiting / spend caps on board.generate and /api/transcribe). Owner-only tasks: drive voice on a real phone over HTTPS (mediaDevices needs a secure context) and walk the display on the actual Samsung TV. feat-009 deliberately left in-progress until it has a browser-level verdict doc.
+
+---
+
+## 2026-07-27 — PR opened for llm-board-agent: https://github.com/SeanningTatum/flappyboard/pull/2
+- branch: `feat/flappyboard-mvp`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-07-27 — Plan is nearly complete. feat-007 split-flap-board and feat-008 phone-control shipped; feat-009 llm-board-agent in-progress with phase 5 (generation) landed at 20/20 valid grids on the real model. Board management shipped too (create/list/rename/delete + copyable TV URL), and the TV display plus phone controller were both restyled to a measured Vestaboard-industrial language. 643 tests green.
 - branch: `main`
 - in-progress feature: none
