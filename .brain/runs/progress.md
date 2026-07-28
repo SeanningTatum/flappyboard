@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-28 — shipped llm-board-agent: Shipped in v0.1.0 (PR #2, squash-merged as f8ae90f, 2026-07-27) and held open afterwards only for a formal verdict doc a
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-07-28 — Issue #1 closed — spend caps on board.generate and /api/transcribe, committed as abd0eea on worktree-tv-living-room. Atomic per-spender + per-board check-and-increment in the BoardRoom Durable Object (no new binding; same blockConcurrencyWhile as the spent-nonce ledger), new RateLimitError -> TOO_MANY_REQUESTS, 429 + Retry-After on the non-tRPC transcribe route. Gate: typecheck 0, 892 tests (from 849), build 0, e2e 2/2, harness 7/7. Four claims proven live against a real DO, not reasoned about: cap bites at 21 with a usable retryAfter; 30 concurrent calls at a limit of 20 admitted exactly 20 (no lost increments — the reason it lives in the DO); an exhausted owner still left a freshly paired grant its own full 20; and a 4th grant with a brand-new nonce was refused on its first call at 60/60, closing the re-pairing bypass. Verdict doc at .brain/features/llm-board-agent/verifications/2026-07-28.md, deliberately scoped — it says the endpoints are bounded, NOT that the LLM feature works. Also fixed a recipe trap: effect-trpc gates on a runtime APP_ERROR_TAGS set that nothing type-checks against the AppError union, so a new error compiles fine and still returns a generic 500; recipes/add-tagged-error.md now names that step.
 - branch: `worktree-tv-living-room`
 - in-progress feature: llm-board-agent

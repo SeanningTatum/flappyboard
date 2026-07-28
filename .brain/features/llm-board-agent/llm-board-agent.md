@@ -1,10 +1,27 @@
 # Feature: LLM Board Agent
 
-_Last updated: 2026-07-27_
+_Last updated: 2026-07-28_
 
-> **Status: in-progress — phase 5 (generation) landed 2026-07-27; phase 6 (voice) pending.** Design comes from the approved plan
-> [`plans/2026-07-27-flappyboard-mvp.html`](../../../plans/2026-07-27-flappyboard-mvp.html)
+> **Status: shipped.** Both phases landed and went out in
+> [`v0.1.0`](https://github.com/SeanningTatum/flappyboard/releases/tag/v0.1.0)
+> (PR #2, squash-merged as `f8ae90f`, 2026-07-27). Design comes from the approved
+> plan [`plans/2026-07-27-flappyboard-mvp.html`](../../../plans/2026-07-27-flappyboard-mvp.html)
 > (approved round 2, 2026-07-27). Phases 5–6.
+>
+> The tracker lagged reality: this stayed `in-progress` after the release, held
+> open for a formal verdict doc and for its one blocking follow-up. Both closed
+> on 2026-07-28 — issue #1 (spend caps) in `abd0eea`, verdict doc in
+> [`verifications/2026-07-28.md`](verifications/2026-07-28.md) — so the status
+> was corrected to match what shipped.
+>
+> **What is proven, and how.** Phase 5 by a live eval: 20/20 valid grids, 0
+> retries, 0 repairs on the real model. Phase 6 by a real call against the real
+> Cloudflare account, which returned a transcript and wrote the board. The spend
+> caps by four measurements against a live Durable Object. **What is not:** there
+> is no screenshotted browser walk of the voice-to-board path, and the
+> 2026-07-28 verdict doc is deliberately scoped to the caps rather than standing
+> in for one. Worth doing on real hardware alongside the Samsung TV walk that
+> `[[kiosk-display]]` already owes.
 
 ## Purpose
 The headline feature: hold the button on your phone, talk, and the board writes itself. Whisper
