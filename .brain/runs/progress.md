@@ -21,6 +21,22 @@
 
 ---
 
+## 2026-07-28 — v0.1.1 released — docs-only patch. PR #3 squash-merged as 2157222 and tagged v0.1.1 (https://github.com/SeanningTatum/flappyboard/releases/tag/v0.1.1). README trimmed 275 -> 244 lines: the harness-loop.gif embed removed and harness-loop.gif + harness-loop.mp4 deleted (995KB, both boilerplate leftovers from the initial commit 80e73a8 and the only docs/assets files not from this project's own verification walks); 'Four ideas worth stealing' collapsed into four bullets under 'How it's built' with all technical claims intact; the verification section's brag paragraph and the flap-travel rAF aside cut. setup-flow.svg deliberately kept. Deploy preview red again for the same non-code reason (version 93a23ae5 uploaded, preview-URL extraction failed); Baseline/Build/E2E/sweep green.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Owner-only, one-time: run 'bun run deploy:preview' locally to bootstrap the preview worker — turns Deploy preview green for every future PR. Still blocking a real-key deploy: issue #1 (rate limiting / spend caps on board.generate and /api/transcribe). Still outstanding: drive voice on a real phone over HTTPS, walk the display on the actual Samsung TV. feat-009 (llm-board-agent) stays in-progress until it has a browser-level verdict doc. NOTE: uncommitted in-flight work sitting in the working tree on app/services/board-agent.ts + its test (web_search_20260318 tooling, pause_turn handling, trailing-text extraction) — not part of v0.1.1, not committed.
+
+---
+
+## 2026-07-28 — Web search enabled on the board agent (feat-009). board.generate now declares the server-side web_search_20260318 tool with max_uses 3, so live-data prompts land real numbers on the board. Compatibility with structured outputs was verified against the live API first, not assumed — the docs are silent on it. Response handling changed in three places: textOf now reads only the trailing text run (a searching response interleaves tool blocks and the model may narrate first), pause_turn is resent unchanged without spending a retry attempt, and retries echo response.content verbatim so encrypted search results and thinking blocks survive instead of triggering a second search. max_tokens 4096 to 8192. Live end-to-end: 'weather in oslo' rendered a correct 4-row board in one attempt (~31s, two searches); 'bin day is thursday' correctly skipped search (~10s). Typecheck clean, 855 unit tests green (6 new).
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Two things this opens up. (1) Latency: the search path measured ~31s vs ~10s without — that is a long time to hold a phone in front of a blank TV, so consider dropping max_uses to 2, setting response_inclusion 'excluded', or showing a searching state on the controller. (2) Cost: web search bills per search on top of tokens, and a searched turn ran ~18k input tokens, which sharpens issue #1 (rate limiting / spend caps on board.generate and /api/transcribe) from a should-have to a blocker for any real-key deploy. Also still outstanding from before: owner-only 'bun run deploy:preview' to bootstrap the preview worker, drive voice on a real phone over HTTPS, walk the display on the Samsung TV, and get feat-009 a browser-level verdict doc.
+
+---
+
 ## 2026-07-28 — v0.1.0 released. PR #2 squash-merged to main as f8ae90f and tagged v0.1.0 (https://github.com/SeanningTatum/flappyboard/releases/tag/v0.1.0) — first tag on the repo. README rewritten from the starter boilerplate into a flappyboard product page with six real screenshots reused from the verification walks plus one watermarked setup mockup. Merged with Deploy preview red, knowingly: the worker version uploads fine, the job dies extracting a preview URL because flappyboard-preview has never had a real wrangler deploy so preview URLs are not enabled on it. Baseline/Build/E2E/sweep all green.
 - branch: `main`
 - in-progress feature: none
