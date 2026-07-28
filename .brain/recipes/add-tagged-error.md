@@ -24,7 +24,18 @@ export type ApiError = ... | RateLimitError;
 
 ### 2. Map to tRPC → [`app/lib/effect-trpc.ts`](../../app/lib/effect-trpc.ts)
 
-Add a `case` inside `appErrorToTRPC()`:
+**Two edits in this file, not one.** First register the tag in the `APP_ERROR_TAGS` set:
+
+```ts
+const APP_ERROR_TAGS = new Set<AppError["_tag"]>([
+  // ...
+  "RateLimitError",
+]);
+```
+
+> ⚠️ **This is the step that bites.** `isAppError` gates the switch on this runtime set, and **nothing type-checks it against the `AppError` union** — adding the class, the union member and the `case` will all compile, and your error will still come back as a generic `INTERNAL_SERVER_ERROR` because `isAppError` returned false and it never reached the switch. Symptom: a mapping test that expects your code and gets `"Internal Server Error"`. (Learned the hard way adding `RateLimitError`, 2026-07-28.)
+
+Then add a `case` inside `appErrorToTRPC()`:
 
 ```ts
 case "RateLimitError":
@@ -62,6 +73,8 @@ it.effect("maps RateLimitError to TOO_MANY_REQUESTS", () =>
 ## Definition of done
 
 - [ ] Error class in `app/models/errors/`
+- [ ] Registered in the domain union **and** `AppError`
+- [ ] Tag added to `APP_ERROR_TAGS` (the runtime allowlist — not type-checked)
 - [ ] `tagToTRPC` case added
 - [ ] Mapping unit test green
 - [ ] `errors.md` table updated

@@ -55,7 +55,9 @@ pre-recorded audio fixture, plus the empty-transcript error path.
 | `app/routes/api/transcribe.ts` | Audio blob → transcript |
 | `app/trpc/routes/board.ts` | `generate` |
 | `app/components/board/PushToTalkButton.tsx` | Hold-to-talk recording UI |
-| `app/models/errors/board.ts` | `BoardGenerationError`, `LlmRefusedError`, `TranscriptionFailedError` |
+| `app/models/errors/board.ts` | `BoardGenerationError`, `LlmRefusedError`, `TranscriptionFailedError`, `RateLimitError` |
+| `app/lib/board/quota.ts` | Spend caps — window maths, storage keys, wire shapes, the pure decision |
+| `workers/board-room.ts` | `POST /spend-quota` — the atomic check-and-increment |
 
 ## Dependencies
 - `[[split-flap-board]]` — schema, compiler, repair, DO write path
@@ -70,6 +72,43 @@ pre-recorded audio fixture, plus the empty-transcript error path.
 | `BoardGenerationError` | retries exhausted / API failure | INTERNAL_SERVER_ERROR |
 | `LlmRefusedError` | `stop_reason === "refusal"` | BAD_REQUEST |
 | `TranscriptionFailedError` | empty or failed Whisper result | BAD_REQUEST |
+| `RateLimitError` | over the spend cap on `generate` | TOO_MANY_REQUESTS |
+
+## Spend caps (2026-07-28, issue #1)
+
+Both endpoints here cost real money, and until now nothing bounded how often a
+paired phone could call them. Authorisation was never the hole — it is correct
+and runs before the body is read — but a phone that legitimately scanned the QR
+was unbounded, so one photograph of the TV bought twelve hours of unmetered
+spend on the owner's account.
+
+The counter lives in the board's `BoardRoom` Durable Object, which needs no new
+binding: it is already the single-threaded authority for a board, and the
+check-and-increment runs under the same `blockConcurrencyWhile` as the spent-nonce
+ledger, so simultaneous presses cannot lose increments to a race.
+
+**Two buckets, and a call must clear both:**
+
+| Bucket | Key | Why |
+|--------|-----|-----|
+| Per-spender | `owner:<id>` or `grant:<nonce>` | Fairness — one guest cannot eat another's allowance, and the owner's budget is separate. The nonce is covered by the grant's MAC, so it cannot be chosen, forged, or stripped. |
+| Per-board | the board | The ceiling. Per-spender alone is bypassable by re-pairing: every fresh redemption mints a fresh nonce and therefore a fresh allowance. |
+
+Defaults per hour: **20/60** generations (spender/board), **60/200**
+transcriptions. Fixed windows rather than a sliding log — a window boundary
+allows up to 2× burst, which is the right trade for two integers of storage
+against a cap whose job is bounding a runaway bill, not smoothing traffic.
+
+**Fails closed.** An unreachable or unparseable ledger raises
+`ExternalServiceError` instead of answering `allowed: true`. A refused call
+increments nothing — counting refusals would let a caller already over the limit
+hold the board bucket down on traffic that never cost anything.
+
+Ordering matters at both call sites and is asserted by comment:
+`board.generate` charges after `requireBoardAccess` and before the model call;
+`/api/transcribe` charges after the free content-type and content-length checks
+(a 415 must not burn allowance) and before `readBoundedBody` (an over-cap caller
+must not push a megabyte through the isolate).
 
 ## Deferred
 Automations (a cron refreshing the board each morning) are a paid feature, out of MVP scope. Two
@@ -83,6 +122,7 @@ Cron Trigger with no HTTP request in play, and `board_snapshot.source` already a
 |------|------|-------------|
 | 2026-07-27 | feature | Planned from the approved MVP plan (phases 5–6) |
 | 2026-07-27 | feature | Phase 5 landed: `BoardAgent` on `claude-sonnet-5` with schema-enforced output, decode → retry×2-with-error-fed-back → repair, `board.generate`, 3 tagged errors mapped. Live eval **20/20 valid grids, 0 retries, 0 repairs** |
+| 2026-07-28 | security | Issue #1 closed — per-spender + per-board spend caps on `board.generate` and `/api/transcribe`, atomic in the `BoardRoom` DO, fail-closed, `RateLimitError` → `TOO_MANY_REQUESTS` (429 + `Retry-After` on the non-tRPC route). 849 → 892 tests |
 
 ## Phase 5 — implemented behaviour (2026-07-27)
 

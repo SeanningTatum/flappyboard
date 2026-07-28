@@ -43,6 +43,9 @@ The argument shape becomes readonly fields on the instance. Discriminate via `_t
 | `BoardGenerationError` | `stage` (`request` \| `empty`), `cause?` | `INTERNAL_SERVER_ERROR` |
 | `LlmRefusedError` | — | `BAD_REQUEST` |
 | `TranscriptionFailedError` | `reason`, `cause?` | `BAD_REQUEST` |
+| `RateLimitError` | `endpoint` (`generate` \| `transcribe`), `retryAfter` | `TOO_MANY_REQUESTS` |
+
+`RateLimitError` echoes **both** fields to the client, which is the opposite of `PairingTokenInvalidError` and worth the contrast: a rate-limit refusal describes the caller's own usage of a board they are *already authorised for*, so there is no oracle in it — while a pairing refusal describes a credential, where "expired" vs "bad-signature" is exactly the feedback an attacker wants. `retryAfter` is what lets the phone say something better than "try again later". `/api/transcribe` is not a tRPC route, so it returns its own 429 with a `Retry-After` header rather than going through this mapping.
 
 `TranscriptionFailedError.reason` **is** echoed to the client (write it user-facing, e.g. "the recording was empty"); its `cause` is not. That is the opposite of `PairingTokenInvalidError`, where the reason is an oracle and stays server-side — the difference is that a transcription failure is the user's own audio, while a pairing failure is a credential.
 

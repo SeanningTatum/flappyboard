@@ -22,6 +22,17 @@ import {
   type BoardRoomState,
   type SetCommand,
 } from "@/lib/board/protocol";
+import {
+  boardQuotaKey,
+  decideQuota,
+  parseSpendQuotaRequest,
+  quotaSpendResult,
+  readCount,
+  spenderQuotaKey,
+  windowStart,
+  QUOTA_KEY_PREFIX,
+  type QuotaEntry,
+} from "@/lib/board/quota";
 
 const STATE_KEY = "board:state";
 const BOARD_ID_KEY = "board:id";
@@ -33,6 +44,14 @@ const BOARD_ID_KEY = "board:id";
  * instead of stalling one request (and the object's input gate with it).
  */
 const NONCE_PRUNE_LIMIT = 256;
+
+/**
+ * Same bound, same reason, for the quota counters. The live set is at most two
+ * keys per spender per endpoint per window, so in practice this never binds —
+ * it is here so a room that somehow accumulated thousands of dead counters
+ * prunes them across several spends instead of stalling one request.
+ */
+const QUOTA_PRUNE_LIMIT = 256;
 
 const log = loggers.server.child({ component: "board-room" });
 
@@ -104,6 +123,10 @@ export class BoardRoom extends DurableObject<Env> {
 
     if (request.method === "POST" && url.pathname === "/spend-nonce") {
       return this.handleSpendNonce(request);
+    }
+
+    if (request.method === "POST" && url.pathname === "/spend-quota") {
+      return this.handleSpendQuota(request);
     }
 
     return new Response("Not Found", { status: 404 });
@@ -257,6 +280,110 @@ export class BoardRoom extends DurableObject<Env> {
     const dead: string[] = [];
     for (const [key, value] of entries) {
       if (typeof value !== "number" || value <= now) dead.push(key);
+    }
+    if (dead.length > 0) await this.ctx.storage.delete(dead);
+  }
+
+  /**
+   * Spend caps for the two endpoints that cost money — `board.generate` and
+   * `/api/transcribe`.
+   *
+   * Here for the same reason the nonce ledger is: the room is the only place
+   * where read → decide → write is genuinely atomic, so N phones hammering the
+   * button together are serialised and the counter cannot be lost to a race. No
+   * new binding, no KV round trip, no alarm.
+   *
+   * Two buckets are checked and a call must clear both — the spender's own
+   * allowance (keyed by the nonce inside its grant, so one guest cannot eat
+   * another's) and the board's ceiling (so re-pairing for a fresh nonce buys
+   * nothing). The decision itself is pure and lives in `@/lib/board/quota`; this
+   * method is storage glue.
+   *
+   * Answers `{ type: "quota", allowed, retryAfter }`. Any storage failure is a
+   * 500, which the caller treats as a refusal (fail closed) — an unmetered
+   * endpoint is exactly what this exists to prevent.
+   */
+  private async handleSpendQuota(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const spend = parseSpendQuotaRequest(body.right);
+    if (spend === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const start = windowStart(now, spend.windowSeconds);
+    const expiresAt = start + spend.windowSeconds * 1000;
+    const sKey = spenderQuotaKey(spend.endpoint, spend.spender, start);
+    const bKey = boardQuotaKey(spend.endpoint, start);
+
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          await this.pruneQuotas(now);
+
+          const decision = decideQuota({
+            spenderCount: readCount(await this.ctx.storage.get(sKey)),
+            boardCount: readCount(await this.ctx.storage.get(bKey)),
+            spenderLimit: spend.spenderLimit,
+            boardLimit: spend.boardLimit,
+            now,
+            windowSeconds: spend.windowSeconds,
+          });
+
+          // A refusal writes nothing: counting refused calls would let a caller
+          // who is already over the limit hold the board bucket down on traffic
+          // that never cost anything.
+          if (decision.allowed) {
+            const sEntry: QuotaEntry = {
+              count: decision.spenderCount,
+              expiresAt,
+            };
+            const bEntry: QuotaEntry = { count: decision.boardCount, expiresAt };
+            await this.ctx.storage.put({ [sKey]: sEntry, [bKey]: bEntry });
+          }
+
+          return decision;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Quota ledger failed — refusing the spend"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(
+      quotaSpendResult(outcome.value.allowed, outcome.value.retryAfter)
+    );
+  }
+
+  /**
+   * Drop counters whose window has closed. Runs inside the same
+   * `blockConcurrencyWhile` as the spend it precedes, exactly like
+   * `pruneNonces` — no extra gate, no alarm to keep alive.
+   */
+  private async pruneQuotas(now: number): Promise<void> {
+    const entries = await this.ctx.storage.list<unknown>({
+      prefix: QUOTA_KEY_PREFIX,
+      limit: QUOTA_PRUNE_LIMIT,
+    });
+    const dead: string[] = [];
+    for (const [key, value] of entries) {
+      // An unreadable counter is collected too: `readCount` already treats it as
+      // zero, so leaving it would only keep a permanently-ignored key around.
+      const entry = value as Partial<QuotaEntry> | null;
+      const expiresAt =
+        typeof entry?.expiresAt === "number" ? entry.expiresAt : 0;
+      if (expiresAt <= now) dead.push(key);
     }
     if (dead.length > 0) await this.ctx.storage.delete(dead);
   }

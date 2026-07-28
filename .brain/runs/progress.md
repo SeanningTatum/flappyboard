@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-07-28 — Kickoff: issue #1 rate limiting / spend caps on board.generate and /api/transcribe — Phase 0 of the TV living-room plan and the last hard blocker on a real-key deploy. Domain: mixed (cloudflare DO + routes + errors). Scope: both. Affects feat-009 llm-board-agent, the one in-progress feature, so no scope-policy conflict. Runbook: recipes/add-tagged-error (whose worked example is literally a RateLimitError) plus rules/cloudflare for the DO side. Baseline green after 'bun install' in the worktree — the first run's TS2742 on app/trpc/client.tsx was an empty-node_modules artifact of the fresh worktree, not a regression.
+- branch: `worktree-tv-living-room`
+- in-progress feature: llm-board-agent
+- run note: features/llm-board-agent/runs/2026-07-28-progress.md
+- next: Mirror workers/board-room.ts handleSpendNonce (line 203) into a quota counter: atomic check-and-increment under blockConcurrencyWhile, windowed, keyed by grant nonce so one guest cannot spend another's allowance, with a prune companion like pruneNonces (line 252). First check whether BoardAccess already carries the grant nonce — it exposes via/grantIssuedAt/grantExpiresAt, and if the nonce is not on it, that has to be surfaced before the counter can be keyed correctly.
+
+---
+
 ## 2026-07-28 — TV living-room plan reviewed and approved (round 1, plans/2026-07-28-tv-living-room.html). All 6 decisions answered: device-code pairing for the TV (/tv + /link, WebSocket approval not polling); runtime is the Samsung BUILT-IN BROWSER, chosen against the recommendation of a kiosk stick — no native Tizen/webOS app either way; 30-day sliding controller grants (up from 12h); device name captured at pairing, owner-visible; pixel drift + idle dim for burn-in; and feat-009 llm-board-agent gets closed out FIRST rather than being parked blocked. Three open questions resolved in review (socket over polling, one board for now, spinner while offline); one still open — where an unapproved device code lives before it is bound to a board. Registered feat-010 tv-pairing, feat-011 family-grants, feat-012 kiosk-display as planned with feature docs. Working in git worktree .claude/worktrees/tv-living-room on branch worktree-tv-living-room, based on merged main (v0.1.0). No app code touched yet.
 - branch: `worktree-tv-living-room`
 - in-progress feature: none

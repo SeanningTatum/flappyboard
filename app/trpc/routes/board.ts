@@ -8,8 +8,14 @@ import { AuthApi } from "@/services/auth";
 import { ConfigurationError, NotFoundError } from "@/models/errors/repository";
 import {
   PairingTokenInvalidError,
+  RateLimitError,
   type PairingRefusal,
 } from "@/models/errors/board";
+import {
+  DEFAULT_QUOTA,
+  spenderId,
+  type QuotaEndpoint,
+} from "@/lib/board/quota";
 import type { Board } from "@/db/schema";
 import {
   BoardId,
@@ -123,6 +129,13 @@ interface BoardAccess {
   readonly grantExpiresAt: number | null;
   /** When the presented grant was minted; `null` for an owner session. */
   readonly grantIssuedAt: number | null;
+  /**
+   * The random nonce inside the grant that was accepted; `null` for an owner
+   * session. This is the spend-cap bucket key: a caller cannot choose it, cannot
+   * forge somebody else's, and cannot strip it without invalidating the token
+   * that carries it — see `spenderId` in `@/lib/board/quota`.
+   */
+  readonly grantNonce: string | null;
 }
 
 /** The slice of a procedure context authorisation needs, session or not. */
@@ -193,6 +206,7 @@ const requireBoardAccess = (ctx: BoardCallerContext, boardId: string) =>
         board,
         grantExpiresAt: null,
         grantIssuedAt: null,
+        grantNonce: null,
       };
       return access;
     }
@@ -232,8 +246,55 @@ const requireBoardAccess = (ctx: BoardCallerContext, boardId: string) =>
       board,
       grantExpiresAt: verdict.expiresAt,
       grantIssuedAt: verdict.issuedAt,
+      grantNonce: verdict.nonce,
     };
     return access;
+  });
+
+/**
+ * Charge one call against the board's spend caps, or refuse it.
+ *
+ * Called **after** authorisation and **before** the paid work, which is the only
+ * ordering that makes sense: an unauthorised caller should not be able to move
+ * anyone's counter, and a refused caller must not have cost anything by the time
+ * they are told no.
+ *
+ * Fails closed. `room.spendQuota` raises `ExternalServiceError` rather than
+ * answering `allowed: true` when the ledger is unreachable, and that error is
+ * deliberately not caught here — a broken counter refuses the spend instead of
+ * waving an unmetered call through to Anthropic.
+ */
+const chargeQuota = (
+  access: BoardAccess,
+  boardId: string,
+  endpoint: QuotaEndpoint
+) =>
+  Effect.gen(function* () {
+    const room = yield* BoardRoom;
+    const verdict = yield* room.spendQuota({
+      boardId,
+      endpoint,
+      spender: spenderId({
+        via: access.via,
+        ownerId: access.board.ownerId,
+        grantNonce: access.grantNonce,
+      }),
+      policy: DEFAULT_QUOTA[endpoint],
+    });
+
+    if (!verdict.allowed) {
+      yield* Effect.logWarning("Board spend cap reached").pipe(
+        Effect.annotateLogs({
+          boardId,
+          endpoint,
+          via: access.via,
+          retryAfter: verdict.retryAfter,
+        })
+      );
+      return yield* Effect.fail(
+        new RateLimitError({ endpoint, retryAfter: verdict.retryAfter })
+      );
+    }
   });
 
 /**
@@ -517,7 +578,10 @@ export const boardRouter = createTRPCRouter({
       runProcedure(
         ctx.runtime,
         Effect.gen(function* () {
-          yield* requireBoardAccess(ctx, input.boardId);
+          const access = yield* requireBoardAccess(ctx, input.boardId);
+          // Before the model call, not after: a refusal must not have cost the
+          // owner an Anthropic request.
+          yield* chargeQuota(access, input.boardId, "generate");
 
           const room = yield* BoardRoom;
           const current = yield* room.getState(input.boardId);
