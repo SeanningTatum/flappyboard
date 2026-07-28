@@ -21,6 +21,21 @@
 
 ---
 
+## 2026-07-28 — Issue #1 shipped as PR #5 (https://github.com/SeanningTatum/flappyboard/pull/5) through the pre-PR review flow: verify -> review -> resolve -> create. Greptile ran clean this time (it deterministically timed out on the MVP's ~50-file diff) at confidence 3/5 with 4 findings — 2 P1 escalated and answered by the owner, 2 P2 auto-fixed. P1a: the DO enforced caller-supplied limits, so the cap was a call-site convention; policy moved into the DO, wire shrunk to endpoint/spender/mode, and a test asserts a limit cannot be smuggled. P1b: quota was charged before readBoundedBody, so oversized chunked bodies drained the board budget at zero AI cost; now peek -> read -> charge, re-measured closed (10 oversized chunked posts -> 413 x10, zero allowance consumed, a full 60 tiny posts still fit). A 5th finding came from the browser, not from static review: three runs agreed a cap refusal rendered the generic 'The board didn't take it' because the component discarded the error payload — retryAfter never reached the phone despite RateLimitError's doc comment promising it would. Needed cause: e on the TRPCError plus an allowlisted errorFormatter line; three runs then confirmed 1210s->'21 minutes', 627s->'11 minutes', 578s->'10 minutes', with C and D proving the 429 came from board.generate while /api/transcribe returned 200. Gate: typecheck 0, 908 tests (from 849), build 0, e2e 2/2, harness 7/7.
+- branch: `worktree-tv-living-room`
+- in-progress feature: llm-board-agent
+- run note: none
+- next: Owner-only and now unblocked: deploy with a real ANTHROPIC_API_KEY. Then feat-010 tv-pairing per the plan's decision 6 — its device-code endpoint inherits this limiter, which was its hard prerequisite since a 6-char code is only safe while attempt-capped. Still owed on real hardware: the Samsung TV walk and phone voice over HTTPS. Still unproven: /api/transcribe's 429 through the UI, fail-closed against a genuinely broken DO, and window rollover.
+
+---
+
+## 2026-07-28 — PR opened for llm-board-agent: https://github.com/SeanningTatum/flappyboard/pull/5
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-07-28 — shipped llm-board-agent: Shipped in v0.1.0 (PR #2, squash-merged as f8ae90f, 2026-07-27) and held open afterwards only for a formal verdict doc a
 - branch: `worktree-tv-living-room`
 - in-progress feature: none
