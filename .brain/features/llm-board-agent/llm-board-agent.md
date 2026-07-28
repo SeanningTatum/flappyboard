@@ -35,6 +35,110 @@ Model notes: the id is the bare string `claude-sonnet-5` (no date suffix); it re
 `temperature` / `top_p`, so variety comes from the prompt. `ANTHROPIC_API_KEY` is read through the
 `CloudflareEnv` tag — never `process.env`.
 
+### Web search (added 2026-07-28)
+`board.generate` declares the server-side `web_search_20260318` tool, so "what's the weather in
+Oslo" puts today's temperature on the board instead of a training-cutoff guess. Confirmed live:
+web search and `output_config.format` `json_schema` coexist — the turn ends `end_turn` with a
+schema-valid JSON text block.
+
+Three consequences the code has to handle, none of which existed before:
+
+- **The JSON is the *trailing* text run.** A searching response is
+  `server_tool_use` / `web_search_tool_result` / `code_execution_tool_result` / … / text, and the
+  model may narrate before searching. `textOf` therefore reads only the text blocks after the last
+  non-text block; joining all of them would hand `JSON.parse` a sentence glued to an object.
+- **`stop_reason: "pause_turn"`.** A long search turn comes back paused. `callModel` resends the
+  paused turn unchanged (up to `BOARD_AGENT_MAX_PAUSES`) and does **not** spend a retry attempt —
+  the model made no mistake.
+- **Retries echo content blocks, not text.** Search results carry `encrypted_content` the API
+  decrypts to restore them on later turns, so the assistant turn goes back verbatim. Echoing only
+  the text would silently make the model search again (and drop thinking blocks, which must be
+  replayed unmodified).
+
+`max_uses: 3` bounds both the bill (web search is billed per search on top of tokens) and the wait.
+Do **not** add `code_execution` to `tools`: on `_20260318` `allowed_callers` already defaults to
+`["code_execution_20260120"]` for dynamic filtering, and the API provisions that environment
+itself. `max_tokens` went 4096 → 8192 for the extra output blocks.
+
+### Routing: Haiku decides whether the tool is attached at all
+
+Haiku 4.5 (`BOARD_ROUTER_MODEL`) answers one structured-output boolean —
+`needs_live_data` — and the answer picks the *request shape*, not the author. Sonnet still writes
+every board.
+
+- **live data** → `BOARD_AGENT_SYSTEM_PROMPT` + `BOARD_AGENT_TOOLS`
+- **no live data** → `BOARD_AGENT_SYSTEM_PROMPT_NO_SEARCH` and **`tools` omitted entirely**
+
+Omitting the tool is the point: the do-not-search rule stops being a line in a prompt the model can
+ignore and becomes a property of the request. It has to be structural, because with the tool
+attached **five of six plain prompts searched anyway** — a bin-day reminder went from ~3s to ~9s and
+billed a search for it.
+
+Two decisions that are easy to get backwards:
+- **The router fails open, to searching.** Network error, refusal, unparseable JSON, a
+  `needs_live_data` that isn't a boolean — all resolve to the searching route. The two mistakes are
+  not symmetric: routing a plain board to search costs seconds, routing a weather board to the plain
+  path costs the whole feature.
+- **The no-search prompt is a different prompt, not the same one minus a tool.** Starve a search the
+  model was told to make and it writes `LIVE FEED UNAVAILABLE / SEARCH TOOL OFFLINE` onto the board
+  (measured twice, at 73s and 41s). The no-tool prompt states the constraint instead, so the one bad
+  case degrades to an honest board rather than an invented number.
+
+Routing runs **once per generate**, not once per retry — re-deciding mid-conversation would change
+the tool set under a cached prefix.
+
+### Measured latency
+
+| Path | Before routing | After |
+|------|----------------|-------|
+| live data (weather) | 30–35s | **15.3s** |
+| live data (last match result) | — | **9.6s** |
+| plain (reminder) | 3.1s, or ~9s when it searched anyway | **3.5s** |
+| plain (greeting) | — | **3.3s** |
+
+`allowed_callers: ["direct"]` (dynamic filtering off) is what buys the halving, and it is also what
+makes `max_uses: 1` safe — see the docblock on `BOARD_AGENT_TOOLS` for why a cap of 1 *with*
+filtering starves the search instead of bounding it.
+
+### Known limitation: search gives sourced figures, not current ones
+
+Worth stating plainly because the feature's whole pitch is "don't invent numbers", and it is easy to
+over-read the verification docs. Against Open-Meteo as ground truth, every configuration tried was
+materially stale on temperature:
+
+| Reading | Board said | Real | Error |
+|---------|-----------|------|-------|
+| filtered search (verification run C) | 22 °C | 16.0 °C | +6.0 |
+| filtered search (verification run E) | 19–22 °C | 23.3 °C | −1.3 to −4.3 |
+| filtered search (re-measured) | 14 °C | 24.4 °C | −10.4 |
+| direct search | 17 °C | 24.4 °C | −7.4 |
+
+The figures are **sourced** — run C's sunset was accurate to one minute, and score/news boards come
+back specific and checkable — but a temperature pulled from a search snippet is frequently a cached
+morning reading, sometimes with a stale "AS OF 7:24 AM" attached. Adding `web_fetch` alongside
+search did **not** help: the model never called it.
+
+So: web search is the right tool for discrete facts (results, prices, news, times) and the wrong tool
+for a live sensor reading. **If accurate current weather matters, the fix is a weather API as its own
+tool** (Open-Meteo needs no key), not more search tuning. Tracked as a follow-up, not fixed here.
+
+**Verified in a browser, twice, independently:**
+[`verifications/2026-07-28-run-c.md`](verifications/2026-07-28-run-c.md) and
+[`verifications/2026-07-28-run-e.md`](verifications/2026-07-28-run-e.md). Both drove the real UI
+(recorded audio → Whisper → `board.generate` → DO write → TV socket) from a cookie-less phone that
+paired off a single-use QR token. Run C's board carried a sunset time within one minute of the real
+one; run E's carried a humidity range containing the real 38% and a sky condition matching the WMO
+code exactly. Both no-search prompts returned 2.7–5.7× faster than their searching counterparts,
+which is what demonstrates the prompt's do-not-search half is load-bearing rather than decorative.
+
+Two traps recorded there, because both read as app defects and neither is:
+- A TV screenshot taken within ~5s of a write catches tiles **mid-flap** (`flap-travel.ts` runs
+  3–5s). Run E's board reads `TEMP 19#22C` because `#` sits four flaps before `-` in `BOARD_CHARS`.
+  Assert on `data-char`, which said `19-22C`.
+- `page.mouse.down()` does **not** engage `control-ptt` on a `hasTouch` context — it binds React
+  `onPointerDown`/`onPointerUp`. Dispatch real `PointerEvent`s and assert `data-recording="true"`
+  immediately, or a missed press is indistinguishable from a hung generate.
+
 ### Persistence details
 - No new tables. Generated grids are written as `board_snapshot` rows with `source: "llm"` and the
   originating `prompt` retained for history and debugging.
@@ -61,7 +165,7 @@ pre-recorded audio fixture, plus the empty-transcript error path.
 - `[[split-flap-board]]` — schema, compiler, repair, DO write path
 - `[[phone-control]]` — the controller route hosting the button, and the pairing grant
 - CF bindings: `AI` (Whisper, first consumer); new secret `ANTHROPIC_API_KEY`
-- External: `@anthropic-ai/sdk`
+- External: `@anthropic-ai/sdk`; Anthropic-hosted web search (billed per search, separate from tokens)
 
 ## Tagged Errors
 

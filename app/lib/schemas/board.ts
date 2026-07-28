@@ -104,6 +104,23 @@ export type BoardMessage = typeof BoardMessage.Type;
 export const decodeBoardMessage = Schema.decodeUnknownEither(BoardMessage);
 export const decodeBoardGrid = Schema.decodeUnknownEither(BoardGrid);
 
+/**
+ * The board router's reply: one boolean deciding whether the request needs the
+ * web search tool attached.
+ *
+ * Mirrors `BOARD_ROUTER_SCHEMA` in `app/services/board-agent.ts` exactly as
+ * `BoardMessage` mirrors `BOARD_MESSAGE_JSON_SCHEMA` — structured outputs buy the
+ * shape, this buys the guarantee. It matters here because a *truthy* answer and a
+ * *true* answer are not the same thing: coercing `"yes"` or `1` would silently
+ * turn every malformed reply into "search", which is the expensive branch.
+ */
+export const RouterDecision = Schema.Struct({
+  needs_live_data: Schema.Boolean,
+});
+export type RouterDecision = typeof RouterDecision.Type;
+
+export const decodeRouterDecision = Schema.decodeUnknownEither(RouterDecision);
+
 /* -------------------------------------------------------------------------- */
 /* Persistence / route inputs                                                 */
 /* -------------------------------------------------------------------------- */
