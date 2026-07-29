@@ -44,6 +44,15 @@ import {
  * keeps the automatic flow working with JavaScript disabled — the same
  * contract the manual form keeps via `:checked` CSS instead of state.
  *
+ * The accepted risk, ratified by the owner (Greptile pre-PR review): ANY
+ * authenticated GET carrying a live code pairs — an `<img>` embed or a
+ * crafted link, not only a camera scan. It is accepted because a code exists
+ * only on the owner's own TV for a few minutes, so knowing one already means
+ * being in the room; because the worst outcome is the owner's TV pairing to
+ * the owner's own board, revocable from `/boards`; and because a scan is
+ * indistinguishable from any other top-level navigation by design — blocking
+ * the rest means blocking the feature.
+ *
  * Dressed as part of the console, not as an account page: this screen is one
  * step in "point phone at TV", sandwiched between the dark TV and the dark
  * controller, and a white web form in the middle is a flashbang aimed at the
@@ -86,7 +95,8 @@ export type LinkLoaderData =
       readonly boardId: string;
       /** True when this visit also created the board (fresh account). */
       readonly created: boolean;
-      readonly code: string;
+      /** Null on the refresh-safe receipt — the spent code never returns to the URL. */
+      readonly code: string | null;
     }
   | {
       readonly mode: "form";
@@ -106,8 +116,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   // The QR prefills this; a typed visit gets null and the field stays blank.
   const code = normalizeDeviceCode(url.searchParams.get("code"));
-  // The escape hatch: "not that board" — render the picker even when the
-  // account is unambiguous.
+  // The escape hatch, *before* any pairing happens: "I'd rather choose
+  // myself" — render the picker even when the account is unambiguous.
   const manual = url.searchParams.get("manual") === "1";
 
   const listed = await Effect.runPromiseExit(
@@ -117,21 +127,51 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })
   );
 
-  const boards = Exit.isSuccess(listed)
-    ? listed.value.map((board) => ({ id: board.id, name: board.name }))
-    : [];
+  const form = (
+    boardList: ReadonlyArray<{ readonly id: string; readonly name: string }>,
+    autoError: LinkFailure | null
+  ): LinkLoaderData => ({ mode: "form", boards: boardList, code, autoError });
 
-  const form = (autoError: LinkFailure | null): LinkLoaderData => ({
-    mode: "form",
-    boards,
-    code,
-    autoError,
-  });
+  /*
+    A list failure must NEVER read as "zero boards". A transient DB hiccup
+    that falls through to `resolveAutoLink(0)` would create a phantom
+    "Living Room" on an account that has boards — and a successful approve
+    gives no reason to roll it back (Greptile pre-PR review). Fail honestly:
+    the manual form with the failure named.
+  */
+  if (Exit.isFailure(listed)) return form([], "failed");
 
-  if (code === null || manual) return form(null);
+  const boards = listed.value.map((board) => ({
+    id: board.id,
+    name: board.name,
+  }));
+
+  /*
+    The refresh-safe receipt. A successful auto-pair *redirects* here with the
+    spent code gone (the same "the redirect is not cosmetic" rule as
+    `/tv/claim`): without it, a refresh re-runs the loader against a
+    single-use code that is now NOT_FOUND and shows the owner a misleading
+    "reload the TV" error for a pairing that actually worked.
+  */
+  const pairedId = url.searchParams.get("paired");
+  if (pairedId !== null) {
+    const board = boards.find((candidate) => candidate.id === pairedId);
+    if (board !== undefined) {
+      return {
+        mode: "linked",
+        name: board.name,
+        boardId: board.id,
+        created: url.searchParams.get("created") === "1",
+        code: null,
+      } satisfies LinkLoaderData;
+    }
+    // A receipt for a board that no longer exists is the form, quietly.
+  }
+
+  if (code === null || manual) return form(boards, null);
 
   const decision = resolveAutoLink(boards.length);
-  if (decision === "pick") return form(null);
+  if (decision === "pick") return form(boards, null);
 
   let boardId: string;
   let createdBoardId: string | null = null;
@@ -145,7 +185,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         catch: (cause) => cause,
       })
     );
-    if (Exit.isFailure(made)) return form("create_failed");
+    if (Exit.isFailure(made)) return form(boards, "create_failed");
     boardId = made.value.id;
     createdBoardId = made.value.id;
     created = true;
@@ -174,16 +214,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     }
     // A failed auto attempt is not a dead end — it is the manual form with
     // the reason named (the TV usually rotated its code mid-walk).
-    return form(readFailure(approved.cause));
+    return form(boards, readFailure(approved.cause));
   }
 
-  return {
-    mode: "linked",
-    name: approved.value.name,
-    boardId,
-    created,
-    code,
-  } satisfies LinkLoaderData;
+  throw redirect(
+    `/link?paired=${encodeURIComponent(boardId)}&created=${created ? "1" : "0"}`
+  );
 }
 
 /**
@@ -352,13 +388,13 @@ export default function LinkTv({
 
   /*
     The end of the automatic journey: the loader already paired the TV, so
-    this panel is a *receipt*, not a form — what happened, the way onward
-    (the controller), and the one escape (`manual=1`) for "not that board".
+    this panel is a *receipt*, not a form — what happened and the way onward.
+    There is deliberately no "not that board?" escape here: the code is spent
+    the moment the pair succeeds, so a choose-again link could only fail.
+    Re-picking a display is a `/boards` job (rename, revoke), and pre-pairing
+    ambiguity is what `?manual=1` is for.
   */
   if (loaderData.mode === "linked") {
-    const manualUrl = `/link?code=${encodeURIComponent(
-      loaderData.code
-    )}&manual=1`;
     return (
       <ConsoleField data-testid="link-root" className="gap-8">
         <header className="flex flex-col gap-2 px-1">
@@ -403,12 +439,12 @@ export default function LinkTv({
           </Link>
 
           <Link
-            to={manualUrl}
-            data-testid="link-auto-manual"
+            to="/boards"
+            data-testid="link-manage-boards"
             className={`inline-flex min-h-11 touch-manipulation items-center justify-center text-[11px] font-medium uppercase ${FOCUS_RING}`}
             style={{ color: CONSOLE.inkMute, letterSpacing: "0.16em" }}
           >
-            {t("link.auto.manual")}
+            {t("link.auto.manage")}
           </Link>
         </div>
       </ConsoleField>
