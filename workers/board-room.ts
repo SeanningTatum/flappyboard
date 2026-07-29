@@ -23,6 +23,39 @@ import {
   type SetCommand,
 } from "@/lib/board/protocol";
 import {
+  decodeDeviceCodeRecord,
+  deviceCodeApproveResult,
+  deviceCodeIssueResult,
+  isDeviceCodeLive,
+  parseApproveDeviceCodeRequest,
+  parseIssueDeviceCodeRequest,
+  DEVICE_CODE_KEY,
+  type DeviceCodeRecord,
+} from "@/lib/board/device-code";
+import {
+  decideName,
+  decideTouch,
+  decodePairedDevice,
+  grantKey,
+  grantRevokeResult,
+  grantTouchResult,
+  normalizeDeviceName,
+  overflowVictims,
+  pairedDeviceList,
+  parseNameGrantRequest,
+  parseRecordGrantRequest,
+  parseRevokeGrantRequest,
+  parseTouchGrantRequest,
+  pruneDevices,
+  renewRecord,
+  revokedKey,
+  GRANT_KEY_PREFIX,
+  MAX_PAIRED_DEVICES,
+  REVOKED_KEY_PREFIX,
+  type PairedDeviceRecord,
+} from "@/lib/board/paired-devices";
+import { timingSafeEqual } from "@/lib/board/pairing";
+import {
   boardQuotaKey,
   decideQuota,
   isQuotaEntry,
@@ -54,6 +87,37 @@ const NONCE_PRUNE_LIMIT = 256;
  * prunes them across several spends instead of stalling one request.
  */
 const QUOTA_PRUNE_LIMIT = 256;
+
+/** Same bound, same reason, for the per-grant device records. */
+const GRANT_PRUNE_LIMIT = 256;
+
+/**
+ * Tombstone left behind when a device code is redeemed, so a replay can be
+ * answered `already-approved` instead of `unknown`. It lives exactly as long as
+ * the code would have, then prunes itself — the distinction only matters while
+ * somebody could still be holding the code.
+ */
+const DEVICE_CODE_CONSUMED_KEY = "device-code:consumed";
+
+/**
+ * The tag every TV socket waiting on a device code is accepted under.
+ *
+ * Two socket populations share this class because a pending code has no board
+ * yet and therefore lives in its own instance (`code:<CODE>` — see
+ * `deviceCodeRoomName`). The tag keeps them apart in the hibernation handlers:
+ * a waiting TV must never be handed a board `state` frame, and a board write
+ * must never be fanned out to one.
+ */
+const DEVICE_CODE_TAG = "device-code";
+
+/**
+ * How long a revocation tombstone survives when the room has no record of the
+ * grant being revoked — the 400-day `Max-Age` ceiling a browser will honour,
+ * which is the longest any grant cookie could still be presented for. Erring
+ * long is the only safe direction: a tombstone that expires early silently
+ * un-revokes the device it was written to stop.
+ */
+const MAX_GRANT_TOMBSTONE_MS = 400 * 24 * 60 * 60 * 1000;
 
 const log = loggers.server.child({ component: "board-room" });
 
@@ -129,6 +193,38 @@ export class BoardRoom extends DurableObject<Env> {
 
     if (request.method === "POST" && url.pathname === "/spend-quota") {
       return this.handleSpendQuota(request);
+    }
+
+    if (request.method === "POST" && url.pathname === "/device-code/issue") {
+      return this.handleIssueDeviceCode(request);
+    }
+
+    if (request.method === "GET" && url.pathname === "/device-code/watch") {
+      return this.openDeviceCodeSocket(request, url);
+    }
+
+    if (request.method === "POST" && url.pathname === "/device-code/approve") {
+      return this.handleApproveDeviceCode(request);
+    }
+
+    if (request.method === "POST" && url.pathname === "/grants/record") {
+      return this.handleRecordGrant(request);
+    }
+
+    if (request.method === "POST" && url.pathname === "/grants/touch") {
+      return this.handleTouchGrant(request);
+    }
+
+    if (request.method === "POST" && url.pathname === "/grants/name") {
+      return this.handleNameGrant(request);
+    }
+
+    if (request.method === "POST" && url.pathname === "/grants/revoke") {
+      return this.handleRevokeGrant(request);
+    }
+
+    if (request.method === "GET" && url.pathname === "/grants") {
+      return this.handleListGrants();
     }
 
     return new Response("Not Found", { status: 404 });
@@ -424,13 +520,582 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   // -------------------------------------------------------------------------
+  // Device codes — the TV's half of pairing
+  // -------------------------------------------------------------------------
+
+  /**
+   * Claim a freshly generated 6-character code for this room.
+   *
+   * **Which room?** Not a board's. A code exists precisely because no board has
+   * been chosen yet, so it lives in an instance addressed by the code itself
+   * (`idFromName("code:" + CODE)`, see `deviceCodeRoomName`). That is what lets
+   * the TV's socket and the owner's approval — two requests that share nothing
+   * but six characters typed across a room — land on the same single-threaded
+   * object without a global registry to serialise every pairing in the
+   * deployment through one hot spot.
+   *
+   * The code is generated in the worker and *claimed* here rather than minted
+   * here, so a collision is a fact this object can refuse rather than a race the
+   * caller has to detect: a second TV that draws a live code is told
+   * `issued: false` under `blockConcurrencyWhile` and simply draws another.
+   *
+   * `watcher` is the secret that makes the code safe to use as an address.
+   * Without it, anyone who guessed a code could hold a socket on this instance
+   * and be handed the approval frame meant for the real TV — the code alone
+   * decides *where* you connect, never *whether* you are the one who asked.
+   */
+  private async handleIssueDeviceCode(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const issue = parseIssueDeviceCodeRequest(body.right);
+    if (issue === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const record: DeviceCodeRecord = {
+      code: issue.code,
+      watcher: issue.watcher,
+      issuedAt: now,
+      expiresAt: now + issue.ttlSeconds * 1000,
+    };
+
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          const existing = decodeDeviceCodeRecord(
+            await this.ctx.storage.get(DEVICE_CODE_KEY)
+          );
+          // A live code is never overwritten: the TV already showing it would
+          // silently stop being the one that gets approved.
+          if (existing !== null && isDeviceCodeLive(existing, now)) return false;
+
+          const consumed = await this.ctx.storage.get<number>(
+            DEVICE_CODE_CONSUMED_KEY
+          );
+          // Nor is one that was just redeemed — reusing it inside its own
+          // lifetime would make a replay indistinguishable from a fresh code.
+          if (typeof consumed === "number" && consumed > now) return false;
+
+          await this.ctx.storage.put(DEVICE_CODE_KEY, record);
+          return true;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Device-code store failed — refusing to issue"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(deviceCodeIssueResult(outcome.value));
+  }
+
+  /**
+   * The TV's waiting socket.
+   *
+   * It exists so approval arrives as a push rather than a poll — the board
+   * appears the instant the owner taps, with no reload — and it doubles as the
+   * liveness signal that lets `webSocketClose` expire a code whose TV walked
+   * away.
+   *
+   * The `watcher` presented here is compared in constant time against the one
+   * banked at issue. Every refusal is an identical 404: a caller who guessed a
+   * live code must not be able to tell it apart from one that was never issued,
+   * or the socket becomes an oracle for exactly the thing the code protects.
+   */
+  private async openDeviceCodeSocket(
+    request: Request,
+    url: URL
+  ): Promise<Response> {
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      return new Response("Expected Upgrade: websocket", { status: 426 });
+    }
+
+    const watcher = url.searchParams.get("watcher") ?? "";
+    const stored = await Effect.runPromise(
+      Effect.either(
+        Effect.tryPromise(() => this.ctx.storage.get(DEVICE_CODE_KEY))
+      )
+    );
+    if (Either.isLeft(stored)) {
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    const record = decodeDeviceCodeRecord(stored.right);
+    const encoder = new TextEncoder();
+    if (
+      record === null ||
+      !isDeviceCodeLive(record, Date.now()) ||
+      !timingSafeEqual(encoder.encode(record.watcher), encoder.encode(watcher))
+    ) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const { 0: client, 1: server } = new WebSocketPair();
+    this.ctx.acceptWebSocket(server, [DEVICE_CODE_TAG]);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * Consume a code and push the handoff to the TV waiting on it.
+   *
+   * Single-use is the same guarantee the pairing nonce already has and it is
+   * enforced the same way: read → decide → write inside
+   * `blockConcurrencyWhile`, so six simultaneous redemptions of one code
+   * produce exactly one `approved` and five refusals.
+   *
+   * The room signs nothing. `handoff` arrives already minted by the worker,
+   * which is where the owner's session was checked and where the board row —
+   * and therefore `deviceEpoch` — was read. Keeping `BETTER_AUTH_SECRET` out of
+   * this object means a code room can never mint a credential of its own.
+   *
+   * The redeemed code leaves a tombstone rather than vanishing, so a replay is
+   * answered `already-approved` instead of `unknown` for as long as anyone could
+   * still be holding it.
+   */
+  private async handleApproveDeviceCode(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const approve = parseApproveDeviceCodeRequest(body.right);
+    if (approve === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          const record = decodeDeviceCodeRecord(
+            await this.ctx.storage.get(DEVICE_CODE_KEY)
+          );
+
+          if (record === null) {
+            const consumed = await this.ctx.storage.get<number>(
+              DEVICE_CODE_CONSUMED_KEY
+            );
+            if (typeof consumed === "number" && consumed > now) {
+              return "already-approved" as const;
+            }
+            return "unknown" as const;
+          }
+
+          if (!isDeviceCodeLive(record, now)) {
+            await this.ctx.storage.delete(DEVICE_CODE_KEY);
+            return "expired" as const;
+          }
+
+          // The code presented has to be the code stored. It always is when the
+          // room was addressed by name, so this is defence in depth against a
+          // future call site that reaches a room some other way.
+          if (record.code !== approve.code) return "unknown" as const;
+
+          await this.ctx.storage.delete(DEVICE_CODE_KEY);
+          await this.ctx.storage.put(
+            DEVICE_CODE_CONSUMED_KEY,
+            record.expiresAt
+          );
+          return "approved" as const;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Device-code ledger failed — refusing the approval"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    // Only after the gate has closed, and only for the call that won it. A frame
+    // sent on any other path would hand a handoff to a TV whose code was not
+    // actually consumed.
+    if (outcome.value === "approved") {
+      const frame = JSON.stringify({
+        type: "approved",
+        boardId: approve.boardId,
+        handoff: approve.handoff,
+      });
+      for (const socket of this.ctx.getWebSockets(DEVICE_CODE_TAG)) {
+        BoardRoom.send(socket, frame);
+      }
+    }
+
+    return BoardRoom.json(deviceCodeApproveResult(outcome.value));
+  }
+
+  // -------------------------------------------------------------------------
+  // Paired devices — per-grant records
+  // -------------------------------------------------------------------------
+
+  /**
+   * Remember a grant that was just minted, with the name the phone typed.
+   *
+   * This is what turns revocation from "bump the epoch and make the whole house
+   * re-scan" into "un-pair Kai's phone". The record is bookkeeping only: it
+   * never authorises anything on its own, and a grant's *validity* remains the
+   * signed token's business.
+   */
+  private async handleRecordGrant(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const input = parseRecordGrantRequest(body.right);
+    if (input === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          await this.pruneGrants(now);
+          const key = grantKey(input.nonce);
+          const existing = decodePairedDevice(await this.ctx.storage.get(key));
+          const record = renewRecord({
+            record: existing,
+            nonce: input.nonce,
+            name: normalizeDeviceName(input.name),
+            now,
+            ttlSeconds: input.ttlSeconds,
+          });
+          await this.ctx.storage.put(key, record);
+          await this.enforceDeviceLimit();
+          return record;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Paired-device record failed"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(
+      grantTouchResult(true, outcome.value.name)
+    );
+  }
+
+  /**
+   * "Is this grant still one of ours?", asked on every authorised request, and
+   * the place the sliding renewal is recorded.
+   *
+   * **An unknown nonce is live.** Every phone paired before per-device records
+   * existed holds a perfectly valid signed grant and has no record here, so
+   * reading absence as revocation would un-pair the entire house on deploy.
+   * Revocation is an explicit tombstone; see `decideTouch`, which owns that
+   * decision and is unit-tested away from this glue.
+   */
+  private async handleTouchGrant(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const input = parseTouchGrantRequest(body.right);
+    if (input === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          const key = grantKey(input.nonce);
+          const record = decodePairedDevice(await this.ctx.storage.get(key));
+          const tombstone = await this.ctx.storage.get<number>(
+            revokedKey(input.nonce)
+          );
+          const decision = decideTouch({
+            record,
+            revoked: typeof tombstone === "number",
+            now,
+          });
+
+          // Only a live grant moves its own expiry forward. Touching a revoked
+          // one would resurrect the record the revoke just removed.
+          if (decision.live) {
+            await this.ctx.storage.put(
+              key,
+              renewRecord({
+                record,
+                nonce: input.nonce,
+                name: decision.name,
+                now,
+                ttlSeconds: input.ttlSeconds,
+              })
+            );
+          }
+
+          return decision;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Paired-device touch failed — refusing the grant"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(
+      grantTouchResult(outcome.value.live, outcome.value.name)
+    );
+  }
+
+  /**
+   * Set (or replace) the name on one device's record — the phone labelling
+   * itself so the owner's list stops reading "Unnamed phone".
+   *
+   * A naming call is a touch that also writes the name, so it follows
+   * `handleTouchGrant`'s shape exactly: read record and tombstone, let the pure
+   * decision (`decideName`) say what happens, write only when live. Two
+   * consequences worth spelling out:
+   *
+   * - **An unknown nonce gets a record.** Every phone paired before records
+   *   existed is live-but-unrecorded (see `decideTouch`); the first time such a
+   *   phone names itself is also the first time it appears in the owner's list.
+   * - **A tombstoned nonce is refused, and nothing is written.** Naming a
+   *   revoked device would resurrect the record the revoke just removed.
+   *
+   * The write runs `enforceDeviceLimit` for the same reason `handleRecordGrant`
+   * does: this path can create a record, so it is one of the paths that keeps
+   * the set bounded.
+   */
+  private async handleNameGrant(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const input = parseNameGrantRequest(body.right);
+    if (input === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    // The caller normalises before sending (the wire schema only bounds the
+    // length), but a whitespace-only string passes that bound — and a naming
+    // call with no name is a malformed request, not an unnamed device.
+    const name = normalizeDeviceName(input.name);
+    if (name === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          const key = grantKey(input.nonce);
+          const record = decodePairedDevice(await this.ctx.storage.get(key));
+          const tombstone = await this.ctx.storage.get<number>(
+            revokedKey(input.nonce)
+          );
+          const decision = decideName({
+            record,
+            revoked: typeof tombstone === "number",
+            nonce: input.nonce,
+            name,
+            now,
+            ttlSeconds: input.ttlSeconds,
+          });
+
+          if (decision.record !== null) {
+            await this.ctx.storage.put(key, decision.record);
+            await this.enforceDeviceLimit();
+          }
+
+          return decision;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Paired-device naming failed"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(
+      grantTouchResult(outcome.value.live, outcome.value.record?.name ?? null)
+    );
+  }
+
+  /**
+   * Un-pair one device. The record goes and a tombstone takes its place, because
+   * the grant cookie on that phone is still a validly signed token — nothing but
+   * the tombstone can refuse it, and it has to outlive the token to do so.
+   */
+  private async handleRevokeGrant(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const input = parseRevokeGrantRequest(body.right);
+    if (input === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          const key = grantKey(input.nonce);
+          const record = decodePairedDevice(await this.ctx.storage.get(key));
+          // The tombstone outlives any grant that could still be presented. A
+          // known record contributes its own expiry; an unknown nonce (a phone
+          // paired before records existed) gets the ceiling, because there is
+          // nothing else to go on and expiring a tombstone early would un-revoke
+          // the device.
+          const until =
+            record === null
+              ? now + MAX_GRANT_TOMBSTONE_MS
+              : Math.max(record.expiresAt, now + 1000);
+          await this.ctx.storage.put(revokedKey(input.nonce), until);
+          await this.ctx.storage.delete(key);
+          return record !== null;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Paired-device revoke failed"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(grantRevokeResult(outcome.value));
+  }
+
+  /** Every device the owner can see and un-pair, newest-seen first. */
+  private async handleListGrants(): Promise<Response> {
+    const now = Date.now();
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(async () => {
+        await this.ctx.blockConcurrencyWhile(() => this.pruneGrants(now));
+        const entries = await this.ctx.storage.list<unknown>({
+          prefix: GRANT_KEY_PREFIX,
+          limit: GRANT_PRUNE_LIMIT,
+        });
+        const devices: PairedDeviceRecord[] = [];
+        for (const [, value] of entries) {
+          const record = decodePairedDevice(value);
+          if (record !== null) devices.push(record);
+        }
+        devices.sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+        return devices;
+      })
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Paired-device list failed"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(pairedDeviceList(outcome.value));
+  }
+
+  /**
+   * Drop expired records and expired tombstones. Runs inside the same
+   * `blockConcurrencyWhile` as the write it precedes, exactly like `pruneNonces`.
+   */
+  private async pruneGrants(now: number): Promise<void> {
+    const records = await this.ctx.storage.list<unknown>({
+      prefix: GRANT_KEY_PREFIX,
+      limit: GRANT_PRUNE_LIMIT,
+    });
+    const { dead } = pruneDevices([...records], now);
+
+    const tombstones = await this.ctx.storage.list<unknown>({
+      prefix: REVOKED_KEY_PREFIX,
+      limit: GRANT_PRUNE_LIMIT,
+    });
+    const deadTombstones: string[] = [];
+    for (const [key, value] of tombstones) {
+      if (typeof value !== "number" || value <= now) deadTombstones.push(key);
+    }
+
+    const all = [...dead, ...deadTombstones];
+    if (all.length > 0) await this.ctx.storage.delete(all);
+  }
+
+  /**
+   * Keep the record set bounded. This is a storage bound, not a policy on how
+   * many phones a family may own: the least-recently-seen device loses its
+   * *record*, not its grant, so it keeps working and simply stops being
+   * individually revocable until it next connects and re-records itself.
+   */
+  private async enforceDeviceLimit(): Promise<void> {
+    const entries = await this.ctx.storage.list<unknown>({
+      prefix: GRANT_KEY_PREFIX,
+      limit: GRANT_PRUNE_LIMIT,
+    });
+    const records: PairedDeviceRecord[] = [];
+    for (const [, value] of entries) {
+      const record = decodePairedDevice(value);
+      if (record !== null) records.push(record);
+    }
+    const victims = overflowVictims(records, MAX_PAIRED_DEVICES);
+    if (victims.length > 0) {
+      await this.ctx.storage.delete(victims.map(grantKey));
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Hibernation handlers
   // -------------------------------------------------------------------------
+
+  /** True for a TV parked on a device code rather than a screen showing a board. */
+  private isDeviceCodeSocket(ws: WebSocket): boolean {
+    return this.ctx.getTags(ws).includes(DEVICE_CODE_TAG);
+  }
 
   async webSocketMessage(
     ws: WebSocket,
     message: string | ArrayBuffer
   ): Promise<void> {
+    // A waiting TV is a listener, not a writer. It has presented no board and no
+    // credential — it knows a code — so anything it sends is dropped rather than
+    // parsed as a board command. Without this, holding a socket on a guessed
+    // code would be a way to write to whatever board the room later serves.
+    if (this.isDeviceCodeSocket(ws)) return;
+
     const command = parseCommand(message);
 
     if (command === null) {
@@ -453,6 +1118,28 @@ export class BoardRoom extends DurableObject<Env> {
     wasClean: boolean
   ): Promise<void> {
     log.debug({ code, reason, wasClean }, "Board socket closed");
+
+    // The TV walking away is the liveness signal that expires an abandoned code.
+    // Only when it was the last watcher, and only while the code is still
+    // pending — a code that was already approved has left a tombstone, and
+    // deleting that would turn a replay back into an `unknown`.
+    if (this.isDeviceCodeSocket(ws)) {
+      const remaining = this.ctx
+        .getWebSockets(DEVICE_CODE_TAG)
+        .filter((socket) => socket !== ws);
+      if (remaining.length === 0) {
+        const dropped = await Effect.runPromiseExit(
+          Effect.tryPromise(() => this.ctx.storage.delete(DEVICE_CODE_KEY))
+        );
+        if (Exit.isFailure(dropped)) {
+          log.warn(
+            { cause: Cause.pretty(dropped.cause) },
+            "Failed to expire an abandoned device code"
+          );
+        }
+      }
+    }
+
     // 1006 is reserved and cannot be echoed back to the peer.
     BoardRoom.close(ws, code === 1006 ? 1000 : code, reason);
   }
@@ -491,6 +1178,12 @@ export class BoardRoom extends DurableObject<Env> {
     const event = stateEvent(state, truncated);
     const payload = serializeEvent(event);
     for (const socket of this.ctx.getWebSockets()) {
+      // Board frames go to screens only. Filtering here rather than fanning out
+      // to a `"board"` tag on purpose: sockets accepted by an earlier deploy
+      // carry no tags at all and survive hibernation, so a tag-based fan-out
+      // would silently stop updating every screen that was already connected
+      // when this shipped.
+      if (this.isDeviceCodeSocket(socket)) continue;
       BoardRoom.send(socket, payload);
     }
 

@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Live weather — stop asking a search index for a number that changes hourly</title>
+<style>
+  :root {
+    --bg: #faf9f5; --surface: #ffffff; --fg: #141413; --fg-secondary: #3d3d3a;
+    --muted: #73726c; --border: #dedcd1; --highlight: #fff7ca; --accent: #d97757;
+    --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-6: 40px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Helvetica, Arial, sans-serif;
+    font-size: 16px; background: var(--bg); color: var(--fg); line-height: 1.6;
+    max-width: 72ch; margin: 0 auto; padding: var(--space-6) var(--space-4);
+  }
+  h1, h2, h3 {
+    font-family: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-weight: 600; line-height: 1.25; color: var(--fg);
+  }
+  h1 { font-size: 1.75em; }
+  h2 { font-size: 1.3em; font-weight: 500; margin-top: var(--space-6);
+    border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+  h3 { font-size: 1.05em; font-weight: 500; }
+  p, li { color: var(--fg-secondary); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88em; background: #f1efe6; border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 4px; }
+  pre code { border: 0; background: none; padding: 0; }
+  mark, .highlight { background: var(--highlight); color: var(--fg); padding: 0 2px; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 0.8em; font-weight: 600; border: 1px solid var(--border); }
+  .chip-status-draft { background: var(--surface); color: var(--muted); }
+  .chip-status-in-review { background: var(--highlight); color: var(--fg);
+    border-color: var(--highlight); }
+  .chip-status-reviewed { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .chip-high { color: var(--accent); border-color: var(--accent); }
+  .chip-med { color: var(--fg-secondary); }
+  .chip-low { color: var(--muted); }
+  .decision-card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: var(--space-4); margin: var(--space-4) 0; }
+  table { width: 100%; border-collapse: collapse; margin: var(--space-3) 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid
+    var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .tag-recommended { color: var(--accent); font-weight: 600; }
+  .btn-queue, .btn-approve, .btn-request-changes {
+    border: none; border-radius: 10px; padding: 8px 16px; font-weight: 600;
+    cursor: pointer; font-size: 0.95em;
+  }
+  .btn-queue, .btn-approve { background: var(--fg); color: #fff; }
+  .btn-request-changes { background: transparent; color: var(--fg);
+    border: 1px solid var(--border); }
+  .queue-ack { margin-left: var(--space-3); font-size: 0.9em; color: var(--muted); }
+  .checklist { list-style: none; padding: 0; }
+  .checklist li { margin: var(--space-2) 0; }
+  pre.mermaid { text-align: center; }
+  pre.mermaid svg { display: block; margin: 0 auto; }
+
+  .item-x, .item-restore, .list-add-btn { cursor: pointer; border: 1px solid var(--border);
+    background: var(--surface); border-radius: 6px; font-size: 0.85em; padding: 1px 8px;
+    color: var(--fg-secondary); }
+  /* Told apart by label text ("x" vs "restore"), not colour — this palette keeps
+     colour to one accent reserved for recommended/emphasis. */
+  /* No display:none on .item-restore — the hidden attribute handles it and JS
+     toggles the hidden PROPERTY. */
+  [data-item-text] { cursor: text; }
+  .item-removed { opacity: 0.5; }
+  .item-removed [data-item-text] { text-decoration: line-through; }
+  .item-edited [data-item-text] { border-bottom: 2px dotted var(--accent); }
+  .item-badge { font-size: 0.75em; color: var(--muted); margin-left: 6px; font-style: italic; }
+  .item-badge-proposed { color: var(--accent); }
+  .item-proposed { border-left: 2px dashed var(--accent); padding-left: 6px; }
+  .list-add-row { display: flex; gap: 8px; margin-top: var(--space-2); }
+  .list-add-input { flex: 1; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface); color: var(--fg); }
+  header .meta { color: var(--muted); font-size: 0.9em; }
+  .measured { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: var(--space-3) var(--space-4); margin: var(--space-3) 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Live weather</h1>
+  <p class="meta">
+    <span>2026-07-28</span> ·
+    <span>feature: live-weather (new)</span> ·
+    <span class="chip chip-status-reviewed">reviewed</span> ·
+    <span>round 2 — all 7 decisions answered</span>
+  </p>
+</header>
+
+<section id="tldr">
+  <h2>TL;DR</h2>
+  <p>The board's weather numbers are wrong by 6–10 °C because we ask a
+  <strong>search index</strong> for a value that changes hourly, and an index returns
+  whatever the crawler last saw. There is no cache to disable and no freshness
+  parameter to set — <code>web_search</code> has no such knob, and
+  <code>web_fetch</code> can only fetch URLs already in the conversation. The fix is
+  to stop searching for weather and <mark>call a weather API</mark>: Open-Meteo, free,
+  no key. Keep <code>web_search</code> for scores and news, where it already works.</p>
+  <p><strong>Round 1</strong> added two things: a <mark>day-long cache</mark> so we
+  fetch once per city per day rather than on every board — holding the day's
+  <em>hourly series</em> and reading the current hour, not one value for 24 hours,
+  which would be worse than what we are replacing — and <mark>inferring the location
+  from the phone</mark> so "what's the weather" needs no place name. Both add a
+  decision: where the cache lives (this project has no KV binding yet) and how much
+  location precision leaves the device.</p>
+</section>
+
+<section id="context">
+  <h2>Context</h2>
+  <p>Web search landed in <strong>PR #4</strong>, squash-merged to <code>main</code> as
+  <code>de1717d</code>, and its own feature doc already states the problem under
+  <em>"Known limitation: search gives sourced figures, not current ones"</em>. Against
+  Open-Meteo as ground truth, <strong>every configuration tried</strong> was materially
+  stale on temperature:</p>
+
+  <table>
+    <thead><tr><th>Reading</th><th>Board said</th><th>Real</th><th>Error</th></tr></thead>
+    <tbody>
+      <tr><td>filtered search (verification run C)</td><td>22 °C</td><td>16.0 °C</td><td>+6.0</td></tr>
+      <tr><td>filtered search (verification run E)</td><td>19–22 °C</td><td>23.3 °C</td><td>−1.3 to −4.3</td></tr>
+      <tr><td>filtered search (re-measured)</td><td>14 °C</td><td>24.4 °C</td><td><strong>−10.4</strong></td></tr>
+      <tr><td>direct search</td><td>17 °C</td><td>24.4 °C</td><td>−7.4</td></tr>
+    </tbody>
+  </table>
+
+  <p>Run C's verification doc also records one segment,
+  <code>FEELS LIKE EVENING 5 °C</code>, that <em>"does not correspond to anything"</em> —
+  invented, because the model had a 6×24 grid to fill and no real fields to fill it
+  with. That is a second bug with the same root cause.</p>
+
+  <p><strong>The accuracy pattern is structural, not random</strong>, which is what
+  points at the fix:</p>
+
+  <table>
+    <thead><tr><th>Asked for</th><th>Result</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Sunset</td><td>accurate to the minute</td><td>Computed from date + latitude. Static all day — a stale snippet cannot be wrong about it.</td></tr>
+      <tr><td>Scores, news</td><td>specific and checkable</td><td>Facts about the past. They stop changing once published.</td></tr>
+      <tr><td><strong>Temperature</strong></td><td><strong>6–10 °C off, every time</strong></td><td>The one value that changes hourly. A crawled snippet is old <em>by construction</em> — sometimes literally tagged "AS OF 7:24 AM".</td></tr>
+    </tbody>
+  </table>
+
+  <p>Three things were checked against the API reference rather than assumed, and
+  they close off the cheaper-looking fixes:</p>
+  <ul>
+    <li><code>web_search</code>'s only parameters are <code>max_uses</code>,
+    <code>allowed_domains</code>/<code>blocked_domains</code> and
+    <code>user_location</code>. <strong>There is no freshness or cache
+    parameter</strong> to turn off.</li>
+    <li><code>web_fetch</code> <strong>only fetches URLs already present in the
+    conversation</strong>. It is not a crawler, so it cannot independently go get a
+    live page — which is why adding it alongside search (per the feature doc) changed
+    nothing.</li>
+    <li>Prompt caching (<code>cache_control</code>) caches <em>our prompt prefix</em>.
+    It has no bearing on search results at all.</li>
+  </ul>
+
+  <div class="measured">
+    <p style="margin:0"><strong>Measured while writing this plan</strong> — Open-Meteo,
+    no API key, no signup:</p>
+    <pre style="margin:var(--space-2) 0 0"><code>Oslo, 2026-07-29T01:45 local
+temperature_2m: 18.4 °C   apparent_temperature: 16.0 °C
+relative_humidity_2m: 57%   wind_speed_10m: 15.8 km/h   weather_code: 1</code></pre>
+  </div>
+
+  <p>State: <code>feat-009 llm-board-agent</code> is <strong>shipped</strong>;
+  <code>feat-010 tv-pairing</code> is the one <strong>in-progress</strong> feature,
+  with 010/011/012 code-complete and verification outstanding on the
+  <code>worktree-tv-living-room</code> branch. Decision 5 covers sequencing.</p>
+</section>
+
+<section id="big-picture">
+  <h2>Big picture</h2>
+
+  <p>The existing router already picks a <em>request shape</em> from one boolean. This
+  adds a third shape rather than a new mechanism.</p>
+
+  <pre class="mermaid">
+flowchart TD
+  P["prompt<br/>'weather in oslo'"]
+  R{"Haiku router<br/>BOARD_ROUTER_MODEL"}
+  W["WEATHER route"]
+  G["Open-Meteo geocoding<br/>'Oslo' → lat/lon"]
+  M["Open-Meteo forecast<br/>current conditions"]
+  S["SEARCHING route<br/>web_search, scores + news"]
+  N["PLAIN route<br/>no tools"]
+  SON["Sonnet<br/>formats the given fields only"]
+  B[("6×24 board")]
+
+  P --> R
+  R -->|weather + place| W
+  R -->|other live data| S
+  R -->|self-contained| N
+  W --> G --> M --> SON
+  S --> SON
+  N --> SON
+  SON --> B
+  </pre>
+
+  <p>The important property: on the weather route the model is handed
+  <strong>typed values it did not choose</strong> and told that fields absent from the
+  payload may not appear on the board. That is what kills the invented
+  <code>FEELS LIKE EVENING 5 °C</code> class of bug — not a sterner prompt.</p>
+</section>
+
+<section id="decisions">
+  <h2>Decisions needed</h2>
+
+  <div class="decision-card" id="decision-shape" data-brain-action>
+    <p><strong>1. How does real weather data reach the model?</strong>
+      <span class="chip chip-status-reviewed">answered: third route, pre-fetched</span></p>
+    <p>The board agent currently has no client-side tool-execution loop —
+    <code>callModel</code> handles server tools, pauses and retries, but never executes
+    a tool itself. That makes this a real architectural choice, not a detail.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-shape" id="opt-route"
+            value="Third route with pre-fetch" checked data-brain-action></td>
+          <td><label for="opt-route">Third route, data pre-fetched
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Fits the existing <code>Route</code> shape exactly — <code>routeFor</code>
+            already returns one. No tool loop to build. The model cannot choose a
+            location or skip the call, and we can hard-constrain it to the fields we
+            actually fetched. One deterministic HTTP hop.</td>
+          <td>The router must return more than a boolean (intent + place). Weather
+            becomes a first-class case in the agent rather than one tool among many.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-shape" id="opt-tool"
+            value="Client-side get_weather tool" data-brain-action></td>
+          <td><label for="opt-tool">A <code>get_weather</code> client tool</label></td>
+          <td>General — the same loop later serves any tool. The model decides when
+            it is needed, so the router stays a boolean.</td>
+          <td>Needs a real tool-execution loop in <code>callModel</code>, which is the
+            largest piece of new machinery here. The model picks the location string,
+            so it can still get that wrong, and it may decline to call the tool at all
+            (exactly what happened with <code>web_fetch</code>).</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-shape" id="opt-nothing"
+            value="Keep web_search, document the limitation" data-brain-action></td>
+          <td><label for="opt-nothing">Keep search, document it</label></td>
+          <td>Zero work. Sunset, scores and news are already good.</td>
+          <td>Temperature stays 6–10 °C wrong, and "don't invent numbers" remains a
+            claim the measurements refute. <span class="chip chip-high">not recommended</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-shape',
+        'How does real weather data reach the model?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-shape"></span>
+  </div>
+
+  <div class="decision-card" id="decision-geocode" data-brain-action>
+    <p><strong>2. How does "Oslo" become a latitude and longitude?</strong>
+      <span class="chip chip-status-reviewed">answered: Open-Meteo geocoding</span></p>
+    <p>Open-Meteo's forecast endpoint takes coordinates, not place names.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-geocode" id="opt-geo-api"
+            value="Open-Meteo geocoding endpoint" checked data-brain-action></td>
+          <td><label for="opt-geo-api">Open-Meteo geocoding API
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Authoritative and free, same provider, no key. Returns a canonical
+            name we can print on the board, so the board says which Springfield it
+            meant. Resolves the ambiguity rather than guessing at it.</td>
+          <td>A second HTTP hop before the forecast (two round trips per weather
+            board). Needs its own not-found path.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-geocode" id="opt-geo-model"
+            value="Haiku returns lat/lon in the routing decision" data-brain-action></td>
+          <td><label for="opt-geo-model">Let the router emit coordinates</label></td>
+          <td>Zero extra hops — the router call already happens, so coordinates ride
+            along in the same structured output.</td>
+          <td><strong>Reintroduces the exact failure we are fixing.</strong> A model
+            inventing coordinates is a model inventing numbers; a plausible-but-wrong
+            lat/lon returns real, precise, confidently wrong weather for somewhere
+            else.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-geocode" id="opt-geo-hybrid"
+            value="Router emits coordinates, geocoding verifies" data-brain-action></td>
+          <td><label for="opt-geo-hybrid">Both — model guesses, API verifies</label></td>
+          <td>Fast path for the common cities, correct path for everything else.</td>
+          <td>Two code paths and a reconciliation rule for when they disagree, to
+            save one HTTP call on a request that already costs a model round trip.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-geocode',
+        'How does a place name become coordinates?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-geocode"></span>
+  </div>
+
+  <div class="decision-card" id="decision-failure" data-brain-action>
+    <p><strong>3. What goes on the board when the weather lookup fails?</strong>
+      <span class="chip chip-status-reviewed">answered: honest "unavailable" board</span></p>
+    <p>Open-Meteo is down, or the place cannot be geocoded. Note this cuts against
+    the router's existing instinct — <code>routeFor</code> deliberately
+    <em>fails open to searching</em>, on the argument that routing a weather board to
+    the plain path costs the whole feature.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-failure" id="opt-fail-honest"
+            value="Honest board: say the data is unavailable" checked data-brain-action></td>
+          <td><label for="opt-fail-honest">Say so on the board
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Never displays a wrong number. The whole feature exists so the board
+            stops asserting figures it cannot stand behind, and a silent fall back to
+            the stale path is precisely how you end up back where you started.</td>
+          <td>A blank-ish board is a worse living-room experience than a slightly
+            wrong one, and the family cannot tell an outage from a bug.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-failure" id="opt-fail-search"
+            value="Fall back to web_search" data-brain-action></td>
+          <td><label for="opt-fail-search">Fall back to search</label></td>
+          <td>Always produces a board, and matches the router's existing fail-open
+            posture. Degrades to today's behaviour rather than to nothing.</td>
+          <td>Degrades to today's behaviour — which is the bug. Silently, with no
+            way for anyone looking at the board to know which path produced it.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-failure" id="opt-fail-error"
+            value="Fail the generate and surface it on the phone" data-brain-action></td>
+          <td><label for="opt-fail-error">Refuse, and tell the phone</label></td>
+          <td>The person who pressed the button learns immediately, and the board
+            keeps its previous message rather than losing it to an error state.</td>
+          <td>Loses the request entirely. Also means an upstream outage looks to the
+            user like the product is broken.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-failure',
+        'What goes on the board when the weather lookup fails?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-failure"></span>
+  </div>
+
+  <div class="decision-card" id="decision-scope" data-brain-action>
+    <p><strong>4. How much of Open-Meteo do we take now?</strong>
+      <span class="chip chip-status-reviewed">answered: current conditions only</span></p>
+    <p>One forecast call can return current conditions, today's min/max, and sun
+    times together — the marginal cost of more fields is zero HTTP and a few tokens.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-scope" id="opt-scope-current"
+            value="Current conditions only" checked data-brain-action></td>
+          <td><label for="opt-scope-current">Current conditions only
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Fixes exactly the measured defect and nothing else. Temperature,
+            apparent temperature, humidity, wind, condition code — already more than a
+            6×24 board can show well.</td>
+          <td>Sunset stays search-derived, even though search happens to get it
+            right and the API would give it for free.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-scope" id="opt-scope-daily"
+            value="Current + today's min/max + sun times" data-brain-action></td>
+          <td><label for="opt-scope-daily">Add daily min/max and sun times</label></td>
+          <td>Same single call. Retires the last reason a weather board would ever
+            search, and "high 24 / low 15, sunset 21:58" is a genuinely nicer board.</td>
+          <td>More fields than fit, so the model chooses what to show — reopening a
+            little of the judgment we are trying to remove.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-scope" id="opt-scope-framework"
+            value="A general live-data source framework" data-brain-action></td>
+          <td><label for="opt-scope-framework">Build a data-source framework</label></td>
+          <td>Weather becomes the first of several typed sources (transit, air
+            quality, tides) behind one seam.</td>
+          <td>Designing a framework from one example. Weather is the only case with
+            a measured defect. <span class="chip chip-high">premature</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-scope',
+        'How much of Open-Meteo do we take now?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-scope"></span>
+  </div>
+
+  <div class="decision-card" id="decision-sequencing" data-brain-action>
+    <p><strong>5. When does this get built?</strong>
+      <span class="chip chip-status-reviewed">answered: after the TV features ship</span></p>
+    <p><code>feat-010 tv-pairing</code> is in-progress and 010/011/012 are all
+    code-complete with verification outstanding. The one-in-progress policy is the
+    constraint.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-sequencing" id="opt-seq-after"
+            value="After the TV features are verified and shipped" checked data-brain-action></td>
+          <td><label for="opt-seq-after">After the TV work ships
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Obeys the scope policy without a special case. Three features already
+            owe verification — adding a fourth in flight is how none of them get
+            finished.</td>
+          <td>The board keeps showing wrong temperatures until then.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-sequencing" id="opt-seq-now"
+            value="Now — it is small and self-contained" data-brain-action></td>
+          <td><label for="opt-seq-now">Now, in parallel</label></td>
+          <td>Small and touches a different area of the code entirely
+            (<code>board-agent.ts</code>, not pairing), so it would not collide.</td>
+          <td>Four features in flight, and the TV work is the one with a hardware
+            deadline nobody else can unblock.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-sequencing" id="opt-seq-release"
+            value="Before v0.2.0, so the release notes can be honest" data-brain-action></td>
+          <td><label for="opt-seq-release">Before the release</label></td>
+          <td>Lets v0.2.0 headline live weather truthfully instead of shipping notes
+            hedged around a 10 °C error.</td>
+          <td>Blocks a release that is otherwise ready, for a fix that can ship as
+            v0.2.1 a few days later.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-sequencing',
+        'When does this get built?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-sequencing"></span>
+  </div>
+
+  <h3>Round 1 additions</h3>
+
+  <p>Two requirements came out of the review, both of which change the design rather
+  than just the wording. The first needs a correction before it can be built.</p>
+
+  <div class="measured" style="border-color: var(--accent)">
+    <p style="margin-top:0"><strong>⚠️ "Cache the entire 24 hours" — as literally
+    stated, this would make accuracy worse than what we are replacing.</strong></p>
+    <p>Caching <em>the current reading</em> for 24 hours means the board can show a
+    temperature that is up to a day old. The search snippets we are removing were
+    typically a few hours stale — so a 24-hour cache of a single value would be a
+    regression, not a fix, and it would recreate the exact defect this plan exists
+    to close.</p>
+    <p style="margin-bottom:0">The version that <em>does</em> work, and is what the
+    plan now assumes: fetch the day's <strong>hourly series</strong> in one call
+    (Open-Meteo returns 24 hourly values alongside the current block), cache that
+    whole series, and read <strong>the bucket matching the current hour</strong> on
+    each generate. One fetch per city per day, and the number on the board is still
+    hour-accurate. Cost: readings become hourly rather than 15-minute resolution —
+    roughly 1 °C of drift mid-hour against the 6–10 °C we are fixing. Geocoding
+    results cache separately and indefinitely, since a city's coordinates do not
+    change.</p>
+  </div>
+
+  <div class="decision-card" id="decision-cache" data-brain-action>
+    <p><strong>6. Where does the cache live?</strong>
+      <span class="chip chip-status-reviewed">answered: add a KV binding</span></p>
+    <p>Worth knowing before choosing: <strong>this project has no KV binding today.</strong>
+    <code>rules/cloudflare.md</code> lists <code>DATABASE</code> (D1), <code>AI</code>,
+    <code>BOARD</code> (Durable Object), <code>EXAMPLE_WORKFLOW</code> and
+    <code>ASSETS</code>. Adding KV means a new binding in <code>wrangler.jsonc</code>
+    for both the default and <code>preview</code> environments, per
+    <code>recipes/add-cf-binding</code>.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-cache" id="opt-cache-kv"
+            value="New KV binding" checked data-brain-action></td>
+          <td><label for="opt-cache-kv">Add a KV binding
+            <span class="tag-recommended">(recommended — it is what you asked for)</span></label></td>
+          <td>Exactly the right shape for this: global, read-optimised, native TTL so
+            the 24-hour expiry is the platform's job rather than ours. Eventual
+            consistency is irrelevant for weather.</td>
+          <td>A new binding in two environments, and a new failure mode — the
+            standing rule in <code>rules/services.md</code> is that a service whose
+            binding may be absent must not go in the global runtime, or one missing
+            binding 500s every request in the app.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-cache" id="opt-cache-do"
+            value="A per-city Durable Object" data-brain-action></td>
+          <td><label for="opt-cache-do">A per-city Durable Object</label></td>
+          <td>Zero new bindings — reuses <code>BOARD</code>. There is precedent in
+            this codebase: <code>feat-010</code> addresses a DO per device code with
+            <code>idFromName("code:" + CODE)</code>, and
+            <code>idFromName("weather:" + lat + "," + lon)</code> is the same trick.
+            Storage-backed, so it survives eviction.</td>
+          <td>Serialises every request for one city through one object, and needs its
+            own expiry logic since DO storage has no TTL. Overloads a namespace named
+            <code>BOARD</code> with something that is not a board.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-cache" id="opt-cache-d1"
+            value="A D1 table" data-brain-action></td>
+          <td><label for="opt-cache-d1">A D1 table</label></td>
+          <td>No new binding, and the repository pattern already exists.</td>
+          <td>A relational store for an ephemeral blob, plus a migration and a
+            sweeper for expiry. Wrong tool.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-cache',
+        'Where does the weather cache live?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-cache"></span>
+  </div>
+
+  <div class="decision-card" id="decision-geoloc" data-brain-action>
+    <p><strong>7. Inferring the location from the phone — how precise, and what
+      happens when it is refused?</strong>
+      <span class="chip chip-status-reviewed">answered: round to ~10 km, ask on refusal</span></p>
+    <p><code>navigator.geolocation</code> needs a secure context and an explicit
+    permission prompt — the same constraint the voice button already lives with, and
+    the reason driving voice on a real phone has been an owner-only task. Two things
+    have to be decided together: how much precision leaves the phone, and what the
+    board does when permission is denied.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-geoloc" id="opt-geoloc-coarse"
+            value="Round coordinates to ~10km; fall back to asking for a place"
+            checked data-brain-action></td>
+          <td><label for="opt-geoloc-coarse">Coarse coordinates, ask on refusal
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Weather is identical across ~10 km, so rounding costs nothing in
+            accuracy and means the household's exact address never reaches our logs
+            or a third party. Rounding also makes the cache key hit far more often.
+            On refusal the flow degrades to today's "say a place" behaviour.</td>
+          <td>Two paths to build and verify. Coarse coordinates still identify a
+            neighbourhood.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-geoloc" id="opt-geoloc-exact"
+            value="Send exact coordinates" data-brain-action></td>
+          <td><label for="opt-geoloc-exact">Exact coordinates</label></td>
+          <td>Simplest — pass through what the browser gives.</td>
+          <td>Sends a precise home location to our Worker and on to Open-Meteo, for
+            zero accuracy gain, and fragments the cache so every phone is a distinct
+            key.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-geoloc" id="opt-geoloc-board"
+            value="Ask once at pairing and store it on the board" data-brain-action></td>
+          <td><label for="opt-geoloc-board">Ask once, store on the board</label></td>
+          <td>One prompt ever, not one per request. A wall-mounted board has a fixed
+            location, so this matches reality better than asking the phone each time —
+            and it makes "what's the weather" work from the TV too.</td>
+          <td>A schema change and a settings surface; closer to a feature than a fix.
+            It is also the third open question, so answering this way merges the two.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-geoloc',
+        'Phone geolocation — precision and refusal behaviour?')">Queue answer</button>
+    <span class="queue-ack" id="ack-decision-geoloc"></span>
+  </div>
+
+  <h3>Consequences of choosing KV</h3>
+
+  <div class="measured" style="border-color: var(--accent)">
+    <p style="margin-top:0"><strong>⚠️ This repo has already been burned by exactly
+    this shape, and the scar is on record.</strong></p>
+    <p><code>feat-003 file-upload</code> is <em>shipped but non-functional</em>
+    because <code>bun setup</code> never provisioned an R2 bucket, so
+    <code>Env</code> has no <code>BUCKET</code> and <code>BucketLive</code> fails at
+    runtime. Worse, the way it failed: <strong>a merged Effect layer constructs every
+    member</strong>, so one absent binding surfaced as
+    <code>Failed to construct AuthApi</code> and <strong>500'd every request in the
+    app</strong> — including routes that never touch R2. That produced the standing
+    rule in <code>rules/services.md</code>: <em>a service whose binding may
+    legitimately be absent does not belong in the global runtime.</em></p>
+    <p style="margin-bottom:0">So two things are non-negotiable for the weather
+    service. <strong>It must not go in <code>makeAppRuntime</code>'s merged layer</strong>
+    — it gets provided ad-hoc in the generate path, the way
+    <code>upload-file.ts</code> provides <code>BucketLive</code> and
+    <code>transcribe.ts</code> provides <code>TranscriptionLive</code>. And note that
+    <code>recipes/add-cf-binding</code> step 5 says "provide layer → app/runtime.ts",
+    which is the pre-R2 advice; the recipe should gain a pointer to this rule so the
+    next person does not follow it into the same hole.</p>
+  </div>
+
+  <p><strong>Owner-only prerequisite — ✅ DONE 2026-07-28.</strong> Both namespaces
+  exist. Confirmed present via <code>wrangler kv namespace list</code>:</p>
+
+  <table>
+    <thead><tr><th>Environment</th><th>Namespace title</th><th>id</th></tr></thead>
+    <tbody>
+      <tr><td>default (production)</td><td><code>flappyboard-kv</code></td>
+        <td><code>05ce4e2d8fcc4310a1c2fe3ca51dd503</code></td></tr>
+      <tr><td><code>env.preview</code></td><td><code>flappyboard-preview-kv</code></td>
+        <td><code>00267d05b7684363b2c2ab905d5d2ce6</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>Note the names differ from this plan's earlier suggestion
+  (<code>flappyboard-cache</code> / <code>-cache-preview</code>) and the owner's
+  naming is the better fit: the account already uses a <code>&lt;project&gt;-kv</code>
+  convention across other projects (<code>tally-kv</code>,
+  <code>studio-os-kv</code>, <code>product-os-kv</code>), whereas the earlier
+  suggestion was extrapolated only from this repo's D1 and workflow names. The
+  <em>binding</em> is still <code>CACHE</code> and still identical across
+  environments — only the underlying namespace differs, which is the property that
+  keeps environment branching out of the code.</p>
+
+  <p><strong>Declare it twice.</strong> <code>wrangler.jsonc</code> keeps a separate
+  <code>env.preview</code> block, and the file's own comment notes the binding list is
+  <em>identical</em> there. A namespace added only to the default environment gives a
+  preview worker with no <code>CACHE</code> — every PR preview then hits the
+  binding-absent path.</p>
+</section>
+
+<section id="plan-of-record">
+  <h2>Plan of record</h2>
+  <p class="meta">Double-click a phase to rewrite it; <code>x</code> to drop it.</p>
+  <ol data-brain-section="plan-of-record">
+    <template>
+      <li data-brain-item>
+        <span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0"><strong>Phase 1 — the pure core.</strong>
+      <span data-item-text data-brain-action>New app/lib/board/weather.ts: Effect Schema for the Open-Meteo forecast and geocoding responses, a WMO weather-code to words map, unit derivation (C and F from one value rather than trusting two), and a renderer that turns a decoded reading into the compact lines a 6x24 board can hold. Pure and total — no fetch, no Effect service, injectable clock. Acceptance: unit tests cover every WMO code branch, a malformed payload decodes to a typed failure rather than throwing, and the renderer never emits a line over 24 characters.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="1"><strong>Phase 2 — the service.</strong>
+      <span data-item-text data-brain-action>New app/services/weather.ts as an Effect Tag + Layer per rules/services.md, with a WeatherUnavailableError tagged error registered in the AppError union, APP_ERROR_TAGS and tagToTRPC (the runtime allowlist that is not type-checked — see recipes/add-tagged-error). Bounded timeout, bounded response size, no retries beyond one. Acceptance: unit tests with a stubbed fetch prove a 500, a timeout, an unparseable body and an empty geocoding result each produce the typed error and never a partial reading.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="2"><strong>Phase 3 — the router learns intent.</strong>
+      <span data-item-text data-brain-action>BOARD_ROUTER_SCHEMA grows from one boolean to an intent plus an optional place string, and routeFor returns the new WEATHER route when the intent is weather and a place is present. The existing fail-open-to-searching behaviour is preserved for every other outcome, including an unparseable router response. Acceptance: table-driven tests over router outputs assert the route chosen for weather-with-place, weather-without-place, other-live-data, self-contained, and each malformed shape.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="3"><strong>Phase 4 — wire the weather route.</strong>
+      <span data-item-text data-brain-action>On the WEATHER route: geocode, fetch, decode, then call Sonnet with a weather-specific system prompt that supplies the real fields and forbids any figure not present in them, with tools omitted entirely the way PLAIN_ROUTE already omits them. Failure follows decision 3. Acceptance: with a stubbed weather service the generated grid contains only supplied values, and an injected extra-field prompt cannot produce a number that was not in the payload.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="8"><strong>Phase 0 — the binding (owner-only, blocks phase 4b).</strong>
+      <span data-item-text data-brain-action>DONE 2026-07-28 — namespaces exist: flappyboard-kv (05ce4e2d8fcc4310a1c2fe3ca51dd503) and flappyboard-preview-kv (00267d05b7684363b2c2ab905d5d2ce6), confirmed via 'wrangler kv namespace list'. Binding is CACHE, SCREAMING_SNAKE and IDENTICAL across environments exactly like DATABASE and BOARD — only the underlying namespace differs, so code never branches on environment. Remaining in this phase: declare kv_namespaces in BOTH blocks with those two ids and run bun run cf-typegen. Keys are colon-delimited behind an exported prefix constant with a pure builder, per NONCE_KEY_PREFIX and QUOTA_KEY_PREFIX: weather:day:LAT,LON:YYYY-MM-DD for the hourly series with a 24h TTL, and weather:geo:QUERY for geocoding with no expiry. The date lives IN the day key for the same reason quota.ts puts windowStart in its key — a new day is a new key, so nothing needs resetting and yesterday's series can never be served as today's even if the TTL misbehaves. TRAP: kv_namespaces also accepts a preview_id used by 'wrangler dev', which is NOT this repo's env.preview environment despite the colliding name — the preview env needs its own entry, not a preview_id. Run 'wrangler kv namespace create' for both — real Cloudflare credentials, real resource, cannot run from CI or from an agent — then declare kv_namespaces in BOTH blocks and regenerate types with bun run cf-typegen. Acceptance: the binding appears in worker-configuration.d.ts, and a preview deploy sees it too. Until this is done the weather service has no store, which is exactly the state feat-003 file-upload has been stuck in since setup skipped its R2 bucket.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="6"><strong>Phase 4b — the day cache (round 1).</strong>
+      <span data-item-text data-brain-action>Fetch the day's hourly series in the same call as the current block, cache the whole series in KV for 24h using KV's native TTL, and read the bucket matching the current hour on each generate. NOT a 24h cache of one reading — that would put a day-old temperature on the board and be worse than the search snippets we are removing. Geocoding results cache separately with no expiry, since a city's coordinates do not change. The weather service is provided ad-hoc in the generate path, NOT added to the merged global runtime layer — a merged layer constructs every member, and that is how an absent R2 binding once 500'd every request in the app. Acceptance: a second generate for the same city within the window makes zero outbound weather calls (asserted by a stubbed fetch counter), the hour bucket advances correctly across an hour boundary with an injected clock, and a cache miss, a corrupt entry and an expired entry each fall through to a live fetch rather than serving a stale or partial reading.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="7"><strong>Phase 4c — location from the phone (round 1).</strong>
+      <span data-item-text data-brain-action>The controller requests geolocation, rounds it per decision 7, and sends it with the generate call so "what's the weather" needs no place name. Needs HTTPS and a permission prompt, the same secure-context constraint the voice button already lives under. Permission denied or unavailable falls back to the existing behaviour: no default location is invented. Acceptance: coordinates are rounded before they leave the phone (asserted on the request payload, not just in the UI), a denied permission still produces a working board via the place-name path, and no precise coordinate appears in any log line.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="4"><strong>Phase 5 — prove it against ground truth.</strong>
+      <span data-item-text data-brain-action>A browser walk driving the real phone controller against the real API, with the board's numbers checked against an independent Open-Meteo call made at the same moment — the same method the run-C and run-E verification docs used to catch the staleness in the first place. Acceptance: a verification doc per brain playbook verify, with the measured delta stated as a number. The bar this feature exists to clear: temperature within rounding of ground truth, not within 6 degrees.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="5"><strong>Phase 6 — correct the record.</strong>
+      <span data-item-text data-brain-action>Update the llm-board-agent feature doc's "search gives sourced figures, not current ones" section to say what now happens instead, and note in rules/services.md that Open-Meteo is an unauthenticated external dependency in the request path. Acceptance: harness-check 7/7 and no stale claim left asserting the board searches for weather.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+  </ol>
+  <div class="list-add-row" data-brain-section-add="plan-of-record">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a phase..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="files-changed">
+  <h2>Files that change</h2>
+  <table>
+    <thead><tr><th>Path</th><th>Change</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>app/lib/board/weather.ts</code></td><td>new</td>
+        <td>Pure core — schemas, WMO code map, unit derivation, board renderer.</td></tr>
+      <tr><td><code>app/services/weather.ts</code></td><td>new</td>
+        <td>Effect Tag + Layer over Open-Meteo; geocoding and forecast.</td></tr>
+      <tr><td><code>app/services/board-agent.ts</code></td><td>edit</td>
+        <td>Router schema and prompt, a third <code>Route</code>, the weather system
+        prompt, and the pre-fetch step.</td></tr>
+      <tr><td><code>app/models/errors/board.ts</code></td><td>edit</td>
+        <td><code>WeatherUnavailableError</code>.</td></tr>
+      <tr><td><code>app/lib/effect-trpc.ts</code></td><td>edit</td>
+        <td>Two edits, not one: the <code>APP_ERROR_TAGS</code> entry
+        <em>and</em> the <code>case</code>. The set is a runtime allowlist that
+        nothing type-checks.</td></tr>
+      <tr><td><code>app/runtime.ts</code></td><td>edit</td>
+        <td>Provide <code>WeatherLive</code>. Note the standing rule from
+        <code>rules/services.md</code>: a merged layer builds every member, so a
+        service whose dependency may be absent does not belong in the global
+        runtime — this one has no binding, so it is safe, but say so deliberately.</td></tr>
+      <tr><td><code>app/trpc/routes/board.ts</code></td><td>edit</td>
+        <td>Only if decision 3 chooses to surface the failure on the phone.</td></tr>
+      <tr><td><code>app/locales/{en,zh}/board.json</code></td><td>edit</td>
+        <td>Copy for the failure surface, both locales — a parity test enforces it.</td></tr>
+      <tr><td><code>app/lib/board/weather-cache.ts</code></td><td>new</td>
+        <td>Pure cache-key and hour-bucket maths, injected clock (round 1).</td></tr>
+      <tr><td><code>wrangler.jsonc</code></td><td>edit</td>
+        <td><code>kv_namespaces</code> in <strong>both</strong> the default and
+        <code>env.preview</code> blocks. Needs a namespace id from an owner-only
+        <code>wrangler kv namespace create</code>.</td></tr>
+      <tr><td><code>app/runtime.ts</code></td><td><strong>deliberately unchanged</strong></td>
+        <td>The weather service stays <em>out</em> of the merged global layer — see the
+        R2 precedent. Provided ad-hoc in the generate path instead.</td></tr>
+      <tr><td><code>.brain/recipes/add-cf-binding.md</code></td><td>edit</td>
+        <td>Step 5 still says "provide layer → app/runtime.ts", which predates the R2
+        outage. Add the pointer to <code>rules/services.md</code>.</td></tr>
+      <tr><td><code>app/components/board/message-editor.tsx</code> or the controller root</td><td>edit</td>
+        <td>Geolocation request + rounding before it leaves the phone (round 1).</td></tr>
+      <tr><td><code>.brain/features/live-weather/…</code></td><td>new</td>
+        <td>Feature doc + verification.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="golden-path">
+  <h2>Golden path</h2>
+  <pre class="mermaid">
+sequenceDiagram
+  participant U as Phone
+  participant A as BoardAgent
+  participant H as Haiku router
+  participant O as Open-Meteo
+  participant S as Sonnet
+  participant B as Board DO
+  U->>A: "what's the weather in oslo"
+  A->>H: route this (intent + place)
+  H-->>A: {intent: "weather", place: "Oslo"}
+  A->>O: GET /v1/search?name=Oslo
+  O-->>A: 59.9139, 10.7522 — "Oslo, Norway"
+  A->>O: GET /v1/forecast?current=…
+  O-->>A: 18.4 °C, feels 16.0, 57%, 15.8 km/h, code 1
+  Note over A,S: tools omitted entirely;<br/>prompt carries the real fields<br/>and forbids anything else
+  A->>S: write a 6x24 board from exactly these values
+  S-->>A: BoardMessage (schema-enforced)
+  A->>B: setMessage(source: "llm")
+  B-->>U: revision bumped
+  </pre>
+  <p>Scores and news are unchanged — the router sends them down
+  <code>SEARCHING_ROUTE</code> exactly as today.</p>
+</section>
+
+<section id="error-paths">
+  <h2>Error paths</h2>
+  <table>
+    <thead><tr><th>Failure</th><th>Detected by</th><th>Handled by</th><th>User sees</th></tr></thead>
+    <tbody data-brain-section="error-paths">
+      <template>
+        <tr data-brain-item>
+          <td colspan="4">
+            <span data-item-text data-brain-action></span>
+            <span class="item-controls">
+              <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+              <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+            </span>
+          </td>
+        </tr>
+      </template>
+      <tr data-brain-item="0">
+        <td><span data-item-text data-brain-action>Place cannot be geocoded ("weather in Narnia")</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Empty geocoding result set</td>
+        <td>Per decision 3</td>
+        <td>Depends on decision 3</td>
+      </tr>
+      <tr data-brain-item="1">
+        <td><span data-item-text data-brain-action>Ambiguous place ("weather in Springfield")</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Multiple geocoding matches</td>
+        <td>Take the first (Open-Meteo orders by population) and print the canonical
+          name and country on the board, so the board states which one it chose
+          rather than hiding the ambiguity</td>
+        <td>"SPRINGFIELD US-IL" and the reading</td>
+      </tr>
+      <tr data-brain-item="2">
+        <td><span data-item-text data-brain-action>Open-Meteo unreachable or slow</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span>
+          <br><span class="chip chip-high">new external dependency in the request path</span></td>
+        <td>Bounded timeout in the service</td>
+        <td>One retry at most, then the typed error. Fails closed — never a partial
+          reading</td>
+        <td>Per decision 3</td>
+      </tr>
+      <tr data-brain-item="3">
+        <td><span data-item-text data-brain-action>Response shape changes upstream</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Effect Schema decode failure</td>
+        <td>Typed error, logged with the offending field. Decoding rather than
+          trusting is the point — an unannounced field rename must not surface as a
+          board reading <code>undefined °C</code></td>
+        <td>Per decision 3</td>
+      </tr>
+      <tr data-brain-item="4">
+        <td><span data-item-text data-brain-action>Model invents a field anyway</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Verification compares every figure on the board against the payload</td>
+        <td>Prompt states the supplied fields and forbids others; the grid is
+          schema-enforced but the <em>content</em> is not, so this is a prompt
+          property that has to be measured, not asserted</td>
+        <td>Nothing — but it is the bug that made this plan necessary, so it is on
+          the test list rather than assumed away</td>
+      </tr>
+      <tr data-brain-item="6">
+        <td><span data-item-text data-brain-action>Cached day series read past its window</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span>
+          <br><span class="chip chip-high">the trap in the caching requirement</span></td>
+        <td>Stored expiry compared against an injected clock</td>
+        <td>Treated as a miss and refetched. The hour bucket is read from the series,
+          never the series' first value — reading one cached number for a day is the
+          regression this design exists to avoid</td>
+        <td>Correct current reading</td>
+      </tr>
+      <tr data-brain-item="7">
+        <td><span data-item-text data-brain-action>Geolocation denied, unavailable, or times out</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Permission callback / rejected promise on the phone</td>
+        <td>Fall back to the place-name path. No default location is invented — a
+          board confidently showing the wrong city's weather is worse than one asking
+          which city</td>
+        <td>Prompt still works if a place is named</td>
+      </tr>
+      <tr data-brain-item="8">
+        <td><span data-item-text data-brain-action>Page served over plain http, so geolocation is unavailable</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Secure-context check, same gate the voice button already has</td>
+        <td>Feature hidden rather than offered and broken — the existing
+          <code>insecure</code> fault copy is the precedent</td>
+        <td>No location control offered</td>
+      </tr>
+      <tr data-brain-item="5">
+        <td><span data-item-text data-brain-action>Router says weather but supplies no place</span>
+          <span class="item-controls">
+            <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+            <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+          </span></td>
+        <td>Missing/empty place in the routing decision</td>
+        <td>Fall through to <code>SEARCHING_ROUTE</code> — the existing fail-open
+          path, unchanged. There is no default location and inventing one would be
+          worse than a stale number</td>
+        <td>Today's behaviour</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="list-add-row" data-brain-section-add="error-paths">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a failure mode..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="testing-plan">
+  <h2>Testing plan</h2>
+  <ul class="checklist" data-brain-section="testing-plan">
+    <template>
+      <li data-brain-item><label><input type="checkbox">
+        <span data-item-text data-brain-action></span></label>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <!-- Double-clicking label text toggles the checkbox twice on the way into edit
+         mode (click, click, dblclick all fire). It nets back to its original state —
+         do not "fix" with preventDefault, which would break click-to-check. -->
+    <li data-brain-item="0"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Golden path, measured: the board's temperature matches an independent Open-Meteo call made at the same moment, within rounding. This is the claim the feature exists for — state the delta as a number, not "looks right"</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="1"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Every figure on the generated board traces to a field in the fetched payload — no invented FEELS LIKE EVENING 5C equivalent</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="2"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Routing table: weather-with-place goes to WEATHER, weather-without-place and every malformed router response fall open to SEARCHING, self-contained goes to PLAIN</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="3"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Error paths with a stubbed fetch: 500, timeout, unparseable body, empty geocoding — each yields the typed error and never a partial reading</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="4"><label><input type="checkbox">
+      <span data-item-text data-brain-action>WeatherUnavailableError maps through tagToTRPC — the test that catches a missing APP_ERROR_TAGS entry, which compiles fine and still returns a generic 500</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="5"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Renderer never emits a line over 24 characters, for every WMO code and a long canonical place name</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="6"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Regression: a scores prompt and a news prompt still take SEARCHING_ROUTE and still work — this change must not cost the thing PR #4 got right</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="7"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Regression: a plain reminder still takes PLAIN_ROUTE with tools omitted, and still returns in about 3 seconds</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="8"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Cost and latency delta recorded: a weather board should now be cheaper and faster than the searching path (no billed search, fewer output blocks) — measure rather than assume</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="10"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Cache: a second generate for the same city inside the window makes ZERO outbound weather calls, asserted with a stubbed fetch counter</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="11"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Cache correctness with an injected clock: the hour bucket advances across an hour boundary, and the reading served at 18:00 is NOT the one served at 09:00 — the specific regression a naive 24h cache of one value would introduce</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="12"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Cache miss, corrupt entry and expired entry each fall through to a live fetch — never a stale or partial reading</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="13"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Geolocation: coordinates are rounded before they leave the phone, asserted on the outbound request payload rather than on the UI</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="15"><label><input type="checkbox">
+      <span data-item-text data-brain-action>The binding-absent path: with CACHE missing from Env, the weather route degrades to the honest-unavailable board and every OTHER route in the app still works — the specific regression that took the whole app down when R2 was absent</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="16"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Build asserts kv_namespaces is present in BOTH envs of the emitted build/server/wrangler.json — the same check the BOARD durable_objects binding got in the split-flap-board verification</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="14"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Privacy: no precise coordinate appears in any log line, on the happy path or any error path</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="9"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Locale parity for any new failure copy, en and zh</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="testing-plan">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a test..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="open-questions">
+  <h2>Open questions</h2>
+  <ul data-brain-section="open-questions">
+    <template>
+      <li data-brain-item>
+        <span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0">
+      <span data-item-text data-brain-action>Still open, and narrowed by the day cache: with one fetch per city per day the rate limit stops being a concern, so the remaining question is trust rather than volume — is an unauthenticated third-party dependency acceptable in the request path of a board on someone's wall, or should it sit behind a key before it is load-bearing?</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="1">
+      <span data-item-text data-brain-action>Should the board ever show the reading's observation time? It is honest and it is what would have exposed the stale-snippet problem immediately, but it costs a row on a 6x24 grid.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+  </ul>
+
+  <h3>Resolved in round 1</h3>
+  <ul>
+    <li><strong>Rate limiting / how often we fetch</strong> — <em>cache a day per
+      city.</em> Now phase 4b, with the 24-hour-single-value trap called out and the
+      hourly-series design in its place. The trust half of the question stays open
+      above.</li>
+    <li><strong>Default location</strong> — <em>infer it from the phone.</em> Now
+      phase 4c and decision 7. Note that decision 7's third option ("ask once, store
+      on the board") would answer this differently and arguably better for a
+      wall-mounted display, since a board's location is fixed while a phone's is
+      not — worth a look before picking.</li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="open-questions">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add an open question..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="verdict">
+  <h2>Verdict</h2>
+  <p>
+    <button type="button" class="btn-approve" data-brain-action
+      onclick="queueVerdict('approve')">Approve plan</button>
+    <button type="button" class="btn-request-changes" data-brain-action
+      onclick="queueVerdict('request-changes')">Request changes</button>
+  </p>
+</section>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+</script>
+
+<script>
+  function queueDecision(cardId, question) {
+    var card = document.getElementById(cardId);
+    var checked = card.querySelector('input[type="radio"]:checked');
+    if (!checked) return;
+    var choice = checked.value;
+    if (window.brain && typeof window.brain.queuePrompt === "function") {
+      window.brain.queuePrompt({
+        tag: "decision",
+        queueKey: cardId,
+        prompt: question + ": " + choice,
+        target: { type: "decision", question: question, choice: choice }
+      });
+    }
+    var ack = document.getElementById("ack-" + cardId);
+    if (ack) ack.textContent = "Queued: " + choice;
+  }
+
+  function queueVerdict(verdict) {
+    if (!(window.brain && typeof window.brain.queuePrompt === "function")) return;
+    window.brain.queuePrompt({
+      tag: "message",
+      queueKey: "verdict",
+      prompt: verdict === "approve"
+        ? "Plan approved as written."
+        : "Requesting changes — see annotations."
+    });
+  }
+</script>
+
+<script>
+  (function () {
+    function queueList(section, queueKey, prompt, action, item, index) {
+      if (window.brain && typeof window.brain.queuePrompt === "function") {
+        window.brain.queuePrompt({
+          tag: "list-edit",
+          queueKey: queueKey,
+          prompt: prompt,
+          target: { type: "list-edit", section: section, action: action, item: item, index: index }
+        });
+      }
+    }
+
+    function slugify(s) {
+      return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "").slice(0, 60) || "item";
+    }
+
+    function itemText(el) {
+      var t = el.querySelector("[data-item-text]");
+      return (t || el).textContent.trim();
+    }
+
+    function addBadge(el, cls, label) {
+      var badge = el.querySelector("." + cls);
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "item-badge " + cls;
+        el.appendChild(badge);
+      }
+      badge.textContent = label;
+    }
+
+    function toggleRemoved(item, section) {
+      var index = Number(item.getAttribute("data-brain-item"));
+      var text = itemText(item);
+      var removed = item.classList.toggle("item-removed");
+      var xBtn = item.querySelector(".item-x");
+      var restoreBtn = item.querySelector(".item-restore");
+      if (xBtn) xBtn.hidden = removed;
+      if (restoreBtn) restoreBtn.hidden = !removed;
+      var key = section + ":remove:" + index;
+      if (removed) {
+        queueList(section, key, "Remove from " + section + ": \"" + text + "\"", "remove", text, index);
+      } else {
+        queueList(section, key, "Cancelled: keep \"" + text + "\" in " + section, "edit", text, index);
+      }
+    }
+
+    function startEdit(item, section) {
+      if (item.classList.contains("item-removed")) return;
+      var span = item.querySelector("[data-item-text]");
+      if (!span || span.isContentEditable) return;
+      var before = span.textContent;
+      span.setAttribute("contenteditable", "true");
+      span.focus();
+
+      function commit() {
+        span.removeAttribute("contenteditable");
+        span.removeEventListener("blur", commit);
+        span.removeEventListener("keydown", onKey);
+        var text = span.textContent.trim();
+        if (!text || text === before.trim()) { span.textContent = before; return; }
+        var index = Number(item.getAttribute("data-brain-item"));
+        addBadge(item, "item-badge-edited", "edited");
+        queueList(section, section + ":edit:" + index,
+          "Edit " + section + " item " + index + ": \"" + text + "\"", "edit", text, index);
+      }
+      function onKey(ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); span.blur(); }
+        else if (ev.key === "Escape") { span.textContent = before; ev.preventDefault(); span.blur(); }
+      }
+      span.addEventListener("blur", commit);
+      span.addEventListener("keydown", onKey);
+    }
+
+    function commitAdd(addRow) {
+      var section = addRow.getAttribute("data-brain-section-add");
+      var input = addRow.querySelector(".list-add-input");
+      var text = input.value.trim();
+      if (!text) return;
+      var list = document.querySelector("[data-brain-section=\"" + section + "\"]");
+      var tpl = list && list.querySelector("template");
+      if (!list || !tpl) return;
+      var node = document.importNode(tpl.content, true);
+      var item = node.querySelector("[data-brain-item]") || node.firstElementChild;
+      item.setAttribute("data-brain-item", "new");
+      var span = item.querySelector("[data-item-text]");
+      if (span) span.textContent = text;
+      item.classList.add("item-proposed");
+      addBadge(item, "item-badge-proposed", "proposed");
+      list.insertBefore(node, tpl.nextSibling);
+      input.value = "";
+      queueList(section, section + ":add:" + slugify(text),
+        "Add to " + section + ": \"" + text + "\"", "add", text, null);
+    }
+
+    document.addEventListener("click", function (ev) {
+      var xBtn = ev.target.closest(".item-x");
+      var restoreBtn = ev.target.closest(".item-restore");
+      if (xBtn || restoreBtn) {
+        var item = ev.target.closest("[data-brain-item]");
+        var section = ev.target.closest("[data-brain-section]");
+        if (item && section) toggleRemoved(item, section.getAttribute("data-brain-section"));
+        return;
+      }
+      var addBtn = ev.target.closest(".list-add-btn");
+      if (addBtn) {
+        var addRow = ev.target.closest("[data-brain-section-add]");
+        if (addRow) commitAdd(addRow);
+      }
+    });
+
+    document.addEventListener("dblclick", function (ev) {
+      var item = ev.target.closest("[data-brain-item]");
+      if (!item) return;
+      var section = item.closest("[data-brain-section]");
+      if (section) startEdit(item, section.getAttribute("data-brain-section"));
+    });
+
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
+      var addRow = ev.target.closest("[data-brain-section-add]");
+      if (addRow && ev.target.classList.contains("list-add-input")) {
+        ev.preventDefault();
+        commitAdd(addRow);
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>

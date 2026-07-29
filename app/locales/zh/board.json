@@ -2,7 +2,8 @@
   "status": {
     "connecting": "连接中",
     "reconnecting": "重新连接中",
-    "offline": "已离线"
+    "offline": "已离线",
+    "retained": "仍在显示最后一条消息"
   },
   "sound": {
     "unlock": "点击开启声音"
@@ -14,6 +15,11 @@
   "error": {
     "title": "看板不可用",
     "body": "无法加载此看板。请检查屏幕上的地址。"
+  },
+  "tv": {
+    "title": "配对此屏幕",
+    "instructions": "在手机上打开 flappyboard，进入「连接电视」，然后输入此代码。",
+    "unavailable": "无法连接看板服务，此屏幕稍后会自动重试。"
   },
   "control": {
     "rescan": {
@@ -29,6 +35,15 @@
     },
     "header": {
       "rev": "版本"
+    },
+    "nameDevice": {
+      "title": "为此手机命名",
+      "body": "方便主人在已配对设备列表中认出你的手机。",
+      "placeholder": "例如：小凯的手机",
+      "save": "保存",
+      "saving": "保存中…",
+      "skip": "暂不",
+      "error": "保存失败，请重试。"
     },
     "send": "发送到看板",
     "sending": "发送中…",

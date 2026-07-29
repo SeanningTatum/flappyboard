@@ -70,6 +70,49 @@
       "delete_failed": "The board wasn't deleted. Try again."
     }
   },
+  "link": {
+    "title": "Link a TV",
+    "subtitle": "Open /tv on the television, then type the code it shows.",
+    "codeLabel": "Code on the TV",
+    "codePlaceholder": "K7Q2XM",
+    "boardLabel": "Show this board",
+    "submit": "Pair the TV",
+    "submitting": "Pairing…",
+    "success": "Paired. The TV is now showing {{name}}.",
+    "emptyTitle": "No boards yet",
+    "emptyBody": "Make a board first — a TV has to be pointed at something.",
+    "emptyAction": "Go to boards",
+    "failure": {
+      "invalid-code": "That is not a valid code. It is 6 characters, exactly as shown on the TV.",
+      "no-board": "Pick which board the TV should show.",
+      "not-found": "No TV is waiting on that code. Check it, or reload the TV for a new one.",
+      "rate-limited": "Too many attempts. Wait a few minutes and try again.",
+      "failed": "Could not pair the TV. Try again in a moment."
+    }
+  },
+  "devices": {
+    "title": "Paired devices",
+    "description": "Phones that can drive this board, and the TVs showing it.",
+    "empty": "No phones are paired yet. Scan the code on the board to pair one.",
+    "unnamed": "Unnamed phone",
+    "lastSeen": "Last used {{when}}",
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago",
+    "unpair": "Un-pair",
+    "unpairing": "Un-pairing…",
+    "unpairOne": "Un-pair \"{{name}}\"?",
+    "unpairOneBody": "This phone stops being able to write to the board. Every other paired phone keeps working and nobody has to re-scan.",
+    "unpairDisplays": "Un-pair all TVs",
+    "unpairDisplaysTitle": "Un-pair every TV showing \"{{name}}\"?",
+    "unpairDisplaysBody": "Every television showing this board goes back to the pairing screen. Paired phones are not affected.",
+    "unpairDisplaysConfirm": "Un-pair TVs",
+    "error": {
+      "revoke_device_failed": "That device wasn't un-paired. Try again.",
+      "revoke_displays_failed": "The TVs weren't un-paired. Try again."
+    }
+  },
   "dashboard": {
     "nav": "Boards",
     "title": "Your boards",

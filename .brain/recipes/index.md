@@ -31,6 +31,12 @@
 | **Loader auth vs procedure auth?** | Both. UI gate prevents UX leaks. Procedure gate enforces security. Never trust UI alone. |
 | **Effect Schema vs raw type?** | Cross-boundary input (form, API, env) → `Schema`. Internal-only types → `interface` / `type`. |
 
+## Ops runbooks
+
+| Recipe | When to use |
+|--------|-------------|
+| [samsung-tv-setup.md](samsung-tv-setup.md) | Putting a board on a real Samsung TV (built-in browser): pairing, start page, sleep settings, re-pair after cookie eviction |
+
 ## Anti-patterns (will fail review)
 
 - `throw` outside `Effect.tryPromise.catch` (use `Effect.fail` with tagged error)

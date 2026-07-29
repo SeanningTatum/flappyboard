@@ -21,6 +21,91 @@
 
 ---
 
+## 2026-07-29 — Shipped feat-012 kiosk-display — the TV living-room trio (010/011/012) is now fully shipped. The first kiosk walk measured a real defect: the watchdog's one-shot reload looped because the latch was a useRef that window.location.reload() resets (second reload at +121s). Fixed with createReloadLatch in kiosk.ts — sessionStorage-backed, one reload per outage, cleared on socket-live (re-arms), unreadable storage degrades to NO reload. Walk 2 PASS on the previously failing claim: no second reload across a 300s window, then a second outage re-armed the latch (+152s). Regression with drift active green: 144 tiles, 24x6, scrollable=false, drift tick at exactly 240.1s. Samsung-browser setup recipe written (recipes/samsung-tv-setup.md). Gate: typecheck 0, 1191 tests, build 0, e2e 2/2, harness 7/7, brain check clean. Uncommitted on worktree-tv-living-room (branch ahead 9 + this delta).
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Commit the kiosk delta, then feat-013 live-weather is unblocked (010/011/012 all shipped+verified). Owner calls queued: (1) wedged-socket invisibility — heartbeat vs doc-scope; (2) revoke-all leaves dead rows in the owner device list; (3) owner-only hardware tests — 8h soak, TV power-cycle cookie survival
+
+---
+
+## 2026-07-29 — shipped kiosk-display: Browser walk PASS (verifications/2026-07-29.md, two walks): 144 tiles / 24x6 / scrollable=false WITH drift active, drift
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — Kickoff: feat-012 kiosk-display closeout. family-grants committed as fd8d654 (pre-commit gate green). kiosk code was complete since 2026-07-28; what it owes is the drift-on regression walk (144 tiles / 24x6 / scrollable=false), the one-shot watchdog reload proof, and the Samsung-browser setup recipe. Soak + real TV stay owner-only.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Browser-verification walk on the display route, write recipes/samsung-tv-browser setup doc, then ship with the soak flagged
+
+---
+
+## 2026-07-29 — Shipped feat-011 family-grants. The 2026-07-28 walk's finding 1 (device naming half-implemented, decision 4 unreachable) closed with the owner-ratified post-pairing offer: claim returns deviceName, DeviceNamePrompt on the controller for unnamed grant phones, nameDevice mutation names the caller's own grant by nonce (never on the wire), decideName keeps touch invariants (tombstones unresurrectable, unknown nonce creates the record for grandfathered phones). Second browser walk PASS on all 5 measured claims including the kill shot — un-pairing the row selected BY ITS NAME gave that phone 401+rescan while the sibling kept writing 200. Gate: typecheck 0, 1185 tests (+19), build 0, e2e 2/2 (first run's auth-spec failure was flake, green on re-run), harness 7/7. Also today: flappyboard-preview bootstrapped with a real wrangler deploy (v221570c8) — Deploy preview should be green on future PRs. OPEN owner calls: (1) revoke-all leaves dead phones' rows in the owner list — should the list say so? (2) the decisive tv-pairing test is still owner-only: power-cycle the real Samsung TV, confirm fb_device survives. All work UNCOMMITTED on worktree-tv-living-room (branch also 8 ahead of origin).
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Commit + push the family-grants delta, then feat-012 kiosk-display (last of the TV living-room trio); feat-013 live-weather unblocks once 010/011/012 are all verified
+
+---
+
+## 2026-07-29 — shipped family-grants: Two browser walks PASS: verifications/2026-07-28.md (30-day TTL measured from the signed payload, per-device revoke isol
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — Kickoff: close family-grants verification finding 1 — wire the post-pairing device-name offer so 'un-pair Kai's phone' is reachable from the UI. Design ratified by owner: phone pairs as today, claim returns deviceName (in-flight change), an unnamed phone gets an optional prompt, new mutation names the caller's grant record by nonce. Baseline green: typecheck 0, 1166 tests.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Implement nameGrant (DO + service), board.nameDevice mutation, controller UI prompt; then unit tests, browser walk, ship feat-011
+
+---
+
+## 2026-07-29 — shipped tv-pairing: Browser-verified PASS across TWO independent worker runs that agreed on every step; verdict doc .brain/features/tv-pairi
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — Live-weather plan fully approved (round 2). Decision 6: cache in a NEW KV binding. Decision 7: round location to ~10km with a place-name fallback on refusal. All 7 decisions now answered; feat-013 evidence updated. Recorded the consequence the KV choice inherits, because this repo already has the scar: feat-003 file-upload is shipped-but-broken since setup never provisioned R2, and the way it broke is the lesson — a merged Effect layer constructs EVERY member, so one absent binding surfaced as 'Failed to construct AuthApi' and 500'd every request in the app including routes that never touch R2. So the weather service must be provided ad-hoc in the generate path (like upload-file.ts does BucketLive and transcribe.ts does TranscriptionLive), NOT added to makeAppRuntime. Also noted that recipes/add-cf-binding step 5 still says 'provide layer -> app/runtime.ts', which is pre-R2 advice, and should gain a pointer to rules/services.md so the next person does not follow it into the same hole. Two new tests added for that specific regression: with CACHE absent the weather route degrades to the honest-unavailable board while every OTHER route still works, and the build asserts kv_namespaces present in BOTH envs of the emitted wrangler.json (same check the BOARD binding got in the split-flap-board verification).
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: OWNER-ONLY and blocking phase 4b: 'wrangler kv namespace create' — real Cloudflare credentials, creates a real resource, cannot run from CI or from an agent. Then declare kv_namespaces in BOTH the default and env.preview blocks of wrangler.jsonc (the file's own comment notes the list is identical there; a namespace added only to the default env leaves every PR preview on the binding-absent path) and run bun run cf-typegen. Still ahead of that in the queue per decision 5: verify feat-010/011/012, which are code-complete and owe browser walks. Also still owner-only from earlier: 'bun run deploy:preview' to turn Deploy preview green, and the Samsung TV walk.
+
+---
+
+## 2026-07-29 — Live-weather plan reviewed round 1 (plans/2026-07-28-live-weather.html); registered feat-013 live-weather as planned. Root cause established against the API reference rather than guessed: web_search has NO freshness or cache parameter (only max_uses, allowed/blocked_domains, user_location), web_fetch can only fetch URLs already present in the conversation so it is not a crawler and could never have helped, and prompt caching caches our prompt prefix and never touched search results. The staleness is structural — an index returns what the crawler saw, so sunset is right (static all day), scores and news are right (stop changing once published), and temperature is 6-10C wrong (changes hourly). Five decisions answered as recommended: third router route with pre-fetched data (no tool loop, model cannot pick the location), Open-Meteo geocoding rather than model-emitted coordinates (a model inventing lat/lon is a model inventing numbers), an honest 'unavailable' board on failure rather than falling back to search, current conditions only, and build it AFTER feat-010/011/012 are verified. Two new requirements added, each with an open decision: a day-long cache (decision 6 — where it lives; note this project has NO KV binding today, and a per-city DO via idFromName('weather:'+lat+','+lon) is the zero-new-binding alternative with precedent from feat-010's device codes) and location inferred from the phone (decision 7 — precision and refusal behaviour).
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: CORRECTION RECORDED, do not lose it: 'cache the entire 24 hours' as literally stated would cache ONE current reading for a day and put a day-old temperature on the board — worse than the few-hours-stale search snippets being removed, i.e. it would reintroduce the exact bug. The plan instead caches the day's HOURLY SERIES and reads the bucket matching the current hour: one fetch per city per day, still hour-accurate, ~1C mid-hour drift against the 6-10C being fixed. Geocoding caches separately and indefinitely since coordinates do not change. Before any code: answer decisions 6 and 7. Then decision 5 gates the work behind feat-010/011/012 verification — three features are code-complete and owe browser walks, and the Samsung TV walk plus 'bun run deploy:preview' are still owner-only.
+
+---
+
+## 2026-07-28 — feat-010/011/012 in flight on branch worktree-tv-living-room. Plan's one OPEN question is now answered by the owner: an unapproved device code lives in a per-code Durable Object instance addressed by idFromName('code:'+CODE) (not a global codes DO, not board-scoped-from-birth), and the device grant TTL is 180 days sliding. DONE so far: pairing.ts carries two new token families (fbd1 device grant, fbh1 single-use handoff) with deviceEpoch as a separately-named field so the two epochs cannot be swapped by mistake (98 tests); DEFAULT_GRANT_TTL_SECONDS raised 12h -> 30d; new pure modules device-code.ts (50 tests), paired-devices.ts (74 tests), kiosk.ts (22 tests); board deviceEpoch column + migration 0003 + bumpDeviceEpoch repo method; BoardRoom DO gained device-code issue/watch/approve and grants record/touch/revoke/list, with a DEVICE_CODE_TAG so a waiting TV socket can never be handed a board frame; board-room service + 6 new tRPC procedures (issueDeviceCode, approveDeviceCode, display, claimHandoff, pairedDevices, revokeDevice, revokeDevices); new routes /tv, /tv/claim, /link, /api/tv-ws; display.tsx now session-OR-device-grant and redirects a cookie-evicted TV to /tv instead of 404; board-ws.ts accepts the device grant and slides both grant families on upgrade, re-minting with the ORIGINAL nonce so per-device revoke keeps naming the same device. Typecheck 0 throughout.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Remaining: (1) the /boards paired-devices UI (list + per-device un-pair + un-pair-all-TVs) — its sub-agent died on the org monthly spend limit, so it is unwritten; (2) DO-level tests for the new room endpoints; (3) brain docs (three feature MDs, rules/routes, rules/repository, security.md, data-models.md, CHANGELOG) ; (4) full verify-done + feature-verifier browser walk; (5) PR via /create-pr-with-review. DEVIATION to flag in review: the plan's '~5 attempts then the code is burned' per-code counter cannot work in the per-code-DO shape (a wrong guess resolves to a different, empty room and never touches the real code's storage), so brute force is bounded instead by a new DEFAULT_QUOTA['approve-device'] fixed window of 8/hour per owner and 16/hour per board.
+
+---
+
+## 2026-07-28 — PR #5 merged. Squash-merged to main as e04b427 and Deploy Production succeeded on it, so the spend caps are live in production and issue #1 is closed for real. Verified on origin/main rather than assumed: app/lib/board/quota.ts and its 37-test suite are present, workers/board-room.ts carries handleSpendQuota reading DEFAULT_QUOTA[spend.endpoint] (the DO owns the policy), /api/transcribe has both the peek and the charge call sites, and RateLimitError appears twice in effect-trpc.ts (the APP_ERROR_TAGS entry plus the TOO_MANY_REQUESTS case). Note the merge commit c20424b is NOT an ancestor of main — this repo squash-merges, same as PR #2 (f8ae90f) and PR #3 (2157222), so that is expected and not a lost merge. Final gate before merge: typecheck 0, 930 tests, build 0, harness 7/7, all four CI jobs green. Deploy preview stayed red as documented.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: OWNER-ONLY, still the only red thing in CI: run 'bun run deploy:preview' once locally to bootstrap the preview worker — needs real Cloudflare credentials and creates real resources, so neither CI nor an agent can do it. DECISION OWED, flagged in the feature doc and not acted on: the 20 generations/hour cap was chosen when a generation was 1-3 Sonnet calls at max_tokens 4096; after PR #4 it is a Haiku router call plus 1-3 Sonnet attempts at 8192 plus a billed web search plus up to 3 pause_turn resends that do not spend a retry attempt, so the dollar ceiling the cap permits is materially higher than when the number was set. Lowering DEFAULT_QUOTA is the whole change if you want it tighter. Then feat-010 tv-pairing per the plan's decision 6.
+
+---
+
 ## 2026-07-28 — CI triage. Three separate things, only one mine. (1) PR #5 showed ZERO checks — not a broken pipeline: the branch had gone CONFLICTING when v0.1.1 (PR #3, README trim) landed on main, and GitHub will not run pull_request workflows on a PR whose merge commit it cannot compute. 'gh pr checks' reports 'no checks reported', which reads like none-configured rather than none-possible; the tell is 'gh pr view --json mergeable' = CONFLICTING. Merged origin/main in (not rebased — branch is pushed with an open PR), resolved .brain/CHANGELOG.md and .brain/runs/progress.md by keeping every entry from both sides in date order (all 9 of the day's checkpoints survive; no code conflicted), and corrected a stale 903 -> 908 test count in my own CHANGELOG entry. PR #5 is now MERGEABLE and all four CI jobs PASS: Baseline, Build, E2E smoke, Five non-negotiables sweep. (2) PR #4 feat/board-agent-web-search failed its non-negotiables sweep on a bare 'throw new Error("needs_live_data was not a boolean")' at commit 153671b — already fixed by that branch's owner at 5eee9bc, where the sweep is green. Left alone, not mine to push to. (3) Deploy preview is red on EVERY PR and is the only real standing failure: 'Could not extract preview URLs from wrangler output'. The version uploads fine and the code-10211 Durable Object branch does not fire — flappyboard-preview has simply never had a real wrangler deploy, so preview URLs were never enabled and there is nothing to extract. Confirmed NOT caused by the spend-cap change.
 - branch: `worktree-tv-living-room`
 - in-progress feature: llm-board-agent

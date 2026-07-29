@@ -203,6 +203,28 @@ export class BoardRepository extends Effect.Service<BoardRepository>()(
           return yield* getBoard({ boardId: input.boardId });
         });
 
+      /**
+       * The display-side twin of `bumpGrantEpoch`: un-pair every TV showing this
+       * board by incrementing `deviceEpoch`, leaving every paired phone alone.
+       *
+       * Same SQL-side increment for the same reason — two concurrent un-pairs
+       * must both count, and the counter must only ever move forwards.
+       */
+      const bumpDeviceEpoch = (input: GetBoardInput) =>
+        Effect.gen(function* () {
+          yield* getBoard({ boardId: input.boardId });
+          yield* tryUpdate("board", () =>
+            db
+              .update(board)
+              .set({
+                deviceEpoch: sql`${board.deviceEpoch} + 1`,
+                updatedAt: new Date(),
+              })
+              .where(eq(board.id, input.boardId))
+          );
+          return yield* getBoard({ boardId: input.boardId });
+        });
+
       const renameBoard = (input: RenameBoardInput) =>
         Effect.gen(function* () {
           yield* getBoard({ boardId: input.boardId });
@@ -226,6 +248,7 @@ export class BoardRepository extends Effect.Service<BoardRepository>()(
         deleteBoard,
         renameBoard,
         bumpGrantEpoch,
+        bumpDeviceEpoch,
       } as const;
     }),
   }

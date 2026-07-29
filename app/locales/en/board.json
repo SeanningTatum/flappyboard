@@ -2,7 +2,8 @@
   "status": {
     "connecting": "Connecting",
     "reconnecting": "Reconnecting",
-    "offline": "Offline"
+    "offline": "Offline",
+    "retained": "Still showing the last message"
   },
   "sound": {
     "unlock": "Tap for sound"
@@ -14,6 +15,11 @@
   "error": {
     "title": "Board unavailable",
     "body": "This board could not be loaded. Check the address on the screen."
+  },
+  "tv": {
+    "title": "Pair this screen",
+    "instructions": "On your phone, open flappyboard, go to Link a TV, and enter this code.",
+    "unavailable": "Could not reach the board service. This screen will try again shortly."
   },
   "control": {
     "rescan": {
@@ -29,6 +35,15 @@
     },
     "header": {
       "rev": "Rev"
+    },
+    "nameDevice": {
+      "title": "Name this phone",
+      "body": "So the owner knows it's you in their list of paired phones.",
+      "placeholder": "e.g. Kai's phone",
+      "save": "Save",
+      "saving": "Saving…",
+      "skip": "Not now",
+      "error": "That didn't save. Try again."
     },
     "send": "Send to board",
     "sending": "Sending…",

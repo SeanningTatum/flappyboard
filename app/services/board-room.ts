@@ -8,6 +8,18 @@ import {
   type QuotaMode,
   type QuotaSpendResult,
 } from "@/lib/board/quota";
+import {
+  deviceCodeRoomName,
+  parseDeviceCodeApprove,
+  parseDeviceCodeIssue,
+  type DeviceCodeApproveOutcome,
+} from "@/lib/board/device-code";
+import {
+  parseGrantRevoke,
+  parseGrantTouch,
+  parsePairedDevices,
+  type PairedDeviceRecord,
+} from "@/lib/board/paired-devices";
 
 /**
  * The live state of a board as the room reports it. Declared structurally
@@ -83,6 +95,113 @@ export interface BoardRoomShape {
   readonly spendQuota: (
     params: SpendQuotaParams
   ) => Effect.Effect<QuotaSpendResult, ExternalServiceError>;
+
+  /**
+   * Claim a generated device code. `false` means the code was already taken —
+   * the caller draws another rather than stealing a TV's pending pairing.
+   *
+   * Addressed by the code, not by a board: an unapproved code belongs to no
+   * board yet, which is the whole reason it needs a room of its own.
+   */
+  readonly issueDeviceCode: (
+    params: IssueDeviceCodeParams
+  ) => Effect.Effect<boolean, ExternalServiceError>;
+
+  /**
+   * Consume a device code and push the (already minted) handoff to the TV
+   * waiting on it. The outcome distinguishes a replay from a wrong code from an
+   * expired one, so the owner is told something true.
+   */
+  readonly approveDeviceCode: (
+    params: ApproveDeviceCodeParams
+  ) => Effect.Effect<DeviceCodeApproveOutcome, ExternalServiceError>;
+
+  /** Remember a freshly minted controller grant, with the name the phone typed. */
+  readonly recordGrant: (
+    params: RecordGrantParams
+  ) => Effect.Effect<
+    { readonly live: boolean; readonly name: string | null },
+    ExternalServiceError
+  >;
+
+  /**
+   * "Is this grant still one of ours?" plus the sliding renewal, in one call.
+   * An unknown nonce answers `live: true` — see `decideTouch`.
+   */
+  readonly touchGrant: (
+    params: TouchGrantParams
+  ) => Effect.Effect<
+    { readonly live: boolean; readonly name: string | null },
+    ExternalServiceError
+  >;
+
+  /**
+   * Set or replace the name on this device's own record — the phone labelling
+   * itself after pairing. An unknown nonce (a phone paired before records
+   * existed) has its record created by the same call; a tombstoned nonce
+   * answers `live: false` and nothing is written. See `decideName`.
+   */
+  readonly nameGrant: (
+    params: NameGrantParams
+  ) => Effect.Effect<
+    { readonly live: boolean; readonly name: string | null },
+    ExternalServiceError
+  >;
+
+  /** Un-pair one device. `false` when the room held no record of it. */
+  readonly revokeGrant: (
+    boardId: string,
+    nonce: string
+  ) => Effect.Effect<boolean, ExternalServiceError>;
+
+  /** Every paired device the owner can see, newest-seen first. */
+  readonly listGrants: (
+    boardId: string
+  ) => Effect.Effect<ReadonlyArray<PairedDeviceRecord>, ExternalServiceError>;
+}
+
+export interface IssueDeviceCodeParams {
+  readonly code: string;
+  /** The secret that binds the approval frame to the socket that asked for it. */
+  readonly watcher: string;
+  readonly ttlSeconds: number;
+}
+
+export interface ApproveDeviceCodeParams {
+  readonly code: string;
+  readonly boardId: string;
+  /**
+   * A single-use `fbh1` token, minted by the caller. The room never signs
+   * anything — keeping `BETTER_AUTH_SECRET` out of a code room means a guessed
+   * code can never reach a credential-minting surface.
+   */
+  readonly handoff: string;
+}
+
+export interface RecordGrantParams {
+  readonly boardId: string;
+  /** The nonce inside the grant — the only identifier a phone cannot forge. */
+  readonly nonce: string;
+  readonly name: string | null;
+  readonly ttlSeconds: number;
+}
+
+export interface TouchGrantParams {
+  readonly boardId: string;
+  readonly nonce: string;
+  readonly ttlSeconds: number;
+}
+
+export interface NameGrantParams {
+  readonly boardId: string;
+  readonly nonce: string;
+  /**
+   * Already normalised by the caller (`normalizeDeviceName`) — the room bounds
+   * the length but does not invent a name for a caller that skipped that step.
+   */
+  readonly name: string;
+  /** The sliding window, same as a touch: naming a device proves it is alive. */
+  readonly ttlSeconds: number;
 }
 
 export interface SpendQuotaParams {
@@ -165,17 +284,26 @@ export const BoardRoomLive = Layer.effect(
       );
     }
 
-    /** One stub fetch, decoded to `unknown`. Non-200 is a typed failure. */
-    const rawCall = (
-      boardId: string,
+    /**
+     * One stub fetch against an instance addressed by name, decoded to
+     * `unknown`. Non-200 is a typed failure.
+     *
+     * The name is usually a board id, but not always: a device code that has not
+     * been approved yet belongs to no board, so it lives in an instance named
+     * after the code itself. Same class, same storage discipline, disjoint
+     * instance — see `deviceCodeRoomName`.
+     */
+    const rawCallNamed = (
+      name: string,
+      query: string,
       path: string,
       init?: RequestInit
     ): Effect.Effect<unknown, ExternalServiceError> =>
       Effect.gen(function* () {
-        const url = `${ROOM_ORIGIN}${path}?boardId=${encodeURIComponent(boardId)}`;
+        const url = `${ROOM_ORIGIN}${path}${query}`;
         const payload = yield* Effect.tryPromise({
           try: async () => {
-            const stub = namespace.get(namespace.idFromName(boardId));
+            const stub = namespace.get(namespace.idFromName(name));
             const response = await stub.fetch(url, init);
             if (!response.ok) {
               return { status: response.status, body: await response.text() };
@@ -197,6 +325,19 @@ export const BoardRoomLive = Layer.effect(
 
         return payload.body;
       });
+
+    /** The ordinary case: the instance is the board's own room. */
+    const rawCall = (
+      boardId: string,
+      path: string,
+      init?: RequestInit
+    ): Effect.Effect<unknown, ExternalServiceError> =>
+      rawCallNamed(
+        boardId,
+        `?boardId=${encodeURIComponent(boardId)}`,
+        path,
+        init
+      );
 
     const call = (
       boardId: string,
@@ -266,6 +407,146 @@ export const BoardRoomLive = Layer.effect(
             );
           }
           return spent;
+        }),
+      issueDeviceCode: (params: IssueDeviceCodeParams) =>
+        Effect.gen(function* () {
+          const body = yield* rawCallNamed(
+            deviceCodeRoomName(params.code),
+            "",
+            "/device-code/issue",
+            postJson({
+              code: params.code,
+              watcher: params.watcher,
+              ttlSeconds: params.ttlSeconds,
+            })
+          );
+          const issued = parseDeviceCodeIssue(body);
+          if (issued === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised device-code payload",
+              })
+            );
+          }
+          return issued;
+        }),
+      approveDeviceCode: (params: ApproveDeviceCodeParams) =>
+        Effect.gen(function* () {
+          const body = yield* rawCallNamed(
+            deviceCodeRoomName(params.code),
+            "",
+            "/device-code/approve",
+            postJson({
+              code: params.code,
+              boardId: params.boardId,
+              handoff: params.handoff,
+            })
+          );
+          const outcome = parseDeviceCodeApprove(body);
+          if (outcome === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised device-code payload",
+              })
+            );
+          }
+          return outcome;
+        }),
+      recordGrant: (params: RecordGrantParams) =>
+        Effect.gen(function* () {
+          const body = yield* rawCall(
+            params.boardId,
+            "/grants/record",
+            postJson({
+              nonce: params.nonce,
+              name: params.name,
+              ttlSeconds: params.ttlSeconds,
+            })
+          );
+          const result = parseGrantTouch(body);
+          if (result === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised paired-device payload",
+              })
+            );
+          }
+          return result;
+        }),
+      touchGrant: (params: TouchGrantParams) =>
+        Effect.gen(function* () {
+          const body = yield* rawCall(
+            params.boardId,
+            "/grants/touch",
+            postJson({ nonce: params.nonce, ttlSeconds: params.ttlSeconds })
+          );
+          const result = parseGrantTouch(body);
+          if (result === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised paired-device payload",
+              })
+            );
+          }
+          return result;
+        }),
+      nameGrant: (params: NameGrantParams) =>
+        Effect.gen(function* () {
+          const body = yield* rawCall(
+            params.boardId,
+            "/grants/name",
+            postJson({
+              nonce: params.nonce,
+              name: params.name,
+              ttlSeconds: params.ttlSeconds,
+            })
+          );
+          const result = parseGrantTouch(body);
+          if (result === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised paired-device payload",
+              })
+            );
+          }
+          return result;
+        }),
+      revokeGrant: (boardId: string, nonce: string) =>
+        Effect.gen(function* () {
+          const body = yield* rawCall(
+            boardId,
+            "/grants/revoke",
+            postJson({ nonce })
+          );
+          const revoked = parseGrantRevoke(body);
+          if (revoked === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised paired-device payload",
+              })
+            );
+          }
+          return revoked;
+        }),
+      listGrants: (boardId: string) =>
+        Effect.gen(function* () {
+          const body = yield* rawCall(boardId, "/grants");
+          const devices = parsePairedDevices(body);
+          if (devices === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised paired-device payload",
+              })
+            );
+          }
+          return devices;
         }),
       spendQuota: (params: SpendQuotaParams) =>
         Effect.gen(function* () {

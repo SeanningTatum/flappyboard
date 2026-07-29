@@ -33,7 +33,11 @@ import { Either, Schema } from "effect";
  */
 
 /** The endpoints that are metered. Part of the storage key, so caps are separate. */
-export const QUOTA_ENDPOINTS = ["generate", "transcribe"] as const;
+export const QUOTA_ENDPOINTS = [
+  "generate",
+  "transcribe",
+  "approve-device",
+] as const;
 export type QuotaEndpoint = (typeof QUOTA_ENDPOINTS)[number];
 
 /**
@@ -67,6 +71,28 @@ export const MAX_QUOTA_LIMIT = 10_000;
 export const DEFAULT_QUOTA: Record<QuotaEndpoint, QuotaPolicy> = {
   generate: { spenderLimit: 20, boardLimit: 60, windowSeconds: 3600 },
   transcribe: { spenderLimit: 60, boardLimit: 200, windowSeconds: 3600 },
+  /**
+   * `approve-device` costs nothing to run. It is metered anyway, because it is
+   * the only endpoint where **guessing** is the attack.
+   *
+   * A 6-character device code carries ~30 bits, and an approval is what turns a
+   * correct guess into a hijacked display. Two things already bound that: the
+   * code dies after 5 minutes, and approving requires a signed-in owner
+   * nominating a board they own. This is the third and the one that actually
+   * puts a number on it — 8 approvals an hour per account against a board.
+   *
+   * Note what this cap is *not*: it is not the plan's "5 attempts then the code
+   * is burned". A per-code attempt counter cannot work in this shape, because a
+   * wrong guess resolves to a different (empty) code room entirely and never
+   * touches the real code's storage — the counter would only ever see the
+   * guesses that already succeeded. Metering the guesser instead of the guessed
+   * is what makes the RFC 8628 argument hold here.
+   *
+   * Eight is chosen against real use: pairing a TV is a twice-a-year action and
+   * a mistyped code costs one attempt, so a household will never see this,
+   * while an attacker gets ~70,000 years per board at the median.
+   */
+  "approve-device": { spenderLimit: 8, boardLimit: 16, windowSeconds: 3600 },
 };
 
 export interface QuotaPolicy {

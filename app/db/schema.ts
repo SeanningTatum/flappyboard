@@ -112,6 +112,19 @@ export const board = sqliteTable("board", {
    * DO-held epoch would put a Durable Object call on every authorised request.
    */
   grantEpoch: integer("grant_epoch").notNull().default(0),
+  /**
+   * The same revocation primitive, for the *displays* rather than the
+   * controllers — every `fbd1` device grant and `fbh1` handoff is signed over
+   * this number instead of `grantEpoch`.
+   *
+   * Two counters rather than one, deliberately. They protect opposite ends of
+   * the same board: bumping `grantEpoch` means "kick every phone off", and it
+   * must not black out the TV on the wall; bumping this one means "un-pair that
+   * TV", and it must not sign out the family. A single epoch would make each of
+   * those buttons do both jobs, which is the behaviour that makes an owner stop
+   * pressing either of them.
+   */
+  deviceEpoch: integer("device_epoch").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .notNull(),

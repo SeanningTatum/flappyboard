@@ -1,8 +1,11 @@
 # Feature: Kiosk Display
 
-_Last updated: 2026-07-28_
+_Last updated: 2026-07-29_
 
-**Status: planned.** Design approved in plan review round 1 —
+**Status: shipped 2026-07-29.** Verified in `verifications/2026-07-29.md`
+(two walks: the first measured a watchdog reload loop — fixed and re-walked to
+PASS). The 8h soak and the real Samsung TV walk remain owner-only, below.
+Design approved in plan review round 1 —
 `plans/2026-07-28-tv-living-room.html`.
 
 ## Purpose
@@ -59,8 +62,98 @@ triggers exactly one reload. Regression: flap-tile count still exactly 144, grid
 - feat-007 `split-flap-board`
 - tv-pairing (the display must accept a device grant before it is worth leaving up)
 
+## As built — the numbers the plan left open
+
+The plan pinned the behaviours and left every constant to implementation. They
+all live in `app/lib/board/kiosk.ts`, pure and unit-tested (22 tests), so
+`display.tsx` holds only wiring:
+
+| Constant | Value | Why this number |
+|----------|-------|-----------------|
+| `DRIFT_PX` | 3 | Enough that no sub-pixel is lit identically for more than one cycle; far too little to notice from a sofa |
+| `DRIFT_INTERVAL_MS` | 4 min | Full circuit in 16 min. Invisible in peripheral vision, frequent enough that no position is held for a meaningful fraction of a day |
+| `DIM_START_HOUR` / `DIM_END_HOUR` | 23 / 7 | A hallway board's own schedule |
+| `DIM_OPACITY` | 0.35 | Down, not off — still readable by someone walking past at 3am |
+| `WATCHDOG_MS` | 2 min | Longer than the socket's own reconnect backoff, so an ordinary three-second blip never triggers a reload |
+
+`isDimHour` wraps midnight, which is the only interesting thing about it: the
+naive `hour >= 23 && hour < 7` is false for every hour of the day and the bug is
+invisible in daylight. There is a test for exactly that.
+
+Drift is applied as a **transform on a wrapper**, never as layout. A transform
+cannot reflow, so the 24×6 geometry, the 144 tiles and the existing
+`scrollable=false` assertion all survive with drift active — which was the
+plan's stated constraint.
+
+### One gesture, two jobs
+
+Wake-lock is separate, but **fullscreen rides the existing sound-unlock
+handler** rather than adding a second listener. Both Web Audio and the Fullscreen
+API need a user gesture, and on a wall-mounted TV there may never be another one
+after setup — so the first press of the remote's OK button has to spend itself on
+both or one of them never happens. A refused `requestFullscreen` is swallowed:
+decision 2 accepted that browser chrome may stay visible, and it is not a failure.
+
+### Wake lock is video-first
+
+`navigator.wakeLock` is feature-detected, but the silent looping muted video is
+written as the **primary** path because Tizen's browser is the case most likely
+to lack the API. The clip is a real 810-byte 16×16 single-frame H.264 MP4 inlined
+as a data URI; a test decodes it and asserts the `ftypisom` box, so a truncated
+paste fails loudly rather than silently failing to hold the lock. The hook
+re-acquires on `visibilitychange → visible` (a lock is released whenever the page
+hides — the most-missed part of the API), and if both paths fail it reports
+`via: "none"` and does nothing further.
+
+There is no DOM test environment in this repo (`environment: "node"`, no jsdom),
+so all behaviour lives in `createWakeLockEngine(host)` with the browser injected —
+the same seam `use-board-socket.ts` already establishes. 21 tests.
+
+### Exactly one reload per outage, never a loop
+
+`shouldReload` is gated on a latch, and the latch lives in `sessionStorage`
+(`createReloadLatch`), because the first implementation kept it in a
+page-lifetime `useRef` that `window.location.reload()` itself resets — measured
+in the 2026-07-29 walk as a second reload at +121s, i.e. a slow loop for the
+whole outage. The latch survives the reload it triggers, so a dead socket gets
+exactly one reload no matter how long the outage lasts; it is cleared when the
+socket is observed live again, so a *separate* later outage earns its one
+reload. A store that cannot be read or written degrades to **no reload** —
+a reload loop on a wall-mounted screen is strictly worse than a stale board:
+the board at least still shows the last message, whereas a page reloading
+every two minutes shows nothing, forever.
+
+Known limit, accepted for now: a *wedged* socket (server gone, client sees no
+close frame) is invisible to the watchdog — the page believes it is live. Only
+the visibility-resume resync detects it. Closing that gap wants an app-level
+heartbeat; recorded as finding 2 in `verifications/2026-07-29.md`.
+
+### The spinner keeps the grid
+
+`BoardOffline` is a low-opacity scrim over the retained grid, never a cover. A
+split-flap board holding its last message is correct behaviour; it just must not
+pretend to be live. Reuses the existing `status.*` copy plus one new key
+(`status.retained`) in both locales.
+
+## As built — files
+
+| File | What landed |
+|------|-------------|
+| `app/lib/board/kiosk.ts` | new — `driftOffset`, `isDimHour`/`dimOpacity`, `shouldReload`, `createReloadLatch` and their constants (28 tests) |
+| `app/hooks/use-wake-lock.ts` | new — Wake Lock with a video-first fallback, testable without a DOM (21 tests) |
+| `app/components/board/board-offline.tsx` | new — reconnect scrim over the retained grid (16 tests) |
+| `app/routes/board/display.tsx` | wiring: wake lock, fullscreen on the existing gesture, watchdog, drift, dim, spinner; `data-drift` and `data-dimmed` so the soak can assert from the DOM |
+
+## Still outstanding (owner-only)
+
+- The 8h unattended soak on the real TV.
+- The real Samsung TV walk (decision 2's decisive test) — setup runbook:
+  [`../../recipes/samsung-tv-setup.md`](../../recipes/samsung-tv-setup.md).
+
 ## Changelog
 
 | Date | Type | Description |
 |------|------|-------------|
 | 2026-07-28 | feature | Registered as planned from the reviewed TV living-room plan |
+| 2026-07-28 | feature | Built. Wake lock, fullscreen on the existing gesture, one-shot watchdog, reconnect scrim, drift + idle dim |
+| 2026-07-29 | fix | Watchdog reload loop measured in the first walk (page-lifetime `useRef` latch); moved to a `sessionStorage` latch — one reload per outage, re-armed on recovery. Re-walk PASS |

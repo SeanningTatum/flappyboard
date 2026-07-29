@@ -9,6 +9,10 @@ import { BoardTvUrl } from "@/components/boards/board-tv-url";
 import { BoardDeleteDialog } from "@/components/boards/board-delete-dialog";
 import { BoardRenameDialog } from "@/components/boards/board-rename-dialog";
 import { BoardRevokeDialog } from "@/components/boards/board-revoke-dialog";
+import {
+  BoardDevices,
+  type PairedDevice,
+} from "@/components/boards/board-devices";
 import { formatDate } from "@/lib/date-utils";
 import { boardControlPath, boardDisplayPath, boardTvUrl } from "@/lib/schemas/boards";
 import { cn } from "@/lib/utils";
@@ -19,6 +23,8 @@ interface BoardCardProps {
     readonly name: string;
     readonly revision: number;
     readonly createdAt: string | number | Date;
+    /** Phones paired to this board, newest-seen first. Read in the loader. */
+    readonly devices: ReadonlyArray<PairedDevice>;
   };
   /** Absolute origin of the current request — the TV URL is built from it. */
   readonly origin: string;
@@ -114,6 +120,18 @@ export function BoardCard({ board, origin, isNew = false }: BoardCardProps) {
           <BoardRevokeDialog boardId={board.id} boardName={board.name} />
           <BoardDeleteDialog boardId={board.id} boardName={board.name} />
         </div>
+
+        {/*
+          Below the owner row, not inside it. The controls above act on the board
+          as a whole; this names individual devices, and mixing "un-pair Kai's
+          phone" into a row that also contains "delete this board" is how someone
+          presses the wrong one.
+        */}
+        <BoardDevices
+          boardId={board.id}
+          boardName={board.name}
+          devices={board.devices}
+        />
       </CardContent>
     </Card>
   );

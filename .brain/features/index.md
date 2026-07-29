@@ -50,6 +50,20 @@ features/
 | Analytics | [`analytics/analytics.md`](analytics/analytics.md) | shipped | — |
 | Preview Deployments | [`preview-deployments/preview-deployments.md`](preview-deployments/preview-deployments.md) | shipped | — |
 | Feature Verification | [`feature-verification/feature-verification.md`](feature-verification/feature-verification.md) | shipped | [2026-07-13 ✅ PASS (self-verified via authentication)](authentication/verifications/2026-07-13.md) |
+| Split-Flap Board | [`split-flap-board/split-flap-board.md`](split-flap-board/split-flap-board.md) | shipped | — |
+| Phone Control | [`phone-control/phone-control.md`](phone-control/phone-control.md) | shipped | — |
+| LLM Board Agent | [`llm-board-agent/llm-board-agent.md`](llm-board-agent/llm-board-agent.md) | shipped | — |
+| TV Pairing | [`tv-pairing/tv-pairing.md`](tv-pairing/tv-pairing.md) | in-progress | — |
+| Family Grants | [`family-grants/family-grants.md`](family-grants/family-grants.md) | planned (code complete) | — |
+| Kiosk Display | [`kiosk-display/kiosk-display.md`](kiosk-display/kiosk-display.md) | planned (code complete) | — |
+
+> **Why two features read "planned" with their code written.** feat-010/011/012
+> come from one approved plan and one diff, and the scope policy allows exactly
+> one `in-progress` row at a time. Rather than mark two of them `blocked` —
+> which they are not — the tracker holds them at `planned` until `tv-pairing`
+> ships; they flip in dependency order (010 → 011 → 012) as each one's
+> verification lands. The status here mirrors `feature_list.json`, which is the
+> source of truth `brain check` enforces.
 
 ## Update trigger
 
