@@ -92,6 +92,11 @@
       "not-found": "No TV is waiting on that code. Check it, or reload the TV for a new one.",
       "rate-limited": "Too many attempts. Wait a few minutes and try again.",
       "failed": "Could not pair the TV. Try again in a moment."
+    },
+    "auto": {
+      "created": "All set — we made “{{name}}” for you and the TV is showing it. Rename it anytime in Boards.",
+      "paired": "All set — the TV is now showing {{name}}.",
+      "manual": "Not that board? Choose yourself"
     }
   },
   "devices": {

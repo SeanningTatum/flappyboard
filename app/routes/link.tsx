@@ -5,6 +5,7 @@ import { IconArrowLeft } from "@tabler/icons-react";
 
 import type { Route } from "./+types/link";
 import { loginRedirectUrl } from "@/lib/session";
+import { i18nServer } from "@/i18n/i18n.server";
 import {
   normalizeDeviceCode,
   DEVICE_CODE_LENGTH,
@@ -21,9 +22,8 @@ import {
 } from "@/components/board/console";
 
 /**
- * `/link` — the owner's half of TV pairing: scan the QR on the television (or
- * type the code it shows), pick a board — or name a new one — and the TV flips
- * to it.
+ * `/link` — the owner's half of TV pairing, and the end of the QR journey:
+ * scan the code on the television, sign in if asked, **and the TV is linked.**
  *
  * This is the only place authority actually crosses. Everything the TV did up
  * to this point was addressing — a code names a room and nothing more — and
@@ -31,17 +31,18 @@ import {
  * rests on this page requiring a real session and `approveDeviceCode` refusing
  * any board the caller does not own.
  *
- * The QR carries `?code=<CODE>`, so a scan lands here with nothing left to
- * type; a visitor without a session is sent to `/login` with this exact URL as
- * `next` and comes straight back. Board naming lives here (not behind a second
- * screen) because "scan → sign in → name the board → done" is the whole point
- * of the QR flow.
+ * The QR carries `?code=<CODE>`, and when that code is present the loader
+ * resolves the obvious cases itself: a fresh account gets a board created and
+ * paired, a one-board account pairs that board — zero typing, no stop. Only a
+ * genuinely ambiguous account (several boards) sees the picker, and `?manual=1`
+ * forces it. Naming was deliberately dropped from the flow: the board gets a
+ * default name and `/boards` already renames.
  *
- * Server-action shaped like `/boards`, not a client mutation, for the same
- * reason that page is: the form must work on a phone that has just been handed
- * to somebody, before any JavaScript has settled. The intent track and the
- * field it reveals are driven by `:checked` CSS rather than component state,
- * so that contract includes showing the right input — no hydration required.
+ * Approving in the loader is a GET with a side effect, on purpose. `/tv/claim`
+ * already redeems a single-use credential exactly this way, the code *is* the
+ * authority gate (the scan is the intent), and doing it server-side is what
+ * keeps the automatic flow working with JavaScript disabled — the same
+ * contract the manual form keeps via `:checked` CSS instead of state.
  *
  * Dressed as part of the console, not as an account page: this screen is one
  * step in "point phone at TV", sandwiched between the dark TV and the dark
@@ -57,12 +58,57 @@ export const meta: Route.MetaFunction = () => [
   { name: "theme-color", content: CONSOLE.field },
 ];
 
+/**
+ * The name a board gets when the flow creates it for you. Locale-aware because
+ * it prints verbatim in the owner's dashboard — and a default, never a
+ * decision: `/boards` renames in one dialog.
+ */
+export const defaultBoardName = (locale: string): string =>
+  locale.toLowerCase().startsWith("zh") ? "客厅" : "Living Room";
+
+/**
+ * Whether the loader can pair without asking. `pick` is the honest answer to
+ * ambiguity: with several boards, guessing pairs the wrong TV and the owner
+ * has no way to know until the room goes dark.
+ */
+export type AutoLinkDecision = "create" | "single" | "pick";
+export const resolveAutoLink = (boardCount: number): AutoLinkDecision => {
+  if (boardCount === 0) return "create";
+  if (boardCount === 1) return "single";
+  return "pick";
+};
+
+/** What the loader renders: the auto-paired panel, or the manual form. */
+export type LinkLoaderData =
+  | {
+      readonly mode: "linked";
+      readonly name: string;
+      readonly boardId: string;
+      /** True when this visit also created the board (fresh account). */
+      readonly created: boolean;
+      readonly code: string;
+    }
+  | {
+      readonly mode: "form";
+      readonly boards: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+      readonly code: string | null;
+      /** Set when an auto attempt failed and the form should say why. */
+      readonly autoError: LinkFailure | null;
+    };
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const session = await context.auth.api.getSession({
     headers: request.headers,
   });
   // Anonymous scan → login, then straight back here, code and all.
   if (!session) throw redirect(loginRedirectUrl(request));
+
+  const url = new URL(request.url);
+  // The QR prefills this; a typed visit gets null and the field stays blank.
+  const code = normalizeDeviceCode(url.searchParams.get("code"));
+  // The escape hatch: "not that board" — render the picker even when the
+  // account is unambiguous.
+  const manual = url.searchParams.get("manual") === "1";
 
   const listed = await Effect.runPromiseExit(
     Effect.tryPromise({
@@ -75,10 +121,69 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     ? listed.value.map((board) => ({ id: board.id, name: board.name }))
     : [];
 
-  // The QR prefills this; a typed visit gets null and the field stays blank.
-  const code = normalizeDeviceCode(new URL(request.url).searchParams.get("code"));
+  const form = (autoError: LinkFailure | null): LinkLoaderData => ({
+    mode: "form",
+    boards,
+    code,
+    autoError,
+  });
 
-  return { boards, code };
+  if (code === null || manual) return form(null);
+
+  const decision = resolveAutoLink(boards.length);
+  if (decision === "pick") return form(null);
+
+  let boardId: string;
+  let createdBoardId: string | null = null;
+  let created = false;
+
+  if (decision === "create") {
+    const locale = await i18nServer.getLocale(request);
+    const made = await Effect.runPromiseExit(
+      Effect.tryPromise({
+        try: () => context.trpc.board.create({ name: defaultBoardName(locale) }),
+        catch: (cause) => cause,
+      })
+    );
+    if (Exit.isFailure(made)) return form("create_failed");
+    boardId = made.value.id;
+    createdBoardId = made.value.id;
+    created = true;
+  } else {
+    boardId = boards[0]!.id;
+  }
+
+  const approved = await Effect.runPromiseExit(
+    Effect.tryPromise({
+      try: () => context.trpc.board.approveDeviceCode({ boardId, code }),
+      catch: (cause) => cause,
+    })
+  );
+
+  if (Exit.isFailure(approved)) {
+    // Same rollback discipline as the action: never leave an orphan board
+    // behind a failed approve (see the comment in `action`).
+    if (createdBoardId !== null) {
+      const rollbackId = createdBoardId;
+      await Effect.runPromiseExit(
+        Effect.tryPromise({
+          try: () => context.trpc.board.delete({ boardId: rollbackId }),
+          catch: (cause) => cause,
+        })
+      );
+    }
+    // A failed auto attempt is not a dead end — it is the manual form with
+    // the reason named (the TV usually rotated its code mid-walk).
+    return form(readFailure(approved.cause));
+  }
+
+  return {
+    mode: "linked",
+    name: approved.value.name,
+    boardId,
+    created,
+    code,
+  } satisfies LinkLoaderData;
 }
 
 /**
@@ -241,10 +346,78 @@ export default function LinkTv({
   actionData,
 }: Route.ComponentProps) {
   const { t } = useTranslation("boards");
-  const { boards, code } = loaderData;
   const navigation = useNavigation();
   const pending = navigation.state === "submitting";
   const succeeded = actionData?.ok === true;
+
+  /*
+    The end of the automatic journey: the loader already paired the TV, so
+    this panel is a *receipt*, not a form — what happened, the way onward
+    (the controller), and the one escape (`manual=1`) for "not that board".
+  */
+  if (loaderData.mode === "linked") {
+    const manualUrl = `/link?code=${encodeURIComponent(
+      loaderData.code
+    )}&manual=1`;
+    return (
+      <ConsoleField data-testid="link-root" className="gap-8">
+        <header className="flex flex-col gap-2 px-1">
+          <h1
+            className="text-[13px] font-medium uppercase"
+            style={{ color: CONSOLE.ink, letterSpacing: "0.18em" }}
+          >
+            {t("link.title")}
+          </h1>
+        </header>
+
+        <div
+          className="flex flex-col gap-5"
+          data-testid="link-auto-success"
+          role="status"
+        >
+          <p
+            className="flex items-start gap-2.5 text-[13px] leading-relaxed"
+            style={{ color: CONSOLE.inkDim }}
+          >
+            {/*
+              The lamp again: lit amber means "paired", the same signal the
+              TV's pilot lamp turns off. One square, no pulse — a state.
+            */}
+            <span
+              aria-hidden
+              className="mt-1 size-2 shrink-0"
+              style={{ backgroundColor: CONSOLE.amber }}
+            />
+            {loaderData.created
+              ? t("link.auto.created", { name: loaderData.name })
+              : t("link.auto.paired", { name: loaderData.name })}
+          </p>
+
+          <Link
+            to={`/b/${encodeURIComponent(loaderData.boardId)}/c`}
+            data-testid="link-open-controller"
+            className={INK_KEY}
+            style={INK_KEY_STYLE}
+          >
+            {t("link.openController")}
+          </Link>
+
+          <Link
+            to={manualUrl}
+            data-testid="link-auto-manual"
+            className={`inline-flex min-h-11 touch-manipulation items-center justify-center text-[11px] font-medium uppercase ${FOCUS_RING}`}
+            style={{ color: CONSOLE.inkMute, letterSpacing: "0.16em" }}
+          >
+            {t("link.auto.manual")}
+          </Link>
+        </div>
+      </ConsoleField>
+    );
+  }
+
+  const { boards, code, autoError } = loaderData;
+  const shownFailure =
+    actionData?.ok === false ? actionData.failure : autoError;
 
   return (
     <ConsoleField data-testid="link-root" className="gap-8">
@@ -439,13 +612,13 @@ export default function LinkTv({
           </div>
         )}
 
-        {actionData?.ok === false && (
+        {shownFailure !== null && (
           <p
             className="text-[13px] text-destructive"
             data-testid="link-error"
             role="alert"
           >
-            {t(`link.failure.${actionData.failure}`)}
+            {t(`link.failure.${shownFailure}`)}
           </p>
         )}
 
