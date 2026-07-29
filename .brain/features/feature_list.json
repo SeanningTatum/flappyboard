@@ -193,7 +193,7 @@
         "feat-009"
       ],
       "status": "planned",
-      "evidence": "planned 2026-07-28 from plans/2026-07-28-live-weather.html (reviewed round 1; 5 decisions answered, decisions 6 and 7 still open). Motivated by a measured defect: temperature 6-10C wrong in every configuration tried, plus one invented segment (FEELS LIKE EVENING 5C) recorded in the run-C verification doc. Deferred by decision 5 until feat-010/011/012 are verified and shipped.",
+      "evidence": "planned 2026-07-28 from plans/2026-07-28-live-weather.html (reviewed 2 rounds; ALL 7 decisions answered). Motivated by a measured defect: temperature 6-10C wrong in every configuration tried, plus one invented segment (FEELS LIKE EVENING 5C) recorded in the run-C verification doc. Round 2: cache in a NEW KV binding, location rounded to ~10km with a place-name fallback. BLOCKED on an owner-only 'wrangler kv namespace create' (real credentials, real resource) and deferred by decision 5 behind feat-010/011/012 verification. CRITICAL constraint recorded in the feature doc: the weather service must NOT join makeAppRuntime's merged layer — a merged Effect layer constructs every member, which is how an absent R2 binding once 500'd every request in the app (see feat-003).",
       "owners": [
         "sean"
       ]

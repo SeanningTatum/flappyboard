@@ -91,7 +91,7 @@
     <span>2026-07-28</span> ·
     <span>feature: live-weather (new)</span> ·
     <span class="chip chip-status-reviewed">reviewed</span> ·
-    <span>round 1 — 5 decisions answered, 2 new requirements added</span>
+    <span>round 2 — all 7 decisions answered</span>
   </p>
 </header>
 
@@ -470,7 +470,7 @@ flowchart TD
 
   <div class="decision-card" id="decision-cache" data-brain-action>
     <p><strong>6. Where does the cache live?</strong>
-      <span class="chip chip-high">new — needs an answer</span></p>
+      <span class="chip chip-status-reviewed">answered: add a KV binding</span></p>
     <p>Worth knowing before choosing: <strong>this project has no KV binding today.</strong>
     <code>rules/cloudflare.md</code> lists <code>DATABASE</code> (D1), <code>AI</code>,
     <code>BOARD</code> (Durable Object), <code>EXAMPLE_WORKFLOW</code> and
@@ -525,7 +525,7 @@ flowchart TD
   <div class="decision-card" id="decision-geoloc" data-brain-action>
     <p><strong>7. Inferring the location from the phone — how precise, and what
       happens when it is refused?</strong>
-      <span class="chip chip-high">new — needs an answer</span></p>
+      <span class="chip chip-status-reviewed">answered: round to ~10 km, ask on refusal</span></p>
     <p><code>navigator.geolocation</code> needs a secure context and an explicit
     permission prompt — the same constraint the voice button already lives with, and
     the reason driving voice on a real phone has been an owner-only task. Two things
@@ -573,6 +573,43 @@ flowchart TD
         'Phone geolocation — precision and refusal behaviour?')">Queue answer</button>
     <span class="queue-ack" id="ack-decision-geoloc"></span>
   </div>
+
+  <h3>Consequences of choosing KV</h3>
+
+  <div class="measured" style="border-color: var(--accent)">
+    <p style="margin-top:0"><strong>⚠️ This repo has already been burned by exactly
+    this shape, and the scar is on record.</strong></p>
+    <p><code>feat-003 file-upload</code> is <em>shipped but non-functional</em>
+    because <code>bun setup</code> never provisioned an R2 bucket, so
+    <code>Env</code> has no <code>BUCKET</code> and <code>BucketLive</code> fails at
+    runtime. Worse, the way it failed: <strong>a merged Effect layer constructs every
+    member</strong>, so one absent binding surfaced as
+    <code>Failed to construct AuthApi</code> and <strong>500'd every request in the
+    app</strong> — including routes that never touch R2. That produced the standing
+    rule in <code>rules/services.md</code>: <em>a service whose binding may
+    legitimately be absent does not belong in the global runtime.</em></p>
+    <p style="margin-bottom:0">So two things are non-negotiable for the weather
+    service. <strong>It must not go in <code>makeAppRuntime</code>'s merged layer</strong>
+    — it gets provided ad-hoc in the generate path, the way
+    <code>upload-file.ts</code> provides <code>BucketLive</code> and
+    <code>transcribe.ts</code> provides <code>TranscriptionLive</code>. And note that
+    <code>recipes/add-cf-binding</code> step 5 says "provide layer → app/runtime.ts",
+    which is the pre-R2 advice; the recipe should gain a pointer to this rule so the
+    next person does not follow it into the same hole.</p>
+  </div>
+
+  <p><strong>Owner-only prerequisite.</strong> A KV binding needs a namespace that
+  does not exist yet: <code>wrangler kv namespace create</code> requires real
+  Cloudflare credentials and creates a real resource, so it cannot run from CI or
+  from an agent. It is the same class of one-time owner step as
+  <code>bun run deploy:preview</code> — and skipping it is precisely how
+  <code>feat-003</code> ended up with code that cannot run.</p>
+
+  <p><strong>Declare it twice.</strong> <code>wrangler.jsonc</code> keeps a separate
+  <code>env.preview</code> block, and the file's own comment notes the binding list is
+  <em>identical</em> there. A namespace added only to the default environment gives a
+  preview worker with no <code>CACHE</code> — every PR preview then hits the
+  binding-absent path.</p>
 </section>
 
 <section id="plan-of-record">
@@ -616,8 +653,15 @@ flowchart TD
         <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
       </span>
     </li>
+    <li data-brain-item="8"><strong>Phase 0 — the binding (owner-only, blocks phase 4b).</strong>
+      <span data-item-text data-brain-action>Create the KV namespace with 'wrangler kv namespace create' — real Cloudflare credentials, real resource, cannot run from CI or from an agent — then declare kv_namespaces in BOTH the default and env.preview blocks of wrangler.jsonc and regenerate types with bun run cf-typegen. Acceptance: the binding appears in worker-configuration.d.ts, and a preview deploy sees it too. Until this is done the weather service has no store, which is exactly the state feat-003 file-upload has been stuck in since setup skipped its R2 bucket.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
     <li data-brain-item="6"><strong>Phase 4b — the day cache (round 1).</strong>
-      <span data-item-text data-brain-action>Fetch the day's hourly series in the same call as the current block, cache the whole series for 24h, and read the bucket matching the current hour on each generate. NOT a 24h cache of one reading — that would put a day-old temperature on the board and be worse than the search snippets we are removing. Geocoding results cache separately and indefinitely, since a city's coordinates do not change. Store per decision 6. Acceptance: a second generate for the same city within the window makes zero outbound weather calls (asserted by a stubbed fetch counter), the hour bucket advances correctly across an hour boundary with an injected clock, and a cache miss, a corrupt entry and an expired entry each fall through to a live fetch rather than serving a stale or partial reading.</span>
+      <span data-item-text data-brain-action>Fetch the day's hourly series in the same call as the current block, cache the whole series in KV for 24h using KV's native TTL, and read the bucket matching the current hour on each generate. NOT a 24h cache of one reading — that would put a day-old temperature on the board and be worse than the search snippets we are removing. Geocoding results cache separately with no expiry, since a city's coordinates do not change. The weather service is provided ad-hoc in the generate path, NOT added to the merged global runtime layer — a merged layer constructs every member, and that is how an absent R2 binding once 500'd every request in the app. Acceptance: a second generate for the same city within the window makes zero outbound weather calls (asserted by a stubbed fetch counter), the hour bucket advances correctly across an hour boundary with an injected clock, and a cache miss, a corrupt entry and an expired entry each fall through to a live fetch rather than serving a stale or partial reading.</span>
       <span class="item-controls">
         <button type="button" class="item-x" data-brain-action title="Remove">x</button>
         <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
@@ -681,8 +725,15 @@ flowchart TD
       <tr><td><code>app/lib/board/weather-cache.ts</code></td><td>new</td>
         <td>Pure cache-key and hour-bucket maths, injected clock (round 1).</td></tr>
       <tr><td><code>wrangler.jsonc</code></td><td>edit</td>
-        <td>Only if decision 6 picks KV — and then in <strong>both</strong> the default
-        and <code>preview</code> environments, or preview deploys break.</td></tr>
+        <td><code>kv_namespaces</code> in <strong>both</strong> the default and
+        <code>env.preview</code> blocks. Needs a namespace id from an owner-only
+        <code>wrangler kv namespace create</code>.</td></tr>
+      <tr><td><code>app/runtime.ts</code></td><td><strong>deliberately unchanged</strong></td>
+        <td>The weather service stays <em>out</em> of the merged global layer — see the
+        R2 precedent. Provided ad-hoc in the generate path instead.</td></tr>
+      <tr><td><code>.brain/recipes/add-cf-binding.md</code></td><td>edit</td>
+        <td>Step 5 still says "provide layer → app/runtime.ts", which predates the R2
+        outage. Add the pointer to <code>rules/services.md</code>.</td></tr>
       <tr><td><code>app/components/board/message-editor.tsx</code> or the controller root</td><td>edit</td>
         <td>Geolocation request + rounding before it leaves the phone (round 1).</td></tr>
       <tr><td><code>.brain/features/live-weather/…</code></td><td>new</td>
@@ -938,6 +989,18 @@ sequenceDiagram
       </span></li>
     <li data-brain-item="13"><label><input type="checkbox">
       <span data-item-text data-brain-action>Geolocation: coordinates are rounded before they leave the phone, asserted on the outbound request payload rather than on the UI</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="15"><label><input type="checkbox">
+      <span data-item-text data-brain-action>The binding-absent path: with CACHE missing from Env, the weather route degrades to the honest-unavailable board and every OTHER route in the app still works — the specific regression that took the whole app down when R2 was absent</span></label>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span></li>
+    <li data-brain-item="16"><label><input type="checkbox">
+      <span data-item-text data-brain-action>Build asserts kv_namespaces is present in BOTH envs of the emitted build/server/wrangler.json — the same check the BOARD durable_objects binding got in the split-flap-board verification</span></label>
       <span class="item-controls">
         <button type="button" class="item-x" data-brain-action title="Remove">x</button>
         <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>

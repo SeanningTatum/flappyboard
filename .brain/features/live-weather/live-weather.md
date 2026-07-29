@@ -2,11 +2,13 @@
 
 _Last updated: 2026-07-28_
 
-**Status: planned.** Design reviewed round 1 —
-`plans/2026-07-28-live-weather.html`. Five decisions answered; **two still open**
-(decision 6, where the cache lives; decision 7, geolocation precision). Deferred
-by decision 5 until `[[tv-pairing]]`, `[[family-grants]]` and `[[kiosk-display]]`
+**Status: planned — design fully approved.** Reviewed over two rounds,
+`plans/2026-07-28-live-weather.html`. **All 7 decisions answered.** Deferred by
+decision 5 until `[[tv-pairing]]`, `[[family-grants]]` and `[[kiosk-display]]`
 are verified and shipped.
+
+Blocked on one **owner-only** step before any code can run: `wrangler kv namespace
+create` (real credentials, real resource — not runnable from CI or by an agent).
 
 ## Purpose
 Stop the board asserting weather figures it cannot stand behind. Today
@@ -70,12 +72,37 @@ voice button already lives under. On refusal it falls back to the place-name pat
 **no default location is invented**, because a board confidently showing the wrong
 city is worse than one asking which city.
 
-## Open decisions
+## Decisions 6 and 7 (round 2)
 
-| # | Question | Note |
-|---|----------|------|
-| 6 | Where does the cache live? | **This project has no KV binding today** — `rules/cloudflare.md` lists `DATABASE`, `AI`, `BOARD`, `EXAMPLE_WORKFLOW`, `ASSETS`. KV means a new binding in *both* the default and `preview` envs. Alternative with precedent: a per-city DO via `idFromName("weather:" + lat + "," + lon)`, the same trick `[[tv-pairing]]` uses for device codes. |
-| 7 | Geolocation precision and refusal behaviour | Recommended: round to ~10 km (weather is identical across it, the household's exact address never leaves the phone, and the cache key hits far more often). Third option — ask once and store on the board — arguably fits a wall-mounted display better, since a board's location is fixed and a phone's is not. |
+**Cache lives in KV** — a new binding. Right shape for the job: global,
+read-optimised, and native TTL means the 24-hour expiry is the platform's problem
+rather than ours. Two consequences follow, and neither is optional.
+
+> ⚠️ **The weather service must NOT go in `makeAppRuntime`'s merged layer.**
+> `feat-003 file-upload` is shipped-but-broken because setup never provisioned R2,
+> and the way it broke is the lesson: **a merged Effect layer constructs every
+> member**, so one absent binding surfaced as `Failed to construct AuthApi` and
+> **500'd every request in the app**, including routes that never touch R2. Hence
+> the standing rule in `rules/services.md`. Provide it ad-hoc in the generate path,
+> the way `upload-file.ts` provides `BucketLive` and `transcribe.ts` provides
+> `TranscriptionLive`.
+>
+> Note `recipes/add-cf-binding` step 5 still says *"provide layer →
+> app/runtime.ts"* — that is the pre-R2 advice, and the recipe should gain a
+> pointer to this rule so the next person doesn't follow it into the same hole.
+
+Also: declare `kv_namespaces` in **both** the default and `env.preview` blocks of
+`wrangler.jsonc` (the file's own comment notes the list is identical there). A
+namespace added only to the default env leaves every PR preview on the
+binding-absent path.
+
+**Location rounded to ~10 km**, falling back to asking for a place name when
+permission is refused. Weather is identical across that radius so rounding costs
+no accuracy, the household's exact address never leaves the phone, and the coarser
+key makes the cache hit far more often. Needs a secure context — the same
+constraint the voice button already lives under. **No default location is
+invented**: a board confidently showing the wrong city is worse than one asking
+which city.
 
 ## Key Files (planned)
 
@@ -83,6 +110,7 @@ city is worse than one asking which city.
 |------|------|
 | `app/lib/board/weather.ts` | Pure core — schemas, WMO code map, unit derivation, board renderer |
 | `app/lib/board/weather-cache.ts` | Pure cache-key and hour-bucket maths, injected clock |
+| `wrangler.jsonc` | `kv_namespaces` in **both** the default and `env.preview` blocks |
 | `app/services/weather.ts` | Effect Tag + Layer over Open-Meteo |
 | `app/services/board-agent.ts` | Router schema, third `Route`, weather prompt, pre-fetch |
 | `app/models/errors/board.ts` | `WeatherUnavailableError` |
@@ -110,3 +138,4 @@ staleness. Not "looks right": the delta gets stated as a number.
 | Date | Type | Description |
 |------|------|-------------|
 | 2026-07-28 | feature | Registered as planned from the reviewed live-weather plan (round 1) |
+| 2026-07-28 | decision | Round 2: cache in a new KV binding; location rounded to ~10 km with a place-name fallback. All 7 decisions answered; blocked on an owner-only `wrangler kv namespace create` |
