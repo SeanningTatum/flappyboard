@@ -72,19 +72,23 @@
   },
   "link": {
     "title": "连接电视",
-    "subtitle": "在电视上打开 /tv,然后输入屏幕上显示的代码。",
+    "subtitle": "扫描电视上的二维码 —— 或输入屏幕上显示的代码。",
     "codeLabel": "电视上的代码",
     "codePlaceholder": "K7Q2XM",
-    "boardLabel": "显示这块板子",
+    "boardLabel": "电视要显示什么?",
+    "pickExisting": "已有看板",
+    "pickNew": "新看板",
+    "newBoardPlaceholder": "客厅",
     "submit": "配对电视",
     "submitting": "配对中…",
     "success": "配对成功,电视正在显示 {{name}}。",
-    "emptyTitle": "还没有板子",
-    "emptyBody": "请先创建一块板子 —— 电视总得有东西可显示。",
-    "emptyAction": "前往板子列表",
+    "openController": "打开控制页",
     "failure": {
       "invalid-code": "代码无效。代码为 6 位,请与电视上显示的完全一致。",
       "no-board": "请选择电视要显示的板子。",
+      "no-name": "请为新看板命名。",
+      "name_too_long": "看板名称过长。",
+      "create_failed": "创建看板失败,请稍后再试。",
       "not-found": "没有电视在等待该代码。请核对代码,或重新加载电视以获取新代码。",
       "rate-limited": "尝试次数过多,请几分钟后再试。",
       "failed": "配对失败,请稍后再试。"
@@ -117,6 +121,7 @@
     "nav": "板子",
     "title": "你的板子",
     "description": "创建一块翻页板,在电视上打开它的地址,然后用手机控制它。",
-    "cta": "打开板子列表"
+    "cta": "打开板子列表",
+    "link_cta": "连接电视"
   }
 }

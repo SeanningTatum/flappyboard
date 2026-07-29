@@ -72,19 +72,23 @@
   },
   "link": {
     "title": "Link a TV",
-    "subtitle": "Open /tv on the television, then type the code it shows.",
+    "subtitle": "Scan the QR on the TV — or type the code it shows.",
     "codeLabel": "Code on the TV",
     "codePlaceholder": "K7Q2XM",
-    "boardLabel": "Show this board",
+    "boardLabel": "What should the TV show?",
+    "pickExisting": "Existing board",
+    "pickNew": "New board",
+    "newBoardPlaceholder": "Living Room",
     "submit": "Pair the TV",
     "submitting": "Pairing…",
     "success": "Paired. The TV is now showing {{name}}.",
-    "emptyTitle": "No boards yet",
-    "emptyBody": "Make a board first — a TV has to be pointed at something.",
-    "emptyAction": "Go to boards",
+    "openController": "Open the controller",
     "failure": {
       "invalid-code": "That is not a valid code. It is 6 characters, exactly as shown on the TV.",
       "no-board": "Pick which board the TV should show.",
+      "no-name": "Give the new board a name.",
+      "name_too_long": "That board name is too long.",
+      "create_failed": "Could not create the board. Try again in a moment.",
       "not-found": "No TV is waiting on that code. Check it, or reload the TV for a new one.",
       "rate-limited": "Too many attempts. Wait a few minutes and try again.",
       "failed": "Could not pair the TV. Try again in a moment."
@@ -117,6 +121,7 @@
     "nav": "Boards",
     "title": "Your boards",
     "description": "Create a split-flap board, open its address on a TV, and drive it from your phone.",
-    "cta": "Open boards"
+    "cta": "Open boards",
+    "link_cta": "Link a TV"
   }
 }

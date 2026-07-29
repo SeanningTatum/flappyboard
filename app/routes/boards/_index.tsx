@@ -477,6 +477,21 @@ export default function BoardsIndex({ loaderData }: Route.ComponentProps) {
             </Link>
           </Button>
           <div className="flex items-center gap-2">
+            {/*
+              `/link` backs out to this page, so this is where it has to be
+              reachable from — otherwise the pairing half of the TV flow is a
+              hand-typed URL. Hidden while there are no boards: pairing a TV to
+              nothing is a dead end, and the empty state already points at
+              creating the first board.
+            */}
+            {!isEmpty && (
+              <Button asChild variant="outline" size="sm">
+                <Link to="/link" data-testid="boards-link-tv">
+                  <IconDeviceTv className="size-4" />
+                  {t("dashboard.link_cta")}
+                </Link>
+              </Button>
+            )}
             <LanguageSwitcher compact />
             <ThemeToggle />
           </div>

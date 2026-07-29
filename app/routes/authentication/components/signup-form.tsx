@@ -17,9 +17,10 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Link, useNavigate } from "react-router"
+import { Link, useNavigate, useSearchParams } from "react-router"
 import { authClient } from "@/auth/client"
 import { effectResolver } from "@/lib/effect-form"
+import { safeNextPath } from "@/lib/session"
 import { useForm } from "react-hook-form"
 import { SignupSchema, type SignupInput } from "@/lib/schemas/auth"
 import { useState } from "react"
@@ -29,6 +30,10 @@ interface SignupFormProps extends React.ComponentProps<"div"> { }
 
 export function SignupForm({ className, ...props }: SignupFormProps) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Where the visitor was headed before we asked them for an account (e.g. a
+  // TV-pairing QR scan) — validated, so it can never point off-origin.
+  const next = safeNextPath(searchParams.get("next"))
   const [authError, setAuthError] = useState<string>()
   const { t } = useTranslation("auth")
 
@@ -57,7 +62,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         return
       }
 
-      navigate("/dashboard")
+      navigate(next ?? "/dashboard")
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : t("signup.error_failed"))
     }
@@ -181,7 +186,10 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                 </Button>
                 <p className="text-center text-sm text-muted-foreground">
                   {t("signup.has_account")}{" "}
-                  <Link to="/login" className="underline underline-offset-4">
+                  <Link
+                    to={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
+                    className="underline underline-offset-4"
+                  >
                     {t("signup.login_link")}
                   </Link>
                 </p>

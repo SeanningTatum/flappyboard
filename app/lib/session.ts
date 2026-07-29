@@ -11,9 +11,33 @@ export type Session = NonNullable<
 >;
 
 /**
- * Loader auth gate: resolves the current session or redirects to `/login`.
- * Centralizes the `context.auth.api.getSession({ headers })` + redirect
- * branching duplicated across the admin/dashboard layouts and auth routes.
+ * Where a gated page sends an anonymous visitor, and where login sends them
+ * back to afterwards. Only same-origin absolute paths are honoured: a `next`
+ * of `//evil.com` is scheme-relative and would turn the login redirect into an
+ * open redirect, so anything that is not exactly `/…` is dropped.
+ */
+export const safeNextPath = (raw: string | null): string | null => {
+  if (raw === null || raw === "") return null;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+  return raw;
+};
+
+/**
+ * `/login?next=<path+query>` for the URL being gated, so a visitor who was
+ * headed somewhere real (a QR scan landing on `/link?code=…`) resumes there
+ * after signing in instead of landing on the dashboard.
+ */
+export const loginRedirectUrl = (request: Request): string => {
+  const url = new URL(request.url);
+  const next = `${url.pathname}${url.search}`;
+  return `/login?next=${encodeURIComponent(next)}`;
+};
+
+/**
+ * Loader auth gate: resolves the current session or redirects to `/login`
+ * (carrying the gated URL as `?next=`). Centralizes the
+ * `context.auth.api.getSession({ headers })` + redirect branching duplicated
+ * across the admin/dashboard layouts and auth routes.
  */
 export async function requireSession(
   request: Request,
@@ -22,7 +46,7 @@ export async function requireSession(
   const session = await context.auth.api.getSession({
     headers: request.headers,
   });
-  if (!session) throw redirect("/login");
+  if (!session) throw redirect(loginRedirectUrl(request));
   return session;
 }
 

@@ -15,7 +15,7 @@ import {
   type BoardColor,
   type BoardGrid,
 } from "@/lib/schemas/board";
-import { BoardFrame } from "./board-frame";
+import { BoardFrame, MASK_FILL } from "./board-frame";
 import {
   FLAP_FACE_ATTR,
   FLAP_GLYPH_ATTR,
@@ -85,9 +85,26 @@ const FIELD_HEIGHT = "min(50vw - 7vmin, 100vh - 14vmin)";
 const GLYPH_SIZE =
   "clamp(0.5rem, calc(min(100vw - 14vmin, 200vh - 28vmin) / 26), 14rem)";
 
+/**
+ * The inline mirror's glyph size: the same `field width / 26` derivation as the
+ * TV, but off the *container* instead of the viewport. `cqw` is the reason the
+ * variant wrapper carries `container-type: inline-size`. Phone browsers only —
+ * the Tizen path (`display`) never sees a container query, which is a feature
+ * `flap-tile.tsx` deliberately avoids for the TV.
+ */
+const INLINE_GLYPH_SIZE = "calc(100cqw / 26)";
+
 export interface BoardGridViewProps {
   readonly grid: BoardGrid;
   readonly className?: string;
+  /**
+   * `display` (default) is the TV: the field and its `BoardFrame` enclosure
+   * sized to the viewport exactly as they always have been. `inline` is the
+   * phone mirror: no enclosure (the controller's console plate is the
+   * enclosure), field sized to its container, glyphs off container width.
+   * The animation loop is sizing-agnostic and identical for both.
+   */
+  readonly variant?: "display" | "inline";
   /**
    * Called from the animation loop, every frame, with the number of tiles still
    * in motion — 0 on the frame the board settles. Drives the clatter (see
@@ -97,7 +114,12 @@ export interface BoardGridViewProps {
   readonly onMotion?: (movingCells: number) => void;
 }
 
-export function BoardGridView({ grid, className, onMotion }: BoardGridViewProps) {
+export function BoardGridView({
+  grid,
+  className,
+  variant = "display",
+  onMotion,
+}: BoardGridViewProps) {
   const fieldRef = useFlapAnimation(grid, onMotion);
 
   /**
@@ -120,36 +142,60 @@ export function BoardGridView({ grid, className, onMotion }: BoardGridViewProps)
     [grid]
   );
 
-  return (
-    <BoardFrame className={className}>
-      <div
-        ref={fieldRef}
-        // No `gap`: the lattice is not a gap showing the page behind, it is the
-        // frame's own mask showing through the space each flap leaves inside its
-        // cell (see `TILE_INSET_*` in flap-tile). That is why this element has no
-        // background of its own — the mask is one continuous surface, exactly as
-        // it is on the real object, and the old gap-plus-radius combination is
-        // what produced the decorative dot lattice.
-        className={cn("grid")}
-        style={{
-          width: FIELD_WIDTH,
-          height: FIELD_HEIGHT,
-          aspectRatio: `${BOARD_COLS} / ${BOARD_ROWS * 2}`,
-          fontSize: GLYPH_SIZE,
-          gridTemplateColumns: `repeat(${BOARD_COLS}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${BOARD_ROWS}, minmax(0, 1fr))`,
-          // Keeps the field honest if a future caller ever renders the frame at
-          // a size the bezel can't cover.
-          maxWidth: `calc(100% - 2 * ${BEZEL})`,
-        }}
-        data-testid="board-grid"
-        role="img"
-        aria-label={gridToText(grid)}
-      >
-        {tiles}
-      </div>
-    </BoardFrame>
+  const field = (
+    <div
+      ref={fieldRef}
+      // No `gap`: the lattice is not a gap showing the page behind, it is the
+      // frame's own mask showing through the space each flap leaves inside its
+      // cell (see `TILE_INSET_*` in flap-tile). That is why this element has no
+      // background of its own — the mask is one continuous surface, exactly as
+      // it is on the real object, and the old gap-plus-radius combination is
+      // what produced the decorative dot lattice.
+      className={cn("grid")}
+      style={
+        variant === "inline"
+          ? {
+              width: "100%",
+              aspectRatio: `${BOARD_COLS} / ${BOARD_ROWS * 2}`,
+              fontSize: INLINE_GLYPH_SIZE,
+              gridTemplateColumns: `repeat(${BOARD_COLS}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${BOARD_ROWS}, minmax(0, 1fr))`,
+            }
+          : {
+              width: FIELD_WIDTH,
+              height: FIELD_HEIGHT,
+              aspectRatio: `${BOARD_COLS} / ${BOARD_ROWS * 2}`,
+              fontSize: GLYPH_SIZE,
+              gridTemplateColumns: `repeat(${BOARD_COLS}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${BOARD_ROWS}, minmax(0, 1fr))`,
+              // Keeps the field honest if a future caller ever renders the frame at
+              // a size the bezel can't cover.
+              maxWidth: `calc(100% - 2 * ${BEZEL})`,
+            }
+      }
+      data-testid="board-grid"
+      role="img"
+      aria-label={gridToText(grid)}
+    >
+      {tiles}
+    </div>
   );
+
+  if (variant === "inline") {
+    // The mask surface the TV gets from `BoardFrame`, quoted flat: the gaps
+    // between flaps must read as painted metal, not as the console plate behind.
+    return (
+      <div
+        className={className}
+        style={{ containerType: "inline-size", backgroundImage: MASK_FILL }}
+        data-testid="board-mirror"
+      >
+        {field}
+      </div>
+    );
+  }
+
+  return <BoardFrame className={className}>{field}</BoardFrame>;
 }
 
 /**

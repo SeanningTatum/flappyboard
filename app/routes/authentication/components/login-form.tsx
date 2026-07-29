@@ -16,9 +16,10 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Link, useNavigate } from "react-router"
+import { Link, useNavigate, useSearchParams } from "react-router"
 import { authClient } from "@/auth/client"
 import { effectResolver } from "@/lib/effect-form"
+import { safeNextPath } from "@/lib/session"
 import { useForm } from "react-hook-form"
 import { LoginSchema, type LoginInput } from "@/lib/schemas/auth"
 import { useState } from "react"
@@ -28,6 +29,10 @@ interface LoginFormProps extends React.ComponentProps<"div"> { }
 
 export function LoginForm({ className, ...props }: LoginFormProps) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Where the visitor was headed before we asked them to sign in (e.g. a
+  // TV-pairing QR scan) — validated, so it can never point off-origin.
+  const next = safeNextPath(searchParams.get("next"))
   const [authError, setAuthError] = useState<string>()
   const { t } = useTranslation("auth")
 
@@ -53,7 +58,7 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
         return
       }
 
-      navigate("/dashboard")
+      navigate(next ?? "/dashboard")
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : t("login.error_failed"))
     }
@@ -150,7 +155,10 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
                 </Button>
                 <p className="text-center text-sm text-muted-foreground">
                   {t("login.no_account")}{" "}
-                  <Link to="/sign-up" className="underline underline-offset-4">
+                  <Link
+                    to={next ? `/sign-up?next=${encodeURIComponent(next)}` : "/sign-up"}
+                    className="underline underline-offset-4"
+                  >
                     {t("login.sign_up_link")}
                   </Link>
                 </p>

@@ -21,6 +21,43 @@
 
 ---
 
+## 2026-07-29 — Shipped THREE features in one session on main. feat-014 qr-first-tv-link: /tv defaults to a QR encoding /link?code=, requireSession preserves the gated URL as validated ?next= (login+sign-up thread it), /link creates+names a board inline with rollback-safe create-and-approve (verification caught the orphan), success hands off to the controller. feat-015 controller-board-mirror: BoardGridView variant=inline (container-sized, silent) in a collapsible section on the controller — the phone shows the live board, TV path byte-untouched. feat-016 pairing-experience-redesign (refero-guided, direct build, extend-the-hardware-aesthetic): /tv and /link brought onto the console system (pilot lamp, plate QR, readout code, ConsoleField shared, SegmentTrack with pure :checked CSS reveal, ink keys, amber outline focus, color-scheme/theme-color metas); login deliberately left light. Verification found+fixed two real defects before ship: non-atomic create (orphan board) and a dead focus ring (inline box-shadow vs ring utility -> outline). Gates: typecheck 0, 1201 tests, build 0, e2e 2/2, harness 7/7, brain check clean. Verdict docs: qr-first-tv-link/verifications/2026-07-29.md (17+2), controller-board-mirror/verifications/2026-07-29.md (11), pairing-experience-redesign/verifications/2026-07-29.md (26+5). All UNCOMMITTED on main.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Commit the three-feature delta (reviewer should look at link.tsx/tv.tsx/console.tsx + locales). Then feat-013 live-weather remains the only planned feature (blocked on owner wrangler kv namespace create). Still-open owner calls from the TV trio: wedged-socket invisibility, revoke-all dead rows, TV power-cycle cookie survival.
+
+---
+
+## 2026-07-29 — shipped pairing-experience-redesign: Browser-verified PASS (.brain/features/pairing-experience-redesign/verifications/2026-07-29.md, 26 assertions + 5 re-che
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — shipped controller-board-mirror: Browser-verified PASS (.brain/features/controller-board-mirror/verifications/2026-07-29.md, 11 assertions, walk run 3x):
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — shipped qr-first-tv-link: Browser-verified PASS (.brain/features/qr-first-tv-link/verifications/2026-07-29.md, 17 assertions + 2-addendum): TV QR 
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — feat-014 qr-first-tv-link verified PASS: QR→login round-trip→inline create+name→TV flip (144 tiles, fb_device cookie)→controller; E1 open-redirect dropped, E2 bogus code rejected. Finding: create-and-approve non-atomic (orphan board on bogus code).
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Parent to review finding + brain ship qr-first-tv-link
+
+---
+
 ## 2026-07-29 — Shipped feat-012 kiosk-display — the TV living-room trio (010/011/012) is now fully shipped. The first kiosk walk measured a real defect: the watchdog's one-shot reload looped because the latch was a useRef that window.location.reload() resets (second reload at +121s). Fixed with createReloadLatch in kiosk.ts — sessionStorage-backed, one reload per outage, cleared on socket-live (re-arms), unreadable storage degrades to NO reload. Walk 2 PASS on the previously failing claim: no second reload across a 300s window, then a second outage re-armed the latch (+152s). Regression with drift active green: 144 tiles, 24x6, scrollable=false, drift tick at exactly 240.1s. Samsung-browser setup recipe written (recipes/samsung-tv-setup.md). Gate: typecheck 0, 1191 tests, build 0, e2e 2/2, harness 7/7, brain check clean. Uncommitted on worktree-tv-living-room (branch ahead 9 + this delta).
 - branch: `worktree-tv-living-room`
 - in-progress feature: none

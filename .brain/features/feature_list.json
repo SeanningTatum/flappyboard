@@ -197,6 +197,52 @@
       "owners": [
         "sean"
       ]
+    },
+    {
+      "id": "feat-014",
+      "name": "QR-First TV Link",
+      "slug": "qr-first-tv-link",
+      "doc": ".brain/features/qr-first-tv-link/qr-first-tv-link.md",
+      "description": "Make the QR code the default on /tv: the QR encodes /link?code=<CODE>, a logged-out scan lands on /login and returns via a validated ?next= param, and /link can create+name a board inline (create-and-approve) instead of requiring an existing board. Typed 6-char code stays as fallback; pairing protocol unchanged.",
+      "dependencies": [
+        "feat-010"
+      ],
+      "status": "shipped",
+      "evidence": "Browser-verified PASS (.brain/features/qr-first-tv-link/verifications/2026-07-29.md, 17 assertions + 2-addendum): TV QR encodes /link?code=4UG28E (data-link-url asserted), zero-cookie phone scan lands on /login?next= and round-trips back with the code prefilled, create+name pairs inline, TV flips to exactly 144 flap-tiles with one HttpOnly fb_device_<boardId> cookie and no reload, controller reachable from success. Error paths: ?next=//evil.com never leaves origin; bogus code refused with no TV change. Verification found create-and-approve non-atomic (orphan board on bogus code) — fixed with rollback delete, re-verified R1 (36->36 boards, no orphan) R2 (success hides submit, LUBG4H paired). Gate: typecheck 0, 1201 tests, build 0, e2e 2/2, harness-check clean.",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-015",
+      "name": "Controller Board Mirror",
+      "slug": "controller-board-mirror",
+      "doc": ".brain/features/controller-board-mirror/controller-board-mirror.md",
+      "description": "The phone controller (/b/:boardId/c) renders the live board inline — a collapsible, silent, container-sized BoardGridView 'inline' variant fed by the socket the controller already holds — so the operator never has to look at the TV.",
+      "dependencies": [
+        "feat-008"
+      ],
+      "status": "shipped",
+      "evidence": "Browser-verified PASS (.brain/features/controller-board-mirror/verifications/2026-07-29.md, 11 assertions, walk run 3x): mirror open by default with exactly 144 flap-tiles; write from the same phone updates the mirror board-grid aria-label live with no reload and settles to data-flap-moving=0; collapse toggle removes/restores the grid; TV display route unaffected (144 tiles in board-frame, zero board-mirror elements); reduced-motion emulation updates instantly, zero jsErrors. Gate: typecheck 0, 1201 tests, build 0, e2e 2/2, harness-check clean.",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-016",
+      "name": "Pairing Experience Redesign",
+      "slug": "pairing-experience-redesign",
+      "doc": ".brain/features/pairing-experience-redesign/pairing-experience-redesign.md",
+      "description": "Refero-guided redesign of the pairing+controller journey: bring /tv and /link onto the console design system (tonal ladder, hairline-lip plates, wells, SegmentTrack, amber pilot lamp, mono readouts), dark-form technical musts (color-scheme, theme-color, focus-visible bezels, touch targets), and Orientation+Status+Action copy. Login stays on the app light theme (account door, not remote).",
+      "dependencies": [
+        "feat-014",
+        "feat-015"
+      ],
+      "status": "shipped",
+      "evidence": "Browser-verified PASS (.brain/features/pairing-experience-redesign/verifications/2026-07-29.md, 26 assertions + 5 re-checks): measured console rgb values on /tv (bg 0,0,0; QR plate 21,21,21; readout 34,34,38; amber pilot lamp 255,204,0; color-scheme/theme-color metas) and /link (wells 14,14,16; track 34,34,38); full journey regression scan->login->name->TV flips 144->controller mirror; no-JS contract proven with JavaScript disabled (CSS :checked reveal + native POST paired); a11y: 48px submit, 44px mirror toggle, role=status/alert, bogus-code no orphan (39->39); login seam intentionally light. Walk caught E1: focus ring dead under inline box-shadow — fixed with amber outline composition, re-verified focused+unfocused on all three INK_KEY/well consumers. Gate: typecheck 0, 1201 tests, build 0, e2e 2/2 (earlier), harness-check clean.",
+      "owners": [
+        "sean"
+      ]
     }
   ]
 }
