@@ -21,6 +21,29 @@
 
 ---
 
+## 2026-07-29 — Shipped feat-012 kiosk-display — the TV living-room trio (010/011/012) is now fully shipped. The first kiosk walk measured a real defect: the watchdog's one-shot reload looped because the latch was a useRef that window.location.reload() resets (second reload at +121s). Fixed with createReloadLatch in kiosk.ts — sessionStorage-backed, one reload per outage, cleared on socket-live (re-arms), unreadable storage degrades to NO reload. Walk 2 PASS on the previously failing claim: no second reload across a 300s window, then a second outage re-armed the latch (+152s). Regression with drift active green: 144 tiles, 24x6, scrollable=false, drift tick at exactly 240.1s. Samsung-browser setup recipe written (recipes/samsung-tv-setup.md). Gate: typecheck 0, 1191 tests, build 0, e2e 2/2, harness 7/7, brain check clean. Uncommitted on worktree-tv-living-room (branch ahead 9 + this delta).
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Commit the kiosk delta, then feat-013 live-weather is unblocked (010/011/012 all shipped+verified). Owner calls queued: (1) wedged-socket invisibility — heartbeat vs doc-scope; (2) revoke-all leaves dead rows in the owner device list; (3) owner-only hardware tests — 8h soak, TV power-cycle cookie survival
+
+---
+
+## 2026-07-29 — shipped kiosk-display: Browser walk PASS (verifications/2026-07-29.md, two walks): 144 tiles / 24x6 / scrollable=false WITH drift active, drift
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — Kickoff: feat-012 kiosk-display closeout. family-grants committed as fd8d654 (pre-commit gate green). kiosk code was complete since 2026-07-28; what it owes is the drift-on regression walk (144 tiles / 24x6 / scrollable=false), the one-shot watchdog reload proof, and the Samsung-browser setup recipe. Soak + real TV stay owner-only.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Browser-verification walk on the display route, write recipes/samsung-tv-browser setup doc, then ship with the soak flagged
+
+---
+
 ## 2026-07-29 — Shipped feat-011 family-grants. The 2026-07-28 walk's finding 1 (device naming half-implemented, decision 4 unreachable) closed with the owner-ratified post-pairing offer: claim returns deviceName, DeviceNamePrompt on the controller for unnamed grant phones, nameDevice mutation names the caller's own grant by nonce (never on the wire), decideName keeps touch invariants (tombstones unresurrectable, unknown nonce creates the record for grandfathered phones). Second browser walk PASS on all 5 measured claims including the kill shot — un-pairing the row selected BY ITS NAME gave that phone 401+rescan while the sibling kept writing 200. Gate: typecheck 0, 1185 tests (+19), build 0, e2e 2/2 (first run's auth-spec failure was flake, green on re-run), harness 7/7. Also today: flappyboard-preview bootstrapped with a real wrangler deploy (v221570c8) — Deploy preview should be green on future PRs. OPEN owner calls: (1) revoke-all leaves dead phones' rows in the owner list — should the list say so? (2) the decisive tv-pairing test is still owner-only: power-cycle the real Samsung TV, confirm fb_device survives. All work UNCOMMITTED on worktree-tv-living-room (branch also 8 ahead of origin).
 - branch: `worktree-tv-living-room`
 - in-progress feature: none

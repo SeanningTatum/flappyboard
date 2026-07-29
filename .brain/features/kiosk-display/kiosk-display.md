@@ -1,8 +1,10 @@
 # Feature: Kiosk Display
 
-_Last updated: 2026-07-28_
+_Last updated: 2026-07-29_
 
-**Status: in-progress — code complete, the 8h soak and the TV walk outstanding.**
+**Status: shipped 2026-07-29.** Verified in `verifications/2026-07-29.md`
+(two walks: the first measured a watchdog reload loop — fixed and re-walked to
+PASS). The 8h soak and the real Samsung TV walk remain owner-only, below.
 Design approved in plan review round 1 —
 `plans/2026-07-28-tv-living-room.html`.
 
@@ -107,12 +109,24 @@ There is no DOM test environment in this repo (`environment: "node"`, no jsdom),
 so all behaviour lives in `createWakeLockEngine(host)` with the browser injected —
 the same seam `use-board-socket.ts` already establishes. 21 tests.
 
-### Exactly one reload, ever
+### Exactly one reload per outage, never a loop
 
-`shouldReload` is gated on a `reloaded` flag the caller never resets. A reload
-loop on a wall-mounted screen is strictly worse than a stale board: the board at
-least still shows the last message, whereas a page reloading every two minutes
-shows nothing, forever.
+`shouldReload` is gated on a latch, and the latch lives in `sessionStorage`
+(`createReloadLatch`), because the first implementation kept it in a
+page-lifetime `useRef` that `window.location.reload()` itself resets — measured
+in the 2026-07-29 walk as a second reload at +121s, i.e. a slow loop for the
+whole outage. The latch survives the reload it triggers, so a dead socket gets
+exactly one reload no matter how long the outage lasts; it is cleared when the
+socket is observed live again, so a *separate* later outage earns its one
+reload. A store that cannot be read or written degrades to **no reload** —
+a reload loop on a wall-mounted screen is strictly worse than a stale board:
+the board at least still shows the last message, whereas a page reloading
+every two minutes shows nothing, forever.
+
+Known limit, accepted for now: a *wedged* socket (server gone, client sees no
+close frame) is invisible to the watchdog — the page believes it is live. Only
+the visibility-resume resync detects it. Closing that gap wants an app-level
+heartbeat; recorded as finding 2 in `verifications/2026-07-29.md`.
 
 ### The spinner keeps the grid
 
@@ -125,16 +139,16 @@ pretend to be live. Reuses the existing `status.*` copy plus one new key
 
 | File | What landed |
 |------|-------------|
-| `app/lib/board/kiosk.ts` | new — `driftOffset`, `isDimHour`/`dimOpacity`, `shouldReload` and their constants (22 tests) |
+| `app/lib/board/kiosk.ts` | new — `driftOffset`, `isDimHour`/`dimOpacity`, `shouldReload`, `createReloadLatch` and their constants (28 tests) |
 | `app/hooks/use-wake-lock.ts` | new — Wake Lock with a video-first fallback, testable without a DOM (21 tests) |
 | `app/components/board/board-offline.tsx` | new — reconnect scrim over the retained grid (16 tests) |
 | `app/routes/board/display.tsx` | wiring: wake lock, fullscreen on the existing gesture, watchdog, drift, dim, spinner; `data-drift` and `data-dimmed` so the soak can assert from the DOM |
 
-## Still outstanding
+## Still outstanding (owner-only)
 
 - The 8h unattended soak on the real TV.
-- Regression with drift active: 144 tiles, 24×6, `scrollable=false`.
-- The Samsung-browser setup recipe (phase 4) — not yet written.
+- The real Samsung TV walk (decision 2's decisive test) — setup runbook:
+  [`../../recipes/samsung-tv-setup.md`](../../recipes/samsung-tv-setup.md).
 
 ## Changelog
 
@@ -142,3 +156,4 @@ pretend to be live. Reuses the existing `status.*` copy plus one new key
 |------|------|-------------|
 | 2026-07-28 | feature | Registered as planned from the reviewed TV living-room plan |
 | 2026-07-28 | feature | Built. Wake lock, fullscreen on the existing gesture, one-shot watchdog, reconnect scrim, drift + idle dim |
+| 2026-07-29 | fix | Watchdog reload loop measured in the first walk (page-lifetime `useRef` latch); moved to a `sessionStorage` latch — one reload per outage, re-armed on recovery. Re-walk PASS |

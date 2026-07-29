@@ -177,8 +177,8 @@
         "feat-007",
         "feat-010"
       ],
-      "status": "planned",
-      "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, decisions 2 and 5); phases 3-4. Runtime is the Samsung built-in browser per decision 2 (chosen against the recommendation), which caps this feature: no autostart, no chrome suppression, aggressive cookie eviction, Wake Lock likely absent.",
+      "status": "shipped",
+      "evidence": "Browser walk PASS (verifications/2026-07-29.md, two walks): 144 tiles / 24x6 / scrollable=false WITH drift active, drift tick measured at exactly 240.1s, scrim over retained grid with revision unchanged, watchdog reload at +122s then NO second reload across a 300s window (walk 1 measured the loop — useRef latch reset by reload; fixed via sessionStorage createReloadLatch, one reload per outage, re-armed on live, storage failure degrades to no reload), recovery 503ms, second outage re-armed the latch (+152s). jsErrors/networkErrors none. Gate: typecheck 0, 1191 tests (+6), build 0, e2e 2/2, harness 7/7. Samsung setup recipe written (recipes/samsung-tv-setup.md). Owner-only and outstanding by design: 8h soak + real Samsung TV walk; finding 2 (wedged socket invisible to watchdog) awaits an owner call.",
       "owners": [
         "sean"
       ]

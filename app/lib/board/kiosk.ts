@@ -7,8 +7,12 @@
  * here they are pure functions over a supplied `now`, exactly like
  * `pairing.ts`, and `display.tsx` keeps only the wiring.
  *
- * Nothing here touches the DOM, a timer, or `Date.now()`.
+ * Nothing here touches the DOM, a timer, or `Date.now()`. The one piece of
+ * the outside world any of it needs — the tab's `sessionStorage`, which the
+ * reload latch persists into — is injected, exactly like `pairing.ts`.
  */
+
+import { Effect, Either } from "effect";
 
 /* -------------------------------------------------------------------------- */
 /* Burn-in drift                                                              */
@@ -121,23 +125,112 @@ export interface WatchdogInput {
   /** When the status last became something other than `"live"`; `null` if live. */
   readonly downSince: number | null;
   readonly now: number;
-  /** True once this page has already spent its one reload. */
+  /** True while this tab has already spent the current outage's one reload. */
   readonly reloaded: boolean;
 }
 
 /**
  * Whether to hard-reload the page.
  *
- * **Exactly once, ever.** A reload loop on a wall-mounted screen is strictly
- * worse than a stale board: the board at least still shows the last message,
- * whereas a page reloading every two minutes shows nothing, forever, and burns
- * a request every cycle for as long as the outage lasts. So the decision is
- * gated on `reloaded`, which the caller never resets — recovery after that is
- * the reconnect loop's job, or a human's.
+ * **One reload per outage, never a loop.** A reload loop on a wall-mounted
+ * screen is strictly worse than a stale board: the board at least still shows
+ * the last message, whereas a page reloading every two minutes shows nothing,
+ * forever, and burns a request every cycle for as long as the outage lasts.
+ * So the decision is gated on `reloaded`, which the caller backs with a latch
+ * that *survives* the reload it gates (see `createReloadLatch`) and clears
+ * once the socket is observed live again — each outage earns exactly one
+ * reload, and recovery re-arms the watchdog for the next one.
  */
 export const shouldReload = (input: WatchdogInput): boolean => {
   if (input.reloaded) return false;
   if (input.status === "live") return false;
   if (input.downSince === null) return false;
   return input.now - input.downSince >= WATCHDOG_MS;
+};
+
+/**
+ * The `sessionStorage` key the latch lives under. Tab-scoped on purpose: a TV
+ * browser restart starts clean, which is correct — a fresh browser process has
+ * not yet spent a reload on the outage it may be waking into.
+ */
+export const RELOAD_LATCH_KEY = "flappyboard:watchdog-reloaded";
+
+/** What the key holds while the current outage's reload has been spent. */
+const RELOAD_LATCHED = "1";
+
+/**
+ * The sliver of `Storage` the latch touches — injected, so this module stays
+ * DOM-free and a test can drive it with a `Map`.
+ */
+export interface ReloadLatchStorage {
+  readonly getItem: (key: string) => string | null;
+  readonly setItem: (key: string, value: string) => void;
+  readonly removeItem: (key: string) => void;
+}
+
+export interface ReloadLatch {
+  /** True while the current outage's one reload has been spent. */
+  readonly isLatched: () => boolean;
+  /**
+   * Records that the reload has been spent. Returns `false` when the record
+   * could not be persisted — and the caller must **not** reload in that case:
+   * the reloaded page would have forgotten the latch and would fire again two
+   * minutes later, which is the loop this entire mechanism exists to prevent.
+   */
+  readonly latch: () => boolean;
+  /**
+   * Clears the record. Called when the socket is observed live, so a *future,
+   * separate* outage earns its own one reload.
+   */
+  readonly clear: () => void;
+}
+
+/**
+ * The latch behind `shouldReload`'s `reloaded` gate, built over an injected
+ * store (the tab's `sessionStorage` in `display.tsx`).
+ *
+ * It has to live in storage rather than in a ref because the thing it gates is
+ * `window.location.reload()` — a page-lifetime flag is reset by the very act
+ * it is supposed to permit exactly once, and the measured result was a reload
+ * every two minutes for the whole outage. Storage survives the reload; a ref
+ * does not.
+ *
+ * Storage can refuse at any point — disabled cookies, a full quota, a browser
+ * that throws merely on `setItem`. Every operation is routed through
+ * `Effect.try`, and the first failure degrades the latch to *never reload*: an
+ * unpersistable latch cannot survive the reload it gates, so firing anyway
+ * would recreate the loop. A stale board is always the better failure mode on
+ * a wall-mounted screen.
+ */
+export const createReloadLatch = (
+  storage: ReloadLatchStorage | undefined,
+  key: string = RELOAD_LATCH_KEY
+): ReloadLatch => {
+  /** Flipped by the first storage failure; afterwards every op is a no-op. */
+  let broken = storage === undefined;
+
+  /** Runs one storage op; `undefined` on refusal, and the latch stays degraded. */
+  const attempt = <A>(op: (store: ReloadLatchStorage) => A): A | undefined => {
+    if (broken || storage === undefined) return undefined;
+    const result = Effect.runSync(
+      Effect.either(Effect.try(() => op(storage)))
+    );
+    if (Either.isLeft(result)) {
+      broken = true;
+      return undefined;
+    }
+    return result.right;
+  };
+
+  return {
+    isLatched: () => attempt((store) => store.getItem(key)) === RELOAD_LATCHED,
+    latch: () =>
+      attempt((store) => {
+        store.setItem(key, RELOAD_LATCHED);
+        return true;
+      }) === true,
+    clear: () => {
+      attempt((store) => store.removeItem(key));
+    },
+  };
 };

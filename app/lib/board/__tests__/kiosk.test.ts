@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createReloadLatch,
   dimOpacity,
   driftOffset,
   isDimHour,
@@ -9,6 +10,7 @@ import {
   DIM_START_HOUR,
   DRIFT_INTERVAL_MS,
   DRIFT_PX,
+  RELOAD_LATCH_KEY,
   WATCHDOG_MS,
 } from "../kiosk";
 
@@ -182,5 +184,128 @@ describe("shouldReload", () => {
 
   it("gives the socket's own backoff room to recover first", () => {
     expect(WATCHDOG_MS).toBeGreaterThanOrEqual(60_000);
+  });
+});
+
+describe("createReloadLatch", () => {
+  const NOW = 1_700_000_000_000;
+
+  /** The tab's sessionStorage, as far as the latch is concerned. */
+  const createFakeStorage = () => {
+    const data = new Map<string, string>();
+    return {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        data.set(key, value);
+      },
+      removeItem: (key: string) => {
+        data.delete(key);
+      },
+    };
+  };
+
+  /** Storage that refuses everything, the way a disabled-cookies browser does. */
+  const createThrowingStorage = () => ({
+    getItem: (): string | null => {
+      throw new Error("storage disabled");
+    },
+    setItem: (): void => {
+      throw new Error("storage disabled");
+    },
+    removeItem: (): void => {
+      throw new Error("storage disabled");
+    },
+  });
+
+  it("survives the reload it gates — a fresh latch over the same storage still blocks shouldReload", () => {
+    const storage = createFakeStorage();
+    expect(createReloadLatch(storage).latch()).toBe(true);
+
+    // `window.location.reload()`: same tab, same sessionStorage, a brand-new
+    // latch instance — the page-lifetime ref this replaced would be false here.
+    const afterReload = createReloadLatch(storage);
+    expect(afterReload.isLatched()).toBe(true);
+    expect(
+      shouldReload({
+        status: "offline",
+        downSince: NOW - WATCHDOG_MS,
+        now: NOW,
+        reloaded: afterReload.isLatched(),
+      })
+    ).toBe(false);
+  });
+
+  it("does not fire again no matter how many watchdog intervals pass while latched", () => {
+    const storage = createFakeStorage();
+    const latch = createReloadLatch(storage);
+    latch.latch();
+
+    for (let intervals = 1; intervals <= 10; intervals += 1) {
+      expect(
+        shouldReload({
+          status: "offline",
+          downSince: NOW,
+          now: NOW + intervals * WATCHDOG_MS,
+          reloaded: latch.isLatched(),
+        })
+      ).toBe(false);
+    }
+  });
+
+  it("clears on a live socket, so the next outage earns its own one reload", () => {
+    const storage = createFakeStorage();
+    const latch = createReloadLatch(storage);
+    latch.latch();
+
+    // The socket came back.
+    latch.clear();
+    expect(latch.isLatched()).toBe(false);
+
+    // A later, separate outage: exactly one reload is earned...
+    expect(
+      shouldReload({
+        status: "offline",
+        downSince: NOW,
+        now: NOW + WATCHDOG_MS,
+        reloaded: latch.isLatched(),
+      })
+    ).toBe(true);
+
+    // ...and spent.
+    latch.latch();
+    expect(
+      shouldReload({
+        status: "offline",
+        downSince: NOW,
+        now: NOW + 5 * WATCHDOG_MS,
+        reloaded: latch.isLatched(),
+      })
+    ).toBe(false);
+  });
+
+  it("treats throwing storage as no latch — no crash, and no reload it cannot remember", () => {
+    const latch = createReloadLatch(createThrowingStorage());
+
+    expect(latch.isLatched()).toBe(false);
+    // The caller reloads only when this returns true; false means the outage
+    // passes with a stale board rather than a reload loop.
+    expect(latch.latch()).toBe(false);
+    expect(() => latch.clear()).not.toThrow();
+
+    // And it stays degraded — a store that failed once is not trusted again.
+    expect(latch.latch()).toBe(false);
+  });
+
+  it("treats absent storage the same way", () => {
+    const latch = createReloadLatch(undefined);
+    expect(latch.isLatched()).toBe(false);
+    expect(latch.latch()).toBe(false);
+    expect(() => latch.clear()).not.toThrow();
+  });
+
+  it("persists under the shared key, which is what lets a reloaded page see it", () => {
+    const storage = createFakeStorage();
+    createReloadLatch(storage).latch();
+    expect(storage.getItem(RELOAD_LATCH_KEY)).not.toBeNull();
   });
 });

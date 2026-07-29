@@ -10,6 +10,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { createFlapPlayer } from "@/lib/board/sfx";
 import { DEFAULT_PAIRING_TTL_SECONDS } from "@/lib/board/pairing";
 import {
+  createReloadLatch,
   dimOpacity,
   driftOffset,
   shouldReload,
@@ -249,16 +250,36 @@ export default function BoardDisplay({ loaderData }: Route.ComponentProps) {
 
   /**
    * The watchdog. One hard reload after the socket has been dead past the
-   * threshold, and never a second — see `shouldReload`, which owns that rule and
-   * is unit-tested on it. This is for the overnight failure the reconnect loop
-   * cannot fix by itself: a redeployed worker, a rebooted router, a socket
-   * wedged open but dead, with nobody awake to press anything.
+   * threshold — one per *outage*, never a loop. The rule lives in
+   * `shouldReload` and `createReloadLatch` and is unit-tested there; what
+   * matters here is that the latch is kept in `sessionStorage`, because the
+   * thing it gates is `window.location.reload()` and a page-lifetime ref is
+   * reset by exactly that call — the measured result of the ref was a reload
+   * every two minutes for the whole outage. The latch survives the reload, and
+   * is cleared once the socket is live again so the next outage earns its own.
+   * This is for the overnight failure the reconnect loop cannot fix by itself:
+   * a redeployed worker, a rebooted router, a socket wedged open but dead,
+   * with nobody awake to press anything.
    */
   const downSince = useRef<number | null>(null);
-  const reloaded = useRef(false);
   useEffect(() => {
+    /*
+      Even *reading* `window.sessionStorage` can throw (storage disabled in the
+      browser), so the read goes through `Effect.try`. An unreachable store
+      yields `undefined` and the latch degrades to "never reload" — a stale
+      board is always better than a crash, or a reload the page cannot remember.
+    */
+    const storage = Effect.runSync(
+      Effect.try(() => window.sessionStorage).pipe(
+        Effect.orElseSucceed(() => undefined)
+      )
+    );
+    const reloadLatch = createReloadLatch(storage);
+
     if (status === "live") {
       downSince.current = null;
+      // Recovery re-arms the watchdog: the next outage gets its own reload.
+      reloadLatch.clear();
       return;
     }
     if (downSince.current === null) downSince.current = Date.now();
@@ -269,13 +290,14 @@ export default function BoardDisplay({ loaderData }: Route.ComponentProps) {
           status,
           downSince: downSince.current,
           now: Date.now(),
-          reloaded: reloaded.current,
+          reloaded: reloadLatch.isLatched(),
         })
       ) {
         return;
       }
-      reloaded.current = true;
-      window.location.reload();
+      // Reload only if the latch could be persisted — otherwise the reloaded
+      // page would not remember it spent its one reload, and would loop.
+      if (reloadLatch.latch()) window.location.reload();
     }, Math.floor(WATCHDOG_MS / 4));
 
     return () => clearInterval(timer);
