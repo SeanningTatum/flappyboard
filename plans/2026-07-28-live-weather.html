@@ -598,12 +598,28 @@ flowchart TD
     next person does not follow it into the same hole.</p>
   </div>
 
-  <p><strong>Owner-only prerequisite.</strong> A KV binding needs a namespace that
-  does not exist yet: <code>wrangler kv namespace create</code> requires real
-  Cloudflare credentials and creates a real resource, so it cannot run from CI or
-  from an agent. It is the same class of one-time owner step as
-  <code>bun run deploy:preview</code> — and skipping it is precisely how
-  <code>feat-003</code> ended up with code that cannot run.</p>
+  <p><strong>Owner-only prerequisite — ✅ DONE 2026-07-28.</strong> Both namespaces
+  exist. Confirmed present via <code>wrangler kv namespace list</code>:</p>
+
+  <table>
+    <thead><tr><th>Environment</th><th>Namespace title</th><th>id</th></tr></thead>
+    <tbody>
+      <tr><td>default (production)</td><td><code>flappyboard-kv</code></td>
+        <td><code>05ce4e2d8fcc4310a1c2fe3ca51dd503</code></td></tr>
+      <tr><td><code>env.preview</code></td><td><code>flappyboard-preview-kv</code></td>
+        <td><code>00267d05b7684363b2c2ab905d5d2ce6</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>Note the names differ from this plan's earlier suggestion
+  (<code>flappyboard-cache</code> / <code>-cache-preview</code>) and the owner's
+  naming is the better fit: the account already uses a <code>&lt;project&gt;-kv</code>
+  convention across other projects (<code>tally-kv</code>,
+  <code>studio-os-kv</code>, <code>product-os-kv</code>), whereas the earlier
+  suggestion was extrapolated only from this repo's D1 and workflow names. The
+  <em>binding</em> is still <code>CACHE</code> and still identical across
+  environments — only the underlying namespace differs, which is the property that
+  keeps environment branching out of the code.</p>
 
   <p><strong>Declare it twice.</strong> <code>wrangler.jsonc</code> keeps a separate
   <code>env.preview</code> block, and the file's own comment notes the binding list is
@@ -654,7 +670,7 @@ flowchart TD
       </span>
     </li>
     <li data-brain-item="8"><strong>Phase 0 — the binding (owner-only, blocks phase 4b).</strong>
-      <span data-item-text data-brain-action>Create the KV namespace with 'wrangler kv namespace create' — real Cloudflare credentials, real resource, cannot run from CI or from an agent — then declare kv_namespaces in BOTH the default and env.preview blocks of wrangler.jsonc and regenerate types with bun run cf-typegen. Acceptance: the binding appears in worker-configuration.d.ts, and a preview deploy sees it too. Until this is done the weather service has no store, which is exactly the state feat-003 file-upload has been stuck in since setup skipped its R2 bucket.</span>
+      <span data-item-text data-brain-action>DONE 2026-07-28 — namespaces exist: flappyboard-kv (05ce4e2d8fcc4310a1c2fe3ca51dd503) and flappyboard-preview-kv (00267d05b7684363b2c2ab905d5d2ce6), confirmed via 'wrangler kv namespace list'. Binding is CACHE, SCREAMING_SNAKE and IDENTICAL across environments exactly like DATABASE and BOARD — only the underlying namespace differs, so code never branches on environment. Remaining in this phase: declare kv_namespaces in BOTH blocks with those two ids and run bun run cf-typegen. Keys are colon-delimited behind an exported prefix constant with a pure builder, per NONCE_KEY_PREFIX and QUOTA_KEY_PREFIX: weather:day:LAT,LON:YYYY-MM-DD for the hourly series with a 24h TTL, and weather:geo:QUERY for geocoding with no expiry. The date lives IN the day key for the same reason quota.ts puts windowStart in its key — a new day is a new key, so nothing needs resetting and yesterday's series can never be served as today's even if the TTL misbehaves. TRAP: kv_namespaces also accepts a preview_id used by 'wrangler dev', which is NOT this repo's env.preview environment despite the colliding name — the preview env needs its own entry, not a preview_id. Run 'wrangler kv namespace create' for both — real Cloudflare credentials, real resource, cannot run from CI or from an agent — then declare kv_namespaces in BOTH blocks and regenerate types with bun run cf-typegen. Acceptance: the binding appears in worker-configuration.d.ts, and a preview deploy sees it too. Until this is done the weather service has no store, which is exactly the state feat-003 file-upload has been stuck in since setup skipped its R2 bucket.</span>
       <span class="item-controls">
         <button type="button" class="item-x" data-brain-action title="Remove">x</button>
         <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>

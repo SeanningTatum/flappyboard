@@ -7,8 +7,23 @@ _Last updated: 2026-07-28_
 decision 5 until `[[tv-pairing]]`, `[[family-grants]]` and `[[kiosk-display]]`
 are verified and shipped.
 
-Blocked on one **owner-only** step before any code can run: `wrangler kv namespace
-create` (real credentials, real resource — not runnable from CI or by an agent).
+**Owner-only prerequisite is DONE (2026-07-28).** Both KV namespaces exist,
+confirmed via `wrangler kv namespace list`:
+
+| Environment | Namespace | id |
+|---|---|---|
+| default | `flappyboard-kv` | `05ce4e2d8fcc4310a1c2fe3ca51dd503` |
+| `env.preview` | `flappyboard-preview-kv` | `00267d05b7684363b2c2ab905d5d2ce6` |
+
+The owner's naming (`<project>-kv`) matches the wider account convention
+(`tally-kv`, `studio-os-kv`, `product-os-kv`) and supersedes this plan's earlier
+`flappyboard-cache` suggestion, which was extrapolated only from this repo's D1 and
+workflow names. The **binding** stays `CACHE` and stays identical across
+environments — only the namespace differs, which is what keeps environment
+branching out of the code.
+
+Still to do in phase 0: declare `kv_namespaces` in both `wrangler.jsonc` blocks
+with those ids, then `bun run cf-typegen`.
 
 ## Purpose
 Stop the board asserting weather figures it cannot stand behind. Today
