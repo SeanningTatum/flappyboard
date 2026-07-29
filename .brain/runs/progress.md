@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-29 — shipped tv-pairing: Browser-verified PASS across TWO independent worker runs that agreed on every step; verdict doc .brain/features/tv-pairi
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-07-29 — Live-weather plan fully approved (round 2). Decision 6: cache in a NEW KV binding. Decision 7: round location to ~10km with a place-name fallback on refusal. All 7 decisions now answered; feat-013 evidence updated. Recorded the consequence the KV choice inherits, because this repo already has the scar: feat-003 file-upload is shipped-but-broken since setup never provisioned R2, and the way it broke is the lesson — a merged Effect layer constructs EVERY member, so one absent binding surfaced as 'Failed to construct AuthApi' and 500'd every request in the app including routes that never touch R2. So the weather service must be provided ad-hoc in the generate path (like upload-file.ts does BucketLive and transcribe.ts does TranscriptionLive), NOT added to makeAppRuntime. Also noted that recipes/add-cf-binding step 5 still says 'provide layer -> app/runtime.ts', which is pre-R2 advice, and should gain a pointer to rules/services.md so the next person does not follow it into the same hole. Two new tests added for that specific regression: with CACHE absent the weather route degrades to the honest-unavailable board while every OTHER route still works, and the build asserts kv_namespaces present in BOTH envs of the emitted wrangler.json (same check the BOARD binding got in the split-flap-board verification).
 - branch: `worktree-tv-living-room`
 - in-progress feature: none

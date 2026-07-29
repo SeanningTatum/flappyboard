@@ -1,6 +1,6 @@
 {
   "$schema": "Machine-readable feature state tracker. Source of truth for status; per-feature MD docs are source of truth for design/runtime.",
-  "updated": "2026-07-28",
+  "updated": "2026-07-29",
   "policy": {
     "one_in_progress_at_a_time": true,
     "definition_of_done": "implementation complete + verify-done passed + feature MD updated + brain coherent"
@@ -145,8 +145,8 @@
         "feat-007",
         "feat-008"
       ],
-      "status": "in-progress",
-      "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, 6 decisions answered); phase 1. HARD PREREQUISITE: issue #1 rate limiting — a 6-char code is ~30 bits and is safe only because it is short-lived, single-use and attempt-capped.",
+      "status": "shipped",
+      "evidence": "Browser-verified PASS across TWO independent worker runs that agreed on every step; verdict doc .brain/features/tv-pairing/verifications/2026-07-28.md with 7 screenshots. Central claim proven not assumed, using two isolated browser contexts: a TV context ASSERTED to hold zero cookies (context.cookies() === []) ended up rendering a live board with exactly 144 flap-tile elements while holding EXACTLY ONE cookie, HttpOnly fb_device_<boardId> SameSite=Lax, and NO auth session cookie — and it got there by socket push without a reload. Two runs minted two different codes (GHPLXX, T8TRA3), so the code is per-TV rather than fixed. Error paths: a bogus code is refused ('No TV is waiting on that code. Check it, or reload the TV for a new one.'); the SAME code replayed a second time is refused identically with link-success never shown, so single-use holds; a cookie-evicted TV is redirected to /tv for a fresh code rather than 404 (the mitigation decision 2 exists for, since Samsung's browser evicts aggressively); and a cookie-less stranger hitting /b/<boardId> directly gets HTTP 302 to /tv, confirmed with curl, never seeing board content. Run B also confirmed no horizontal scroll (scrollWidth 1280 === clientWidth 1280). Zero jsErrors in either run; only 200@login on the network. ONE WORKER CLAIM DID NOT SURVIVE CHECKING and is recorded rather than quietly dropped: run B reported a '~15-day' device cookie expiry, which would have contradicted the 180-day grant and mattered because decision 2 makes cookie lifetime load-bearing — measured instead, Max-Age=15552000 is exactly 180 days and claimHandoff passes DEFAULT_DEVICE_TTL_SECONDS (app/trpc/routes/board.ts:1230); it was a misreading of the leading digits, not a defect. Gate: typecheck 0, Tests 1166 passed (1166) across 50 files, build exit 0, e2e 2 passed, harness-check 7/7. KNOWN GAP, owner-only and decisive for decision 2: power-cycle the real Samsung TV to confirm the cookie PERSISTS — the walk proves graceful recovery when it is gone, not persistence. Also unit-tested rather than driven live: concurrent redemption of one code, and the approve-device spend cap at its limit.",
       "owners": [
         "sean"
       ]
@@ -161,7 +161,7 @@
         "feat-008",
         "feat-010"
       ],
-      "status": "planned",
+      "status": "in-progress",
       "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, decisions 3 and 4); phase 2",
       "owners": [
         "sean"

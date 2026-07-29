@@ -2,10 +2,18 @@
 
 _Last updated: 2026-07-28_
 
-**Status: in-progress — code complete, verification outstanding.** Design
-approved in plan review round 1 —
-`plans/2026-07-28-tv-living-room.html`. Not started; see
-[`.brain/features/feature_list.json`](../feature_list.json) for the live status.
+**Status: shipped 2026-07-28.** Design approved in plan review round 1 —
+`plans/2026-07-28-tv-living-room.html`. Browser-verified:
+[`verifications/2026-07-28.md`](verifications/2026-07-28.md) — **PASS**, two
+independent runs agreeing, 7 screenshots.
+
+One thing remains outstanding and only the owner can do it: **power-cycle the real
+Samsung TV and confirm `fb_device_<boardId>` survives.** The verification proves the
+app recovers *gracefully* when the cookie is gone (a cookie-evicted TV is redirected
+to `/tv` for a fresh code, not a 404); it does not prove the cookie *persists* on
+that specific browser. The 180-day `Max-Age` is necessary but not sufficient, and if
+the cookie does not survive, **decision 2** — the Samsung built-in browser over a
+kiosk stick — has to be revisited.
 
 ## Purpose
 Let a TV reach a board without ever holding the owner's login. Today
@@ -177,7 +185,19 @@ no longer names.
 - **Owner-only, and decisive for decision 2:** power-cycle the real Samsung TV and
   confirm `fb_device_<boardId>` survives. If it does not, the built-in browser is
   not viable and decision 2 must be revisited.
-- Browser walk + verification doc per `brain playbook verify`.
+- ~~Browser walk + verification doc~~ — done, `verifications/2026-07-28.md` (PASS).
+- Not driven live, both unit-tested instead: concurrent redemption of one code
+  (single-use is proven sequentially and the atomicity is covered under
+  `blockConcurrencyWhile`), and the `approve-device` spend cap at its limit.
+
+### A misreading worth not repeating
+
+Run B of the verification reported the device cookie carrying a "~15-day expiry",
+which would have contradicted the 180-day grant and mattered a great deal given
+decision 2. It was checked rather than accepted: `Max-Age=15552000` is *exactly*
+180 days, and `claimHandoff` passes `DEFAULT_DEVICE_TTL_SECONDS`
+(`app/trpc/routes/board.ts:1230`). The report was a misreading of the leading digits.
+Anyone re-reading that raw output should not chase the bug.
 
 ## Changelog
 
@@ -185,3 +205,4 @@ no longer names.
 |------|------|-------------|
 | 2026-07-28 | feature | Registered as planned from the reviewed TV living-room plan |
 | 2026-07-28 | feature | Built. Per-code DO instance answers the plan's open question; `fbh1` added as a fourth family; per-code attempt cap replaced by a per-owner spend cap (see "As built") |
+| 2026-07-28 | feature | **Shipped.** Browser-verified PASS across two independent runs: a zero-cookie context reached a live 144-tile board holding only an HttpOnly device grant and no session cookie, arriving by socket push without a reload. Replay refused, cookie-evicted TV redirected to `/tv`, cookie-less stranger 302'd away from the board |
