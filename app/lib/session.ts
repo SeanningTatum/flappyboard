@@ -14,11 +14,16 @@ export type Session = NonNullable<
  * Where a gated page sends an anonymous visitor, and where login sends them
  * back to afterwards. Only same-origin absolute paths are honoured: a `next`
  * of `//evil.com` is scheme-relative and would turn the login redirect into an
- * open redirect, so anything that is not exactly `/…` is dropped.
+ * open redirect, so anything that is not exactly `/…` is dropped. The second
+ * character is checked against BOTH separators — the WHATWG parser normalises
+ * `/\evil.com` to `//evil.com` on special schemes, so rejecting only `//`
+ * leaves the same hole one keystroke over (Greptile pre-PR review, verified
+ * against `new URL`).
  */
 export const safeNextPath = (raw: string | null): string | null => {
   if (raw === null || raw === "") return null;
-  if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw[1] === "/" || raw[1] === "\\") return null;
   return raw;
 };
 

@@ -172,9 +172,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       approve one, which is the one the owner can act on.
     */
     if (createdBoardId !== null) {
+      // Captured into a const: TypeScript does not carry control-flow
+      // narrowing of a reassignable `let` into the closure below.
+      const rollbackId = createdBoardId;
       await Effect.runPromiseExit(
         Effect.tryPromise({
-          try: () => context.trpc.board.delete({ boardId: createdBoardId }),
+          try: () => context.trpc.board.delete({ boardId: rollbackId }),
           catch: (cause) => cause,
         })
       );

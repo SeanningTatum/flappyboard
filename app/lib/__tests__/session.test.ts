@@ -114,6 +114,11 @@ describe("safeNextPath", () => {
     expect(safeNextPath("//evil.com/login")).toBeNull();
   });
 
+  it("rejects backslash scheme-relative URLs — WHATWG normalises /\\ to // on https", () => {
+    expect(safeNextPath("/\\evil.com")).toBeNull();
+    expect(safeNextPath("/\\evil.com/login")).toBeNull();
+  });
+
   it("rejects absolute and relative URLs", () => {
     expect(safeNextPath("https://evil.com")).toBeNull();
     expect(safeNextPath("http://evil.com")).toBeNull();
