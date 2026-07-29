@@ -36,6 +36,15 @@
     "header": {
       "rev": "版本"
     },
+    "nameDevice": {
+      "title": "为此手机命名",
+      "body": "方便主人在已配对设备列表中认出你的手机。",
+      "placeholder": "例如：小凯的手机",
+      "save": "保存",
+      "saving": "保存中…",
+      "skip": "暂不",
+      "error": "保存失败，请重试。"
+    },
     "send": "发送到看板",
     "sending": "发送中…",
     "voice": {

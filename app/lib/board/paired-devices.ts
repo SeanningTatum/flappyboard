@@ -295,6 +295,44 @@ export const parseTouchGrantRequest = (
 };
 
 /**
+ * "Call this device X." Sent by the phone itself, after pairing, when it notices
+ * the owner's list has no label for it.
+ *
+ * Unlike {@link TouchGrantRequest} this carries a name — that is the entire
+ * point of the call — and unlike {@link RecordGrantRequest} the name is
+ * **required**: the one thing this request exists to do is set one, so a
+ * nameless one is a malformed request, not an unnamed device. Over-long is
+ * rejected rather than truncated, same discipline as `RecordGrantRequest`: the
+ * caller runs {@link normalizeDeviceName} before sending.
+ *
+ * The TTL rides along for the same reason it does on a touch: naming a
+ * grandfathered phone (one with no record yet) *creates* its record, and a
+ * record cannot be written without knowing when the bookkeeping may be
+ * collected.
+ */
+export const NameGrantRequest = Schema.Struct({
+  nonce: Nonce,
+  name: Schema.String.pipe(
+    Schema.minLength(1),
+    Schema.maxLength(MAX_DEVICE_NAME_LENGTH)
+  ),
+  ttlSeconds: TtlSeconds,
+});
+export type NameGrantRequest = typeof NameGrantRequest.Type;
+
+const decodeNameGrantSchema = Schema.decodeUnknownEither(NameGrantRequest);
+
+/** `null` on anything unparseable. */
+export const parseNameGrantRequest = (
+  raw: string | ArrayBuffer
+): NameGrantRequest | null => {
+  const parsed = parseJson(raw);
+  if (parsed === null) return null;
+  const decoded = decodeNameGrantSchema(parsed);
+  return Either.isRight(decoded) ? decoded.right : null;
+};
+
+/**
  * "Un-pair this device." Owner-only at the HTTP boundary.
  *
  * No TTL: a tombstone outlives the grant it refuses, because a tombstone that
@@ -472,6 +510,56 @@ export const renewRecord = (input: {
   lastSeenAt: input.now,
   expiresAt: input.now + input.ttlSeconds * 1000,
 });
+
+export interface NameDecision {
+  readonly live: boolean;
+  /** The record to persist; `null` when the refusal means "write nothing". */
+  readonly record: PairedDeviceRecord | null;
+}
+
+/**
+ * May this device be named, and what does the record look like afterwards?
+ *
+ * The decision mirrors {@link decideTouch} case for case, because a naming call
+ * is a touch that also sets the name:
+ *
+ * 1. **Tombstone present** → `live: false`, no record. Naming a revoked device
+ *    must not resurrect the record the revoke removed — the same rule
+ *    `handleTouchGrant` enforces by writing nothing for a dead grant.
+ * 2. **No record, no tombstone** → live, and a *new* record carrying the name.
+ *    This is how a grandfathered phone — paired before records existed — gets
+ *    into the owner's list without re-pairing: absence is live, so the first
+ *    thing the phone ever writes can be its name. `renewRecord` owns the
+ *    create-on-first-sight shape (`issuedAt` stamped with `now`).
+ * 3. **Record present, no tombstone** → live, same record with the name
+ *    **replaced**. This is the one place `renewRecord`'s keep-the-old-name rule
+ *    is overridden, deliberately: a touch must never blank a name, but a naming
+ *    call is the phone correcting its own label, so the new name wins. The
+ *    sliding window still moves — a phone naming itself is alive right now.
+ */
+export const decideName = (input: {
+  readonly record: PairedDeviceRecord | null;
+  readonly revoked: boolean;
+  readonly nonce: string;
+  readonly name: string;
+  readonly now: number;
+  readonly ttlSeconds: number;
+}): NameDecision =>
+  input.revoked
+    ? { live: false, record: null }
+    : {
+        live: true,
+        record: {
+          ...renewRecord({
+            record: input.record,
+            nonce: input.nonce,
+            name: input.name,
+            now: input.now,
+            ttlSeconds: input.ttlSeconds,
+          }),
+          name: input.name,
+        },
+      };
 
 export interface PruneResult {
   /** Storage keys to delete, exactly as they were handed in. */

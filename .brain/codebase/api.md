@@ -7,7 +7,7 @@ Mounted at `/api/trpc/*`. The top-level router (`app/trpc/router.ts`) composes f
 | Router | File | Procedures |
 |--------|------|------------|
 | `user` | `app/trpc/router.ts` | `getUsers` (protected, safe projection), `deleteUser`, `createWorkflow` |
-| `board` | `app/trpc/routes/board.ts` | `create`, `list`, `get`, `rename`, `delete`, `revokeControllers`, `revokeDevices`, `pairedDevices`, `revokeDevice`, `approveDeviceCode` (**owner-only**) · `setMessage`, `history`, `updateSettings`, `generate` (owner **or** controller grant) · `display` (owner **or** device grant) · `pair`, `claim`, `issueDeviceCode`, `claimHandoff` (**public** — the phone or the TV has no session yet) |
+| `board` | `app/trpc/routes/board.ts` | `create`, `list`, `get`, `rename`, `delete`, `revokeControllers`, `revokeDevices`, `pairedDevices`, `revokeDevice`, `approveDeviceCode` (**owner-only**) · `setMessage`, `history`, `updateSettings`, `generate` (owner **or** controller grant) · `nameDevice` (**controller grant only** — a phone names its own device) · `display` (owner **or** device grant) · `pair`, `claim`, `issueDeviceCode`, `claimHandoff` (**public** — the phone or the TV has no session yet) |
 | `admin` | `app/trpc/routes/admin.ts` | `getUsers`, `getUser`, `updateUser`, `banUser`, `unbanUser`, `deleteUser`, `bulkBanUsers`, `bulkDeleteUsers`, `bulkUpdateUserRoles` |
 | `analytics` | `app/trpc/routes/analytics.ts` | `getUserStats`, `getUserGrowth`, `getRoleDistribution`, `getVerificationDistribution`, `getRecentSignupsCount` |
 

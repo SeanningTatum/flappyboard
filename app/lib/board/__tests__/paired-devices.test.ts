@@ -8,6 +8,7 @@ import {
   MAX_PAIRED_DEVICES,
   REVOKED_KEY_PREFIX,
   decodePairedDevice,
+  decideName,
   decideTouch,
   grantKey,
   grantRevokeResult,
@@ -17,6 +18,7 @@ import {
   pairedDeviceList,
   parseGrantRevoke,
   parseGrantTouch,
+  parseNameGrantRequest,
   parsePairedDevices,
   parseRecordGrantRequest,
   parseRevokeGrantRequest,
@@ -302,6 +304,112 @@ describe("renewRecord", () => {
   });
 });
 
+describe("decideName", () => {
+  const ttl = 30 * 24 * 60 * 60;
+
+  it("refuses a tombstoned nonce and writes nothing — no record case", () => {
+    expect(
+      decideName({
+        record: null,
+        revoked: true,
+        nonce: "n-1",
+        name: "Kai's phone",
+        now: NOW,
+        ttlSeconds: ttl,
+      })
+    ).toEqual({ live: false, record: null });
+  });
+
+  it("refuses a tombstoned nonce even when a record still exists", () => {
+    // Naming a revoked device must not resurrect the record the revoke
+    // removed — the same rule a touch enforces by writing nothing.
+    expect(
+      decideName({
+        record: record(),
+        revoked: true,
+        nonce: "n-1",
+        name: "Kai's phone",
+        now: NOW,
+        ttlSeconds: ttl,
+      })
+    ).toEqual({ live: false, record: null });
+  });
+
+  it("creates a record for an unknown nonce — the grandfathered phone", () => {
+    // A phone paired before records existed has none. Its first naming call is
+    // also its first appearance in the owner's list, without re-pairing.
+    const decision = decideName({
+      record: null,
+      revoked: false,
+      nonce: "n-9",
+      name: "kitchen iPad",
+      now: NOW,
+      ttlSeconds: ttl,
+    });
+    expect(decision.live).toBe(true);
+    expect(decision.record).toEqual({
+      nonce: "n-9",
+      name: "kitchen iPad",
+      issuedAt: NOW,
+      lastSeenAt: NOW,
+      expiresAt: NOW + ttl * 1000,
+    });
+  });
+
+  it("replaces the name on an existing record, keeping issuedAt", () => {
+    const existing = record({ name: "old label", issuedAt: NOW - 100 * DAY });
+    const decision = decideName({
+      record: existing,
+      revoked: false,
+      nonce: existing.nonce,
+      name: "new label",
+      now: NOW,
+      ttlSeconds: ttl,
+    });
+    expect(decision.live).toBe(true);
+    expect(decision.record?.name).toBe("new label");
+    expect(decision.record?.issuedAt).toBe(NOW - 100 * DAY);
+  });
+
+  it("lets a never-named record gain a name", () => {
+    const decision = decideName({
+      record: record({ name: null }),
+      revoked: false,
+      nonce: "n-1",
+      name: "Kai's phone",
+      now: NOW,
+      ttlSeconds: ttl,
+    });
+    expect(decision.record?.name).toBe("Kai's phone");
+  });
+
+  it("slides the window — a phone naming itself is alive right now", () => {
+    const existing = record({ lastSeenAt: NOW - 10 * DAY, expiresAt: NOW + 1 });
+    const decision = decideName({
+      record: existing,
+      revoked: false,
+      nonce: existing.nonce,
+      name: "Kai's phone",
+      now: NOW,
+      ttlSeconds: ttl,
+    });
+    expect(decision.record?.lastSeenAt).toBe(NOW);
+    expect(decision.record?.expiresAt).toBe(NOW + ttl * 1000);
+  });
+
+  it("produces a record the schema accepts", () => {
+    const decision = decideName({
+      record: null,
+      revoked: false,
+      nonce: "n-9",
+      name: normalizeDeviceName("  Kai's   phone ")!,
+      now: NOW,
+      ttlSeconds: ttl,
+    });
+    expect(decodePairedDevice(decision.record)).toEqual(decision.record);
+  });
+});
+
 describe("pruneDevices", () => {
   it("returns nothing when every entry is live and readable", () => {
     const entries = [
@@ -550,6 +658,79 @@ describe("parseTouchGrantRequest", () => {
     expect(
       parseTouchGrantRequest(
         JSON.stringify({ ...valid, nonce: "n".repeat(MAX_NONCE_LENGTH + 1) })
+      )
+    ).toBeNull();
+  });
+});
+
+describe("parseNameGrantRequest", () => {
+  const valid = { nonce: "abc", name: "Kai's phone", ttlSeconds: 3600 };
+
+  it("round-trips a well-formed body", () => {
+    expect(parseNameGrantRequest(JSON.stringify(valid))).toEqual(valid);
+  });
+
+  it("accepts an ArrayBuffer body", () => {
+    const buffer = new TextEncoder().encode(JSON.stringify(valid)).buffer;
+    expect(parseNameGrantRequest(buffer as ArrayBuffer)).toEqual(valid);
+  });
+
+  it("requires a name — a nameless naming call is malformed", () => {
+    // Unlike RecordGrantRequest, where the name is optional because pairing
+    // must never be gated on it. Setting one is the entire point of this call.
+    expect(
+      parseNameGrantRequest(JSON.stringify({ nonce: "abc", ttlSeconds: 60 }))
+    ).toBeNull();
+    expect(
+      parseNameGrantRequest(JSON.stringify({ ...valid, name: "" }))
+    ).toBeNull();
+  });
+
+  it("rejects invalid JSON without throwing", () => {
+    expect(parseNameGrantRequest("{not json")).toBeNull();
+    expect(parseNameGrantRequest("")).toBeNull();
+    expect(parseNameGrantRequest("null")).toBeNull();
+  });
+
+  it("rejects wrong types and missing fields", () => {
+    for (const bad of [
+      { ...valid, nonce: 42 },
+      { ...valid, name: 42 },
+      { ...valid, ttlSeconds: "3600" },
+      { ...valid, ttlSeconds: 60.5 },
+      { nonce: "abc", name: "Kai's phone" },
+      ["abc", "Kai's phone", 3600],
+      "abc",
+    ]) {
+      expect(parseNameGrantRequest(JSON.stringify(bad))).toBeNull();
+    }
+  });
+
+  it("rejects an out-of-range ttl", () => {
+    for (const ttlSeconds of [0, -1, MAX_GRANT_TTL_SECONDS + 1]) {
+      expect(
+        parseNameGrantRequest(JSON.stringify({ ...valid, ttlSeconds }))
+      ).toBeNull();
+    }
+  });
+
+  it("rejects an over-long nonce", () => {
+    expect(
+      parseNameGrantRequest(
+        JSON.stringify({ ...valid, nonce: "n".repeat(MAX_NONCE_LENGTH + 1) })
+      )
+    ).toBeNull();
+  });
+
+  it("rejects an over-long name rather than silently truncating it", () => {
+    // Same discipline as RecordGrantRequest: the caller normalises first, so
+    // an over-long name means a caller that skipped that step.
+    expect(
+      parseNameGrantRequest(
+        JSON.stringify({
+          ...valid,
+          name: "x".repeat(MAX_DEVICE_NAME_LENGTH + 1),
+        })
       )
     ).toBeNull();
   });

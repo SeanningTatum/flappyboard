@@ -135,6 +135,19 @@ export interface BoardRoomShape {
     ExternalServiceError
   >;
 
+  /**
+   * Set or replace the name on this device's own record — the phone labelling
+   * itself after pairing. An unknown nonce (a phone paired before records
+   * existed) has its record created by the same call; a tombstoned nonce
+   * answers `live: false` and nothing is written. See `decideName`.
+   */
+  readonly nameGrant: (
+    params: NameGrantParams
+  ) => Effect.Effect<
+    { readonly live: boolean; readonly name: string | null },
+    ExternalServiceError
+  >;
+
   /** Un-pair one device. `false` when the room held no record of it. */
   readonly revokeGrant: (
     boardId: string,
@@ -176,6 +189,18 @@ export interface RecordGrantParams {
 export interface TouchGrantParams {
   readonly boardId: string;
   readonly nonce: string;
+  readonly ttlSeconds: number;
+}
+
+export interface NameGrantParams {
+  readonly boardId: string;
+  readonly nonce: string;
+  /**
+   * Already normalised by the caller (`normalizeDeviceName`) — the room bounds
+   * the length but does not invent a name for a caller that skipped that step.
+   */
+  readonly name: string;
+  /** The sliding window, same as a touch: naming a device proves it is alive. */
   readonly ttlSeconds: number;
 }
 
@@ -457,6 +482,28 @@ export const BoardRoomLive = Layer.effect(
             params.boardId,
             "/grants/touch",
             postJson({ nonce: params.nonce, ttlSeconds: params.ttlSeconds })
+          );
+          const result = parseGrantTouch(body);
+          if (result === null) {
+            return yield* Effect.fail(
+              new ExternalServiceError({
+                service: "BoardRoom",
+                cause: "room returned an unrecognised paired-device payload",
+              })
+            );
+          }
+          return result;
+        }),
+      nameGrant: (params: NameGrantParams) =>
+        Effect.gen(function* () {
+          const body = yield* rawCall(
+            params.boardId,
+            "/grants/name",
+            postJson({
+              nonce: params.nonce,
+              name: params.name,
+              ttlSeconds: params.ttlSeconds,
+            })
           );
           const result = parseGrantTouch(body);
           if (result === null) {

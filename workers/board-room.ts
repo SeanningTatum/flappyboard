@@ -33,6 +33,7 @@ import {
   type DeviceCodeRecord,
 } from "@/lib/board/device-code";
 import {
+  decideName,
   decideTouch,
   decodePairedDevice,
   grantKey,
@@ -41,6 +42,7 @@ import {
   normalizeDeviceName,
   overflowVictims,
   pairedDeviceList,
+  parseNameGrantRequest,
   parseRecordGrantRequest,
   parseRevokeGrantRequest,
   parseTouchGrantRequest,
@@ -211,6 +213,10 @@ export class BoardRoom extends DurableObject<Env> {
 
     if (request.method === "POST" && url.pathname === "/grants/touch") {
       return this.handleTouchGrant(request);
+    }
+
+    if (request.method === "POST" && url.pathname === "/grants/name") {
+      return this.handleNameGrant(request);
     }
 
     if (request.method === "POST" && url.pathname === "/grants/revoke") {
@@ -859,6 +865,87 @@ export class BoardRoom extends DurableObject<Env> {
 
     return BoardRoom.json(
       grantTouchResult(outcome.value.live, outcome.value.name)
+    );
+  }
+
+  /**
+   * Set (or replace) the name on one device's record — the phone labelling
+   * itself so the owner's list stops reading "Unnamed phone".
+   *
+   * A naming call is a touch that also writes the name, so it follows
+   * `handleTouchGrant`'s shape exactly: read record and tombstone, let the pure
+   * decision (`decideName`) say what happens, write only when live. Two
+   * consequences worth spelling out:
+   *
+   * - **An unknown nonce gets a record.** Every phone paired before records
+   *   existed is live-but-unrecorded (see `decideTouch`); the first time such a
+   *   phone names itself is also the first time it appears in the owner's list.
+   * - **A tombstoned nonce is refused, and nothing is written.** Naming a
+   *   revoked device would resurrect the record the revoke just removed.
+   *
+   * The write runs `enforceDeviceLimit` for the same reason `handleRecordGrant`
+   * does: this path can create a record, so it is one of the paths that keeps
+   * the set bounded.
+   */
+  private async handleNameGrant(request: Request): Promise<Response> {
+    const body = await Effect.runPromise(
+      Effect.either(Effect.tryPromise(() => request.text()))
+    );
+    if (Either.isLeft(body)) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const input = parseNameGrantRequest(body.right);
+    if (input === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    // The caller normalises before sending (the wire schema only bounds the
+    // length), but a whitespace-only string passes that bound — and a naming
+    // call with no name is a malformed request, not an unnamed device.
+    const name = normalizeDeviceName(input.name);
+    if (name === null) {
+      return BoardRoom.json(errorEvent("invalid_command"), 400);
+    }
+
+    const now = Date.now();
+    const outcome = await Effect.runPromiseExit(
+      Effect.tryPromise(() =>
+        this.ctx.blockConcurrencyWhile(async () => {
+          const key = grantKey(input.nonce);
+          const record = decodePairedDevice(await this.ctx.storage.get(key));
+          const tombstone = await this.ctx.storage.get<number>(
+            revokedKey(input.nonce)
+          );
+          const decision = decideName({
+            record,
+            revoked: typeof tombstone === "number",
+            nonce: input.nonce,
+            name,
+            now,
+            ttlSeconds: input.ttlSeconds,
+          });
+
+          if (decision.record !== null) {
+            await this.ctx.storage.put(key, decision.record);
+            await this.enforceDeviceLimit();
+          }
+
+          return decision;
+        })
+      )
+    );
+
+    if (Exit.isFailure(outcome)) {
+      log.error(
+        { cause: Cause.pretty(outcome.cause) },
+        "Paired-device naming failed"
+      );
+      return BoardRoom.json(errorEvent("persist_failed"), 500);
+    }
+
+    return BoardRoom.json(
+      grantTouchResult(outcome.value.live, outcome.value.record?.name ?? null)
     );
   }
 

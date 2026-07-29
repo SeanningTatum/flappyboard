@@ -5,7 +5,7 @@ import { BoardRepository, parseSnapshotCells } from "@/repositories/board";
 import { BoardRoom } from "@/services/board-room";
 import { BoardAgent } from "@/services/board-agent";
 import { AuthApi } from "@/services/auth";
-import { ConfigurationError, NotFoundError } from "@/models/errors/repository";
+import { ConfigurationError, NotFoundError, ValidationError } from "@/models/errors/repository";
 import {
   DeviceCodeInvalidError,
   PairingTokenInvalidError,
@@ -461,6 +461,21 @@ const GrantNonceInput = Schema.Struct({
 });
 
 /**
+ * A phone naming its own device. The name is **required** — setting one is the
+ * entire point of the call, unlike `PairBoardInput` where it is optional — and
+ * normalised server-side rather than trusted, because it is written into
+ * Durable Object storage. The nonce is never on the wire: it is read off the
+ * caller's own verified grant, so a phone can name itself and nothing else.
+ */
+const NameDeviceInput = Schema.Struct({
+  boardId: BoardId,
+  name: Schema.String.pipe(
+    Schema.minLength(1),
+    Schema.maxLength(MAX_DEVICE_NAME_LENGTH)
+  ),
+});
+
+/**
  * How many codes to draw before giving up on a collision.
  *
  * A collision means two TVs drew the same six characters inside five minutes,
@@ -701,6 +716,12 @@ export const boardRouter = createTRPCRouter({
             ok: true as const,
             access: access.right.via,
             grantExpiresAt: access.right.grantExpiresAt,
+            // Surfaced so the controller can offer to name an as-yet-unnamed
+            // phone. Without it the phone cannot tell whether the owner's list
+            // already has a label for it, and every row reads "Unnamed phone" —
+            // which makes per-device revoke work but leaves the owner guessing
+            // which row to click.
+            deviceName: access.right.deviceName,
             board: publicBoard(access.right.board),
             state,
           };
@@ -1271,6 +1292,82 @@ export const boardRouter = createTRPCRouter({
             Effect.annotateLogs({ boardId: input.boardId, revoked })
           );
           return { revoked };
+        })
+      )
+    ),
+
+  /**
+   * Let a paired phone name **itself** — the write half of the "every row reads
+   * Unnamed phone" problem.
+   *
+   * Grant-only by construction. The name lives on the room's per-device record,
+   * which is keyed by the nonce inside the caller's own grant — so the phone
+   * names the record its credential points at and can reach no other, and an
+   * owner session, which has no nonce, is refused outright rather than being
+   * handed a rename surface (owner-side rename is deliberately out of scope;
+   * the owner's lever is un-pair, not relabel).
+   *
+   * Authorisation is the ordinary `requireBoardAccess`: the same touch that
+   * renews the grant also tells us the nonce to name. A grandfathered phone —
+   * one with no record yet — has its record created by the naming call itself
+   * (see `decideName`), so pre-records devices can be named without re-pairing.
+   */
+  nameDevice: publicProcedure
+    .input(Schema.standardSchemaV1(NameDeviceInput))
+    .mutation(({ ctx, input }) =>
+      runProcedure(
+        ctx.runtime,
+        Effect.gen(function* () {
+          const access = yield* requireBoardAccess(ctx, input.boardId);
+
+          if (access.via !== "grant" || access.grantNonce === null) {
+            return yield* Effect.fail(
+              new ValidationError({
+                entity: "board",
+                field: "name",
+                message: "Only a paired phone can name its own device",
+              })
+            );
+          }
+
+          // Empty and whitespace-only normalise to `null`, and naming a device
+          // "nothing" is a refusal, not a clear — clearing is not offered.
+          const name = normalizeDeviceName(input.name);
+          if (name === null) {
+            return yield* Effect.fail(
+              new ValidationError({
+                entity: "board",
+                field: "name",
+                message: "Device name cannot be empty",
+              })
+            );
+          }
+
+          const room = yield* BoardRoom;
+          const result = yield* room.nameGrant({
+            boardId: input.boardId,
+            nonce: access.grantNonce,
+            name,
+            ttlSeconds: DEFAULT_GRANT_TTL_SECONDS,
+          });
+
+          // The only way this fires: a revoke landed between the touch inside
+          // `requireBoardAccess` and this write. The honest answer is the same
+          // one any revoked grant gets everywhere else.
+          if (!result.live) {
+            yield* logRefusal(input.boardId, "revoked");
+            return yield* Effect.fail(
+              new PairingTokenInvalidError({
+                boardId: input.boardId,
+                reason: "revoked",
+              })
+            );
+          }
+
+          yield* Effect.logInfo("Paired device named").pipe(
+            Effect.annotateLogs({ boardId: input.boardId })
+          );
+          return { named: true as const, name: result.name };
         })
       )
     ),

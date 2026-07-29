@@ -21,6 +21,29 @@
 
 ---
 
+## 2026-07-29 — Shipped feat-011 family-grants. The 2026-07-28 walk's finding 1 (device naming half-implemented, decision 4 unreachable) closed with the owner-ratified post-pairing offer: claim returns deviceName, DeviceNamePrompt on the controller for unnamed grant phones, nameDevice mutation names the caller's own grant by nonce (never on the wire), decideName keeps touch invariants (tombstones unresurrectable, unknown nonce creates the record for grandfathered phones). Second browser walk PASS on all 5 measured claims including the kill shot — un-pairing the row selected BY ITS NAME gave that phone 401+rescan while the sibling kept writing 200. Gate: typecheck 0, 1185 tests (+19), build 0, e2e 2/2 (first run's auth-spec failure was flake, green on re-run), harness 7/7. Also today: flappyboard-preview bootstrapped with a real wrangler deploy (v221570c8) — Deploy preview should be green on future PRs. OPEN owner calls: (1) revoke-all leaves dead phones' rows in the owner list — should the list say so? (2) the decisive tv-pairing test is still owner-only: power-cycle the real Samsung TV, confirm fb_device survives. All work UNCOMMITTED on worktree-tv-living-room (branch also 8 ahead of origin).
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Commit + push the family-grants delta, then feat-012 kiosk-display (last of the TV living-room trio); feat-013 live-weather unblocks once 010/011/012 are all verified
+
+---
+
+## 2026-07-29 — shipped family-grants: Two browser walks PASS: verifications/2026-07-28.md (30-day TTL measured from the signed payload, per-device revoke isol
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — Kickoff: close family-grants verification finding 1 — wire the post-pairing device-name offer so 'un-pair Kai's phone' is reachable from the UI. Design ratified by owner: phone pairs as today, claim returns deviceName (in-flight change), an unnamed phone gets an optional prompt, new mutation names the caller's grant record by nonce. Baseline green: typecheck 0, 1166 tests.
+- branch: `worktree-tv-living-room`
+- in-progress feature: none
+- run note: none
+- next: Implement nameGrant (DO + service), board.nameDevice mutation, controller UI prompt; then unit tests, browser walk, ship feat-011
+
+---
+
 ## 2026-07-29 — shipped tv-pairing: Browser-verified PASS across TWO independent worker runs that agreed on every step; verdict doc .brain/features/tv-pairi
 - branch: `worktree-tv-living-room`
 - in-progress feature: none

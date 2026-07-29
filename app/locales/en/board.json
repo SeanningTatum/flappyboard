@@ -36,6 +36,15 @@
     "header": {
       "rev": "Rev"
     },
+    "nameDevice": {
+      "title": "Name this phone",
+      "body": "So the owner knows it's you in their list of paired phones.",
+      "placeholder": "e.g. Kai's phone",
+      "save": "Save",
+      "saving": "Saving…",
+      "skip": "Not now",
+      "error": "That didn't save. Try again."
+    },
     "send": "Send to board",
     "sending": "Sending…",
     "voice": {

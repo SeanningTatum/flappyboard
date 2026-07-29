@@ -9,6 +9,8 @@ import { api } from "@/trpc/client";
 import { cn } from "@/lib/utils";
 import { useBoardSocket } from "@/hooks/use-board-socket";
 import { clearGrantCookie, serializeGrantCookie } from "@/lib/board/pairing";
+import { MAX_DEVICE_NAME_LENGTH } from "@/lib/board/paired-devices";
+import { Input } from "@/components/ui/input";
 import { MessageEditor } from "@/components/board/message-editor";
 import { PushToTalkButton } from "@/components/board/push-to-talk-button";
 import { SoundPackPicker } from "@/components/board/sound-pack-picker";
@@ -17,6 +19,7 @@ import {
   CONSOLE,
   ConsoleReadout,
   PLATE_LIP,
+  WELL_LIP,
 } from "@/components/board/console";
 import type { BoardMessage } from "@/lib/schemas/board";
 
@@ -80,6 +83,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const unpaired = {
     boardId,
     access: "none" as const,
+    deviceName: null,
     board: null,
     state: null,
   };
@@ -110,6 +114,10 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   return data({
     boardId,
     access: claimed.value.access,
+    // Null until the phone names itself (or named itself at pairing) — the
+    // controller uses it to offer the one-time naming prompt, and the server's
+    // record is the truth that keeps the prompt from coming back.
+    deviceName: claimed.value.deviceName,
     board: claimed.value.board,
     state: claimed.value.state,
   });
@@ -128,6 +136,7 @@ export default function BoardControl({ loaderData }: Route.ComponentProps) {
     <Controller
       boardId={boardId}
       owner={loaderData.access === "owner"}
+      deviceName={loaderData.deviceName}
       board={board}
       state={state}
     />
@@ -216,9 +225,146 @@ function RescanPrompt() {
   );
 }
 
+/**
+ * The one-time offer to name this phone.
+ *
+ * Shown only when the server says the device has no name (`claim` →
+ * `deviceName: null`) and the caller is a grant, not the owner's own browser.
+ * Either answer — saved or skipped — closes it for the session, and a save
+ * closes it permanently: the name now lives on the room's record, so the next
+ * `claim` comes back with `deviceName` set and the prompt never renders again.
+ *
+ * Deliberately a plain controlled input rather than a ShadCN Form: it is one
+ * optional field with nothing to validate client-side (the server normalises
+ * and refuses empties), and a form scaffold would outweigh the prompt.
+ */
+function DeviceNamePrompt({
+  boardId,
+  onDone,
+}: {
+  readonly boardId: string;
+  /** Called on either answer — the prompt's job is over either way. */
+  readonly onDone: () => void;
+}) {
+  const { t } = useTranslation("board");
+  const [name, setName] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  const nameDevice = api.board.nameDevice.useMutation({
+    onSuccess: () => onDone(),
+    onError: () => setFailed(true),
+  });
+
+  const save = () => {
+    const trimmed = name.trim();
+    if (trimmed.length === 0 || nameDevice.isPending) return;
+    setFailed(false);
+    nameDevice.mutate({ boardId, name: trimmed });
+  };
+
+  return (
+    <section
+      className="flex flex-col gap-3 px-3 py-3"
+      style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
+      data-testid="board-device-name-prompt"
+    >
+      <div className="flex flex-col gap-1">
+        <h2
+          className="text-[11px] font-medium uppercase"
+          style={{ color: CONSOLE.ink, letterSpacing: "0.16em" }}
+        >
+          {t("control.nameDevice.title")}
+        </h2>
+        <p
+          className="text-[12px] leading-relaxed"
+          style={{ color: CONSOLE.inkDim }}
+        >
+          {t("control.nameDevice.body")}
+        </p>
+      </div>
+
+      <div className="flex items-stretch gap-2">
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          // Words, not characters: this prints in the owner's device list
+          // verbatim — the board's own uppercase folding does not apply.
+          autoCapitalize="words"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="text"
+          enterKeyHint="done"
+          maxLength={MAX_DEVICE_NAME_LENGTH}
+          placeholder={t("control.nameDevice.placeholder")}
+          disabled={nameDevice.isPending}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            save();
+          }}
+          // Same well the message rows use: recessed, near-square, 44px of
+          // thumb target.
+          className="h-11 rounded-[2px] border-0 px-3 py-0 text-base shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0 dark:bg-transparent"
+          style={{
+            backgroundColor: CONSOLE.well,
+            boxShadow: WELL_LIP,
+            color: CONSOLE.ink,
+          }}
+          data-testid="board-device-name-input"
+        />
+        <button
+          type="button"
+          className="h-11 shrink-0 rounded-none px-4 text-[11px] font-medium uppercase disabled:opacity-40"
+          style={{
+            backgroundColor: CONSOLE.ink,
+            color: CONSOLE.panel,
+            letterSpacing: "0.14em",
+            boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.25)",
+          }}
+          disabled={nameDevice.isPending || name.trim().length === 0}
+          onClick={save}
+          data-testid="board-device-name-save"
+        >
+          {nameDevice.isPending
+            ? t("control.nameDevice.saving")
+            : t("control.nameDevice.save")}
+        </button>
+      </div>
+
+      {failed && (
+        <p
+          role="alert"
+          className="text-[11px] font-medium uppercase text-destructive"
+          style={{ letterSpacing: "0.14em" }}
+          data-testid="board-device-name-error"
+        >
+          {t("control.nameDevice.error")}
+        </p>
+      )}
+
+      <button
+        type="button"
+        className="self-start text-[11px] font-medium uppercase disabled:opacity-40"
+        style={{ color: CONSOLE.inkMute, letterSpacing: "0.16em" }}
+        disabled={nameDevice.isPending}
+        onClick={onDone}
+        data-testid="board-device-name-skip"
+      >
+        {t("control.nameDevice.skip")}
+      </button>
+    </section>
+  );
+}
+
 interface ControllerProps {
   readonly boardId: string;
   readonly owner: boolean;
+  /**
+   * What the room calls this device, straight from `claim`. `null` for an
+   * owner session (no record to name) and for a phone that never gave one —
+   * the second case is what the prompt above exists to fix.
+   */
+  readonly deviceName: string | null;
   readonly board: {
     readonly name: string;
     readonly soundPack: string;
@@ -228,7 +374,7 @@ interface ControllerProps {
   readonly state: { readonly revision: number };
 }
 
-function Controller({ boardId, owner, board, state }: ControllerProps) {
+function Controller({ boardId, owner, deviceName, board, state }: ControllerProps) {
   const { t } = useTranslation("board");
   const utils = api.useUtils();
 
@@ -260,6 +406,17 @@ function Controller({ boardId, owner, board, state }: ControllerProps) {
     muted: board.muted,
   });
   const [status, setStatus] = useState<ControlStatus>("idle");
+
+  /**
+   * Whether the naming offer is on screen. The server decides if it ever
+   * renders (an unnamed grant only — the owner's browser has no device to
+   * name, and a named phone's `deviceName` comes back non-null on the next
+   * `claim`); this state only remembers *this* session's answer, so a skip or
+   * a save closes it without waiting on a reload.
+   */
+  const [namePromptOpen, setNamePromptOpen] = useState(
+    !owner && deviceName === null
+  );
 
   const onWriteError = useCallback((code: string | undefined) => {
     // UNAUTHORIZED is the grant having lapsed; everything else is a real failure.
@@ -366,6 +523,13 @@ function Controller({ boardId, owner, board, state }: ControllerProps) {
       )}
 
       <div className="flex flex-col gap-6 pb-4">
+        {namePromptOpen && (
+          <DeviceNamePrompt
+            boardId={boardId}
+            onDone={() => setNamePromptOpen(false)}
+          />
+        )}
+
         <MessageEditor onSend={send} pending={pending} />
 
         {/*

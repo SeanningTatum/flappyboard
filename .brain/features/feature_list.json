@@ -161,8 +161,8 @@
         "feat-008",
         "feat-010"
       ],
-      "status": "in-progress",
-      "evidence": "planned 2026-07-28 from approved plan plans/2026-07-28-tv-living-room.html (round 1, decisions 3 and 4); phase 2",
+      "status": "shipped",
+      "evidence": "Two browser walks PASS: verifications/2026-07-28.md (30-day TTL measured from the signed payload, per-device revoke isolation proven by write outcome, grantEpoch bump kills all three phones uniformly) + verifications/2026-07-29.md (naming delta closing finding 1: prompt offered to unnamed phones only, saved name reaches the owner list, rows distinguishable, un-pair-by-name kills exactly that phone by measured 401-vs-200, whitespace refused 400). Gate: typecheck 0, 1185 tests (50 files), build 0, e2e 2/2, harness-check 7/7. Owner call 2026-07-29 ratified the post-pairing name offer over an interstitial.",
       "owners": [
         "sean"
       ]

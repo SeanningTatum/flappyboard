@@ -1,10 +1,11 @@
 # Feature: Family Grants
 
-_Last updated: 2026-07-28_
+_Last updated: 2026-07-29_
 
-**Status: in-progress — code complete, verification outstanding.** Design
-approved in plan review round 1 —
-`plans/2026-07-28-tv-living-room.html`.
+**Status: shipped 2026-07-29.** Design approved in plan review round 1 —
+`plans/2026-07-28-tv-living-room.html`. Verified by two browser walks:
+`verifications/2026-07-28.md` (TTL, revoke isolation, epoch bump) and
+`verifications/2026-07-29.md` (the naming delta that closed finding 1).
 
 ## Purpose
 Make a paired phone stay paired. Today `DEFAULT_GRANT_TTL_SECONDS = 12 * 60 * 60`
@@ -114,15 +115,29 @@ costs the owner the ability to un-pair that one device by name until it next
 connects. Refusing a pairing whose credential has already been issued would be
 strictly worse.
 
+### The name is captured after pairing, not during
+
+Decision 4 said "name at pairing", but pairing happens inside the `/b/:boardId/c`
+loader — a server-side token redemption with no interstitial to type into. So the
+name is captured **immediately after**: `claim` returns `deviceName`, and an
+unnamed grant phone is offered a dismissible prompt on the controller
+(`DeviceNamePrompt` in `control.tsx`). Saving calls `nameDevice`, which names the
+caller's own grant record by its nonce — the nonce never crosses the wire, so a
+phone can name only itself. `decideName` (`paired-devices.ts`) keeps the touch
+invariants: a tombstoned nonce cannot be resurrected by naming it, and an unknown
+nonce gets its record created (grandfathered phones can be named without
+re-pairing). Owner-side rename remains out of scope.
+
 ## As built — files
 
 | File | What landed |
 |------|-------------|
-| `app/lib/board/paired-devices.ts` | new — records, tombstones, `decideTouch`, `renewRecord`, `pruneDevices`, `overflowVictims` (74 tests) |
-| `workers/board-room.ts` | `/grants/record`, `/grants/touch`, `/grants/revoke`, `GET /grants` |
+| `app/lib/board/paired-devices.ts` | new — records, tombstones, `decideTouch`, `decideName`, `renewRecord`, `pruneDevices`, `overflowVictims` |
+| `workers/board-room.ts` | `/grants/record`, `/grants/touch`, `/grants/name`, `/grants/revoke`, `GET /grants` |
 | `app/routes/api/board-ws.ts` | revocation check + sliding renewal on upgrade |
-| `app/trpc/routes/board.ts` | `pairedDevices`, `revokeDevice`; `pair` takes an optional device name |
+| `app/trpc/routes/board.ts` | `pairedDevices`, `revokeDevice`, `nameDevice`; `pair` takes an optional device name; `claim` returns `deviceName` |
 | `app/components/boards/board-devices.tsx` | new — the owner's device list, per-row un-pair, un-pair-all-TVs |
+| `app/routes/board/control.tsx` | `DeviceNamePrompt` — the post-pairing name offer on the controller |
 | `app/models/errors/board.ts` | `PairingRefusal` gains `"revoked"` — the one refusal a token cannot carry |
 
 ## Changelog
@@ -131,3 +146,4 @@ strictly worse.
 |------|------|-------------|
 | 2026-07-28 | feature | Registered as planned from the reviewed TV living-room plan |
 | 2026-07-28 | feature | Built. 30-day sliding TTL, per-grant records with tombstone revocation, owner device list on `/boards` |
+| 2026-07-29 | feature | Device-name offer wired (verification finding 1 closed): `nameDevice` + `decideName` + controller prompt; shipped after second browser walk PASS |

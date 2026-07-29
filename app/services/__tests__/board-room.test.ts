@@ -410,6 +410,113 @@ describe("BoardRoomLive", () => {
     )
   );
 
+  it.effect("nameGrant posts the nonce, name and TTL to the board's own room", () => {
+    const calls: Recorded[] = [];
+    return Effect.gen(function* () {
+      const room = yield* BoardRoom;
+      const result = yield* room.nameGrant({
+        boardId: "board-42",
+        nonce: "nonce-1",
+        name: "Kai's phone",
+        ttlSeconds: 3600,
+      });
+      expect(result).toEqual({ live: true, name: "Kai's phone" });
+      const call = calls[0]!;
+      expect(call.url).toContain("/grants/name?boardId=board-42");
+      expect(call.init?.method).toBe("POST");
+      expect(JSON.parse(String(call.init?.body))).toEqual({
+        nonce: "nonce-1",
+        name: "Kai's phone",
+        ttlSeconds: 3600,
+      });
+    }).pipe(
+      Effect.provide(
+        provideRoom(
+          fakeNamespace(
+            () =>
+              jsonResponse({ type: "grant-touch", live: true, name: "Kai's phone" }),
+            calls
+          )
+        )
+      )
+    );
+  });
+
+  it.effect("nameGrant reports a tombstoned nonce as live: false, not a failure", () =>
+    Effect.gen(function* () {
+      const room = yield* BoardRoom;
+      // Being revoked is an ordinary answer — the route turns it into the same
+      // refusal any revoked grant gets, so it must not surface as a thrown error.
+      const result = yield* room.nameGrant({
+        boardId: "board-42",
+        nonce: "nonce-1",
+        name: "Kai's phone",
+        ttlSeconds: 3600,
+      });
+      expect(result).toEqual({ live: false, name: null });
+    }).pipe(
+      Effect.provide(
+        provideRoom(
+          fakeNamespace(() =>
+            jsonResponse({ type: "grant-touch", live: false, name: null })
+          )
+        )
+      )
+    )
+  );
+
+  it.effect("nameGrant fails closed when the room 500s", () =>
+    Effect.gen(function* () {
+      const room = yield* BoardRoom;
+      const exit = yield* Effect.exit(
+        room.nameGrant({
+          boardId: "board-42",
+          nonce: "nonce-1",
+          name: "Kai's phone",
+          ttlSeconds: 3600,
+        })
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ExternalServiceError);
+        }
+      }
+    }).pipe(
+      Effect.provide(
+        provideRoom(
+          fakeNamespace(() =>
+            jsonResponse({ type: "error", code: "persist_failed" }, 500)
+          )
+        )
+      )
+    )
+  );
+
+  it.effect("nameGrant fails closed on an unrecognised payload", () =>
+    Effect.gen(function* () {
+      const room = yield* BoardRoom;
+      const exit = yield* Effect.exit(
+        room.nameGrant({
+          boardId: "board-42",
+          nonce: "nonce-1",
+          name: "Kai's phone",
+          ttlSeconds: 3600,
+        })
+      );
+      // A shape mismatch must never read as `live: false` — that would turn a
+      // deploy skew into a refusal that looks exactly like a deliberate revoke.
+      expect(Exit.isFailure(exit)).toBe(true);
+    }).pipe(
+      Effect.provide(
+        provideRoom(
+          fakeNamespace(() => jsonResponse({ type: "nonce", spent: true }))
+        )
+      )
+    )
+  );
+
   it.effect("surfaces a non-200 from the room as ExternalServiceError", () =>
     Effect.gen(function* () {
       const room = yield* BoardRoom;
