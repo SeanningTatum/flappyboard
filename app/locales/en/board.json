@@ -18,7 +18,7 @@
   },
   "tv": {
     "title": "Pair this screen",
-    "instructions": "Scan the code with your phone — sign in, name your board, and this TV is linked. Or type the code below on the Link a TV page.",
+    "instructions": "Scan the code with your phone — sign in, and this TV is linked. Or type the code below on the Link a TV page.",
     "codeLabel": "Or type",
     "qrAlt": "QR code that links this TV to your account",
     "unavailable": "Could not reach the board service. This screen will try again shortly."

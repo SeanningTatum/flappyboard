@@ -21,6 +21,42 @@
 
 ---
 
+## 2026-07-29 — shipped auto-tv-link: Browser-verified PASS (.brain/features/auto-tv-link/verifications/2026-07-29.md, 16 assertions, 6 scenarios): HEADLINE f
+- branch: `feat/auto-tv-link`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — PR #8 opened: feat/qr-first-pairing-console (2 commits, 57 files) ships feat-014 qr-first-tv-link + feat-015 controller-board-mirror + feat-016 pairing-experience-redesign. Greptile pre-PR review ran (confidence 3, 3 findings): P1 /\evil.com scheme-relative bypass in safeNextPath verified against new URL and fixed owner-approved in 4a09892 with regression tests; 2xP2 auto-fixed (closure narrowing, missing /\ test). PR body embeds 6 verification screenshots via blob URLs and links all 3 verdict docs (54 measured assertions) + 23 committed screenshots. wrangler.jsonc (feat-013 KV IDs) deliberately left out. PR recorded on all three features in the brain.
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+- next: CI + Greptile bot pass on PR #8, then squash-merge (repo convention). feat-013 live-weather is unblocked: KV namespaces provisioned, plan approved.
+
+---
+
+## 2026-07-29 — PR opened for pairing-experience-redesign: https://github.com/SeanningTatum/flappyboard/pull/8
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — PR opened for controller-board-mirror: https://github.com/SeanningTatum/flappyboard/pull/8
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — PR opened for qr-first-tv-link: https://github.com/SeanningTatum/flappyboard/pull/8
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-07-29 — Shipped THREE features in one session on main. feat-014 qr-first-tv-link: /tv defaults to a QR encoding /link?code=, requireSession preserves the gated URL as validated ?next= (login+sign-up thread it), /link creates+names a board inline with rollback-safe create-and-approve (verification caught the orphan), success hands off to the controller. feat-015 controller-board-mirror: BoardGridView variant=inline (container-sized, silent) in a collapsible section on the controller — the phone shows the live board, TV path byte-untouched. feat-016 pairing-experience-redesign (refero-guided, direct build, extend-the-hardware-aesthetic): /tv and /link brought onto the console system (pilot lamp, plate QR, readout code, ConsoleField shared, SegmentTrack with pure :checked CSS reveal, ink keys, amber outline focus, color-scheme/theme-color metas); login deliberately left light. Verification found+fixed two real defects before ship: non-atomic create (orphan board) and a dead focus ring (inline box-shadow vs ring utility -> outline). Gates: typecheck 0, 1201 tests, build 0, e2e 2/2, harness 7/7, brain check clean. Verdict docs: qr-first-tv-link/verifications/2026-07-29.md (17+2), controller-board-mirror/verifications/2026-07-29.md (11), pairing-experience-redesign/verifications/2026-07-29.md (26+5). All UNCOMMITTED on main.
 - branch: `main`
 - in-progress feature: none

@@ -243,6 +243,21 @@
       "owners": [
         "sean"
       ]
+    },
+    {
+      "id": "feat-017",
+      "name": "Auto TV Link",
+      "slug": "auto-tv-link",
+      "doc": ".brain/features/auto-tv-link/auto-tv-link.md",
+      "description": "Zero-typing TV pairing: scan -> login (if needed) -> automatically linked. The /link loader auto-resolves when a valid code arrives: 0 boards creates one with a locale-aware default name and pairs it, exactly 1 board pairs it, multiple boards falls back to the picker (manual=1 escape). GET-with-side-effect in the loader follows the /tv/claim precedent (single-use credential redemption).",
+      "dependencies": [
+        "feat-014"
+      ],
+      "status": "shipped",
+      "evidence": "Browser-verified PASS (.brain/features/auto-tv-link/verifications/2026-07-29.md, 16 assertions, 6 scenarios): HEADLINE fresh sign-up 0-boards — scan 7LKCSW, sign-up carries next, registration lands on link-auto-success with zero further interaction (Living Room created), TV flips 144 tiles no-reload, one HttpOnly fb_device_ cookie, /boards==[Living Room]. 1-board auto-pairs (paired copy, not created). Multi-board (admin) gets picker. Bogus code ZZZZZ9 falls to form with not-found, no orphan (rollback). manual=1 escape both directions. /tv regression clean (FCKEGB). Gate: typecheck 0, 1207 tests, build 0, e2e 2/2, harness clean.",
+      "owners": [
+        "sean"
+      ]
     }
   ]
 }
