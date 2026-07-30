@@ -137,6 +137,42 @@ export const FLAP_NOTCH_MINI =
 /* -------------------------------------------------------------------------- */
 
 /**
+ * The dark field a console page sits on.
+ *
+ * `min-h-dvh` on the content is not enough on its own: `body` is white, so an
+ * iOS rubber-band scroll past either end flashes the page background straight
+ * into the eyes of someone standing in a dim room. A fixed backdrop pinned to
+ * the viewport is what actually covers that.
+ *
+ * `className="dark"` is load-bearing too. The app's dark variant is
+ * `&:is(.dark *)`, so this makes every shadcn primitive *inside* the field
+ * resolve its dark tokens — the Switch, the Spinner, `FormMessage`'s
+ * destructive red — without touching `<html>`, which the TV route and the
+ * dashboard share.
+ */
+export function ConsoleField({
+  children,
+  ...rest
+}: React.ComponentProps<"main">) {
+  return (
+    <>
+      <div
+        aria-hidden
+        className="fixed inset-0 -z-10"
+        style={{ backgroundColor: CONSOLE.field }}
+      />
+      <main
+        className="dark mx-auto flex min-h-dvh max-w-md flex-col px-4 py-5"
+        style={{ backgroundColor: CONSOLE.field, color: CONSOLE.ink }}
+        {...rest}
+      >
+        {children}
+      </main>
+    </>
+  );
+}
+
+/**
  * A section label. Sits *outside* the plate it names, the way silkscreen sits on
  * the panel next to the control rather than on the control.
  */

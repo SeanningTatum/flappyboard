@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Effect, Exit } from "effect";
 import { useTranslation } from "react-i18next";
 import { data, redirect } from "react-router";
-import { IconRefresh } from "@tabler/icons-react";
+import { IconChevronDown, IconRefresh } from "@tabler/icons-react";
 
 import type { Route } from "./+types/control";
 import { api } from "@/trpc/client";
@@ -11,12 +11,14 @@ import { useBoardSocket } from "@/hooks/use-board-socket";
 import { clearGrantCookie, serializeGrantCookie } from "@/lib/board/pairing";
 import { MAX_DEVICE_NAME_LENGTH } from "@/lib/board/paired-devices";
 import { Input } from "@/components/ui/input";
+import { BoardGridView } from "@/components/board/board-grid-view";
 import { MessageEditor } from "@/components/board/message-editor";
 import { PushToTalkButton } from "@/components/board/push-to-talk-button";
 import { SoundPackPicker } from "@/components/board/sound-pack-picker";
 import { HistoryStrip } from "@/components/board/history-strip";
 import {
   CONSOLE,
+  ConsoleField,
   ConsoleReadout,
   PLATE_LIP,
   WELL_LIP,
@@ -36,6 +38,16 @@ import type { BoardMessage } from "@/lib/schemas/board";
  */
 
 export const handle = { i18n: ["board"] };
+
+/**
+ * The controller is a dark console in a dim room — declare it so the phone's
+ * own chrome (address bar, scrollbars, form controls) matches instead of
+ * flashing white between the TV and this page.
+ */
+export const meta: Route.MetaFunction = () => [
+  { name: "color-scheme", content: "dark" },
+  { name: "theme-color", content: CONSOLE.field },
+];
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const boardId = params.boardId;
@@ -140,41 +152,6 @@ export default function BoardControl({ loaderData }: Route.ComponentProps) {
       board={board}
       state={state}
     />
-  );
-}
-
-/**
- * The dark field the whole controller sits on.
- *
- * `min-h-dvh` on the content is not enough on its own: `body` is white, so an
- * iOS rubber-band scroll past either end flashes the page background straight
- * into the eyes of someone standing in a dim room. A fixed backdrop pinned to the
- * viewport is what actually covers that.
- *
- * `className="dark"` is load-bearing too. The app's dark variant is
- * `&:is(.dark *)`, so this makes every shadcn primitive *inside* the controller
- * resolve its dark tokens — the Switch, the Spinner, `FormMessage`'s destructive
- * red — without touching `<html>`, which the TV route and the dashboard share.
- */
-function ConsoleField({
-  children,
-  ...rest
-}: React.ComponentProps<"main">) {
-  return (
-    <>
-      <div
-        aria-hidden
-        className="fixed inset-0 -z-10"
-        style={{ backgroundColor: CONSOLE.field }}
-      />
-      <main
-        className="dark mx-auto flex min-h-dvh max-w-md flex-col px-4 py-5"
-        style={{ backgroundColor: CONSOLE.field, color: CONSOLE.ink }}
-        {...rest}
-      >
-        {children}
-      </main>
-    </>
   );
 }
 
@@ -418,6 +395,13 @@ function Controller({ boardId, owner, deviceName, board, state }: ControllerProp
     !owner && deviceName === null
   );
 
+  /**
+   * The mirror's collapse state, session-local only. Default open: "what does
+   * the board say right now" is the reason the operator is on this page, and
+   * the answer should never be a tap away.
+   */
+  const [mirrorOpen, setMirrorOpen] = useState(true);
+
   const onWriteError = useCallback((code: string | undefined) => {
     // UNAUTHORIZED is the grant having lapsed; everything else is a real failure.
     setStatus(code === "UNAUTHORIZED" ? "rescan" : "failed");
@@ -523,6 +507,42 @@ function Controller({ boardId, owner, deviceName, board, state }: ControllerProp
       )}
 
       <div className="flex flex-col gap-6 pb-4">
+        {/*
+          The live board, mirrored. The socket this page already holds feeds a
+          silent, container-sized BoardGridView, so the operator watches the
+          flaps land on the phone instead of turning to the TV. Silent on
+          purpose — the clatter belongs to the room the TV is in.
+        */}
+        <section
+          className="flex flex-col"
+          style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
+          data-testid="control-board-mirror"
+          data-open={mirrorOpen}
+        >
+          <button
+            type="button"
+            aria-expanded={mirrorOpen}
+            onClick={() => setMirrorOpen((open) => !open)}
+            className="flex min-h-11 touch-manipulation items-center justify-between px-3 py-2.5 text-[11px] font-medium uppercase"
+            style={{ color: CONSOLE.inkDim, letterSpacing: "0.16em" }}
+            data-testid="control-board-mirror-toggle"
+          >
+            {t("control.mirror.title")}
+            <IconChevronDown
+              aria-hidden
+              className={cn(
+                "size-4 transition-transform",
+                mirrorOpen && "rotate-180"
+              )}
+            />
+          </button>
+          {mirrorOpen && (
+            <div className="px-3 pb-3">
+              <BoardGridView grid={live.grid} variant="inline" />
+            </div>
+          )}
+        </section>
+
         {namePromptOpen && (
           <DeviceNamePrompt
             boardId={boardId}

@@ -4,6 +4,8 @@ import {
   requireSession,
   requireAdmin,
   redirectIfAuthenticated,
+  safeNextPath,
+  loginRedirectUrl,
 } from "../session";
 
 const makeContext = (session: unknown): AppLoadContext =>
@@ -15,7 +17,7 @@ const makeContext = (session: unknown): AppLoadContext =>
     },
   }) as unknown as AppLoadContext;
 
-const request = () => new Request("http://localhost/");
+const request = (url = "http://localhost/") => new Request(url);
 
 async function expectRedirect(promise: Promise<unknown>, location: string) {
   try {
@@ -36,10 +38,20 @@ describe("requireSession", () => {
     expect(result).toBe(session);
   });
 
-  it("redirects to /login when there is no session", async () => {
+  it("redirects to /login with the gated URL as ?next= when there is no session", async () => {
     await expectRedirect(
       requireSession(request(), makeContext(null)),
-      "/login"
+      "/login?next=%2F"
+    );
+  });
+
+  it("preserves the gated page's path and query in ?next=", async () => {
+    await expectRedirect(
+      requireSession(
+        request("http://localhost/link?code=GHPLXX"),
+        makeContext(null)
+      ),
+      "/login?next=%2Flink%3Fcode%3DGHPLXX"
     );
   });
 });
@@ -62,7 +74,7 @@ describe("requireAdmin", () => {
   it("redirects to /login when there is no session", async () => {
     await expectRedirect(
       requireAdmin(request(), makeContext(null)),
-      "/login"
+      "/login?next=%2F"
     );
   });
 });
@@ -88,5 +100,47 @@ describe("redirectIfAuthenticated", () => {
     await expect(
       redirectIfAuthenticated(request(), makeContext(null))
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("safeNextPath", () => {
+  it("accepts same-origin absolute paths", () => {
+    expect(safeNextPath("/dashboard")).toBe("/dashboard");
+    expect(safeNextPath("/link?code=GHPLXX")).toBe("/link?code=GHPLXX");
+  });
+
+  it("rejects scheme-relative URLs (open redirect)", () => {
+    expect(safeNextPath("//evil.com")).toBeNull();
+    expect(safeNextPath("//evil.com/login")).toBeNull();
+  });
+
+  it("rejects backslash scheme-relative URLs — WHATWG normalises /\\ to // on https", () => {
+    expect(safeNextPath("/\\evil.com")).toBeNull();
+    expect(safeNextPath("/\\evil.com/login")).toBeNull();
+  });
+
+  it("rejects absolute and relative URLs", () => {
+    expect(safeNextPath("https://evil.com")).toBeNull();
+    expect(safeNextPath("http://evil.com")).toBeNull();
+    expect(safeNextPath("dashboard")).toBeNull();
+  });
+
+  it("rejects missing and empty values", () => {
+    expect(safeNextPath(null)).toBeNull();
+    expect(safeNextPath("")).toBeNull();
+  });
+});
+
+describe("loginRedirectUrl", () => {
+  it("carries the gated path and query as ?next=", () => {
+    expect(
+      loginRedirectUrl(request("http://localhost/link?code=GHPLXX"))
+    ).toBe("/login?next=%2Flink%3Fcode%3DGHPLXX");
+  });
+
+  it("uses the bare path when there is no query", () => {
+    expect(loginRedirectUrl(request("http://localhost/boards"))).toBe(
+      "/login?next=%2Fboards"
+    );
   });
 });

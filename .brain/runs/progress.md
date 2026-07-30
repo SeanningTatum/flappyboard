@@ -21,6 +21,102 @@
 
 ---
 
+## 2026-07-30 — Stack consolidated: PR #9 squash-merged into `feat/qr-first-pairing-console` (8e3202c), so PR #8 is now the single PR to `main` carrying all four features (feat-014 qr-first-tv-link, feat-015 controller-board-mirror, feat-016 pairing-experience-redesign, feat-017 auto-tv-link). PR #8 body rewritten to describe the consolidated scope; `feat/auto-tv-link` deleted (merged). Brain state reconciled onto the base branch: this cursor, the feat-014 run note's Greptile step, and four `pr.json` markers. `wrangler.jsonc` (feat-013 KV IDs) stays owner-managed and out of the branch.
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+- next: PR #8 → `main`. CI blocker is **not** this PR: `preview.yml` "Deploy preview" has failed on every run since it was added — `wrangler versions upload` uploads fine but prints no `Version Preview URL` / `Version Preview Alias URL`, so URL extraction exits 1. Preview URLs are a non-versioned Worker setting; the one-time owner fix is `bun run deploy:preview` (same bootstrap class as the documented DO-migration 10211 case). Owner calls still open: TV power-cycle cookie survival, 8h kiosk soak, wedged-socket invisibility, revoke-all dead rows. feat-013 live-weather remains the only planned feature (KV provisioned).
+
+---
+
+## 2026-07-29 — PR #9 opened (stacked on #8): feat-017 auto-tv-link — scan, sign in, done. /link loader auto-resolves obvious accounts (0 boards: create Living Room/客厅 + pair; 1 board: pair it; many: picker; ?manual=1 pre-pairing escape). Greptile review (confidence 2) found 2 real defects fixed in 817374b: board.list failure silently read as 0 boards (phantom create) and spent code left in URL (refresh showed misleading error) — success now redirects to /link?paired=<id>, receipt refresh/back-safe. Security finding (any authenticated GET pairs) owner-ratified accept+document in route comment. Re-verified post-fix 13/13 PASS (fresh sign-up headline flow unchanged, clean-URL receipt). Gate: typecheck 0, 1207 tests, build 0, e2e 2/2, harness clean. 3 commits on feat/auto-tv-link.
+- branch: `feat/auto-tv-link`
+- in-progress feature: none
+- run note: none
+- next: Merge order: #8 then #9 (stacked). feat-013 live-weather remains the only planned feature (KV provisioned). Owner calls still open: TV power-cycle cookie survival, 8h kiosk soak, wedged-socket invisibility, revoke-all dead rows.
+
+---
+
+## 2026-07-29 — PR opened for auto-tv-link: https://github.com/SeanningTatum/flappyboard/pull/9
+- branch: `feat/auto-tv-link`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — shipped auto-tv-link: Browser-verified PASS (.brain/features/auto-tv-link/verifications/2026-07-29.md, 16 assertions, 6 scenarios): HEADLINE f
+- branch: `feat/auto-tv-link`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — PR #8 opened: feat/qr-first-pairing-console (2 commits, 57 files) ships feat-014 qr-first-tv-link + feat-015 controller-board-mirror + feat-016 pairing-experience-redesign. Greptile pre-PR review ran (confidence 3, 3 findings): P1 /\evil.com scheme-relative bypass in safeNextPath verified against new URL and fixed owner-approved in 4a09892 with regression tests; 2xP2 auto-fixed (closure narrowing, missing /\ test). PR body embeds 6 verification screenshots via blob URLs and links all 3 verdict docs (54 measured assertions) + 23 committed screenshots. wrangler.jsonc (feat-013 KV IDs) deliberately left out. PR recorded on all three features in the brain.
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+- next: CI + Greptile bot pass on PR #8, then squash-merge (repo convention). feat-013 live-weather is unblocked: KV namespaces provisioned, plan approved.
+
+---
+
+## 2026-07-29 — PR opened for pairing-experience-redesign: https://github.com/SeanningTatum/flappyboard/pull/8
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — PR opened for controller-board-mirror: https://github.com/SeanningTatum/flappyboard/pull/8
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — PR opened for qr-first-tv-link: https://github.com/SeanningTatum/flappyboard/pull/8
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — Shipped THREE features in one session on main. feat-014 qr-first-tv-link: /tv defaults to a QR encoding /link?code=, requireSession preserves the gated URL as validated ?next= (login+sign-up thread it), /link creates+names a board inline with rollback-safe create-and-approve (verification caught the orphan), success hands off to the controller. feat-015 controller-board-mirror: BoardGridView variant=inline (container-sized, silent) in a collapsible section on the controller — the phone shows the live board, TV path byte-untouched. feat-016 pairing-experience-redesign (refero-guided, direct build, extend-the-hardware-aesthetic): /tv and /link brought onto the console system (pilot lamp, plate QR, readout code, ConsoleField shared, SegmentTrack with pure :checked CSS reveal, ink keys, amber outline focus, color-scheme/theme-color metas); login deliberately left light. Verification found+fixed two real defects before ship: non-atomic create (orphan board) and a dead focus ring (inline box-shadow vs ring utility -> outline). Gates: typecheck 0, 1201 tests, build 0, e2e 2/2, harness 7/7, brain check clean. Verdict docs: qr-first-tv-link/verifications/2026-07-29.md (17+2), controller-board-mirror/verifications/2026-07-29.md (11), pairing-experience-redesign/verifications/2026-07-29.md (26+5). All UNCOMMITTED on main.
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Commit the three-feature delta (reviewer should look at link.tsx/tv.tsx/console.tsx + locales). Then feat-013 live-weather remains the only planned feature (blocked on owner wrangler kv namespace create). Still-open owner calls from the TV trio: wedged-socket invisibility, revoke-all dead rows, TV power-cycle cookie survival.
+
+---
+
+## 2026-07-29 — shipped pairing-experience-redesign: Browser-verified PASS (.brain/features/pairing-experience-redesign/verifications/2026-07-29.md, 26 assertions + 5 re-che
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — shipped controller-board-mirror: Browser-verified PASS (.brain/features/controller-board-mirror/verifications/2026-07-29.md, 11 assertions, walk run 3x):
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — shipped qr-first-tv-link: Browser-verified PASS (.brain/features/qr-first-tv-link/verifications/2026-07-29.md, 17 assertions + 2-addendum): TV QR 
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-29 — feat-014 qr-first-tv-link verified PASS: QR→login round-trip→inline create+name→TV flip (144 tiles, fb_device cookie)→controller; E1 open-redirect dropped, E2 bogus code rejected. Finding: create-and-approve non-atomic (orphan board on bogus code).
+- branch: `main`
+- in-progress feature: none
+- run note: none
+- next: Parent to review finding + brain ship qr-first-tv-link
+
+---
+
 ## 2026-07-29 — Shipped feat-012 kiosk-display — the TV living-room trio (010/011/012) is now fully shipped. The first kiosk walk measured a real defect: the watchdog's one-shot reload looped because the latch was a useRef that window.location.reload() resets (second reload at +121s). Fixed with createReloadLatch in kiosk.ts — sessionStorage-backed, one reload per outage, cleared on socket-live (re-arms), unreadable storage degrades to NO reload. Walk 2 PASS on the previously failing claim: no second reload across a 300s window, then a second outage re-armed the latch (+152s). Regression with drift active green: 144 tiles, 24x6, scrollable=false, drift tick at exactly 240.1s. Samsung-browser setup recipe written (recipes/samsung-tv-setup.md). Gate: typecheck 0, 1191 tests, build 0, e2e 2/2, harness 7/7, brain check clean. Uncommitted on worktree-tv-living-room (branch ahead 9 + this delta).
 - branch: `worktree-tv-living-room`
 - in-progress feature: none

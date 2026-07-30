@@ -32,7 +32,8 @@ test.describe("Authentication", () => {
     await expect(page.getByTestId("dashboard-account")).toBeVisible();
 
     // 2. Sign out via the Better Auth endpoint, then verify the dashboard
-    //    redirects to /login when there's no session.
+    //    redirects to /login when there's no session — carrying ?next= so the
+    //    sign-in below lands right back on /dashboard.
     const signOutStatus = await page.evaluate(() =>
       fetch("/api/auth/sign-out", {
         method: "POST",
@@ -44,7 +45,7 @@ test.describe("Authentication", () => {
     expect(signOutStatus).toBe(200);
 
     await page.goto("/dashboard");
-    await page.waitForURL("/login");
+    await page.waitForURL(/\/login\?next=/);
 
     // 3. Sign back in with the same credentials.
     await page.fill('[data-testid="login-email"]', email);

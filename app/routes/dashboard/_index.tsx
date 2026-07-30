@@ -88,11 +88,25 @@ export default function DashboardIndex() {
                 </p>
               </div>
             </div>
-            <Button asChild size="sm" className="sm:shrink-0">
-              <Link to="/boards" data-testid="dashboard-boards-cta">
-                {tBoards("dashboard.cta")}
-              </Link>
-            </Button>
+            {/*
+              Two actions, because there are two ways in. A fresh account starts
+              at the boards list; someone standing in front of a TV that is
+              already showing a code needs `/link` directly and should not have
+              to guess the URL from the couch.
+            */}
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/link" data-testid="dashboard-link-tv-cta">
+                  <IconDeviceTv className="size-4" />
+                  {tBoards("dashboard.link_cta")}
+                </Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link to="/boards" data-testid="dashboard-boards-cta">
+                  {tBoards("dashboard.cta")}
+                </Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </section>

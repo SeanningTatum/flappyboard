@@ -18,7 +18,9 @@
   },
   "tv": {
     "title": "Pair this screen",
-    "instructions": "On your phone, open flappyboard, go to Link a TV, and enter this code.",
+    "instructions": "Scan the code with your phone — sign in, and this TV is linked. Or type the code below on the Link a TV page.",
+    "codeLabel": "Or type",
+    "qrAlt": "QR code that links this TV to your account",
     "unavailable": "Could not reach the board service. This screen will try again shortly."
   },
   "control": {
@@ -132,6 +134,9 @@
       "blue": "Blue",
       "violet": "Violet",
       "black": "Unlit"
+    },
+    "mirror": {
+      "title": "Live board"
     }
   }
 }

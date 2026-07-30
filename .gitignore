@@ -45,3 +45,6 @@ worker-configuration.d.ts
 
 # feature-verifier throwaway Playwright scripts (see .claude/agents/feature-verifier.md)
 tmp/
+
+# Stale per-feature git worktrees (created by agent runs, pruned with `git worktree prune`)
+.claude/worktrees/
