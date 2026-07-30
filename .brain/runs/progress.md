@@ -21,6 +21,29 @@
 
 ---
 
+## 2026-07-30 — Stack consolidated: PR #9 squash-merged into `feat/qr-first-pairing-console` (8e3202c), so PR #8 is now the single PR to `main` carrying all four features (feat-014 qr-first-tv-link, feat-015 controller-board-mirror, feat-016 pairing-experience-redesign, feat-017 auto-tv-link). PR #8 body rewritten to describe the consolidated scope; `feat/auto-tv-link` deleted (merged). Brain state reconciled onto the base branch: this cursor, the feat-014 run note's Greptile step, and four `pr.json` markers. `wrangler.jsonc` (feat-013 KV IDs) stays owner-managed and out of the branch.
+- branch: `feat/qr-first-pairing-console`
+- in-progress feature: none
+- run note: none
+- next: PR #8 → `main`. CI blocker is **not** this PR: `preview.yml` "Deploy preview" has failed on every run since it was added — `wrangler versions upload` uploads fine but prints no `Version Preview URL` / `Version Preview Alias URL`, so URL extraction exits 1. Preview URLs are a non-versioned Worker setting; the one-time owner fix is `bun run deploy:preview` (same bootstrap class as the documented DO-migration 10211 case). Owner calls still open: TV power-cycle cookie survival, 8h kiosk soak, wedged-socket invisibility, revoke-all dead rows. feat-013 live-weather remains the only planned feature (KV provisioned).
+
+---
+
+## 2026-07-29 — PR #9 opened (stacked on #8): feat-017 auto-tv-link — scan, sign in, done. /link loader auto-resolves obvious accounts (0 boards: create Living Room/客厅 + pair; 1 board: pair it; many: picker; ?manual=1 pre-pairing escape). Greptile review (confidence 2) found 2 real defects fixed in 817374b: board.list failure silently read as 0 boards (phantom create) and spent code left in URL (refresh showed misleading error) — success now redirects to /link?paired=<id>, receipt refresh/back-safe. Security finding (any authenticated GET pairs) owner-ratified accept+document in route comment. Re-verified post-fix 13/13 PASS (fresh sign-up headline flow unchanged, clean-URL receipt). Gate: typecheck 0, 1207 tests, build 0, e2e 2/2, harness clean. 3 commits on feat/auto-tv-link.
+- branch: `feat/auto-tv-link`
+- in-progress feature: none
+- run note: none
+- next: Merge order: #8 then #9 (stacked). feat-013 live-weather remains the only planned feature (KV provisioned). Owner calls still open: TV power-cycle cookie survival, 8h kiosk soak, wedged-socket invisibility, revoke-all dead rows.
+
+---
+
+## 2026-07-29 — PR opened for auto-tv-link: https://github.com/SeanningTatum/flappyboard/pull/9
+- branch: `feat/auto-tv-link`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-07-29 — shipped auto-tv-link: Browser-verified PASS (.brain/features/auto-tv-link/verifications/2026-07-29.md, 16 assertions, 6 scenarios): HEADLINE f
 - branch: `feat/auto-tv-link`
 - in-progress feature: none
