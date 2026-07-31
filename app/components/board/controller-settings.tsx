@@ -95,7 +95,13 @@ const INK_KEY_STYLE = {
   boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.25)",
 } as const;
 
-/** A key that does something you cannot undo. Outlined, never filled amber. */
+/**
+ * An outlined key. `destructive` is spent on **one** control on this page, and
+ * that restraint is the point: the first pass painted all three revocations red
+ * and produced a wall of alarm in which "un-pair the TVs" and "delete the board
+ * and every message it has ever shown" looked identical. Un-pairing is
+ * recoverable by re-scanning; deleting is not. Only the irreversible one is red.
+ */
 const EDGE_KEY =
   "flex min-h-11 touch-manipulation items-center justify-center px-4 text-[11px] font-medium uppercase disabled:opacity-40";
 const edgeKeyStyle = (destructive: boolean) =>
@@ -132,6 +138,7 @@ function ArmedKey({
   pendingLabel,
   onConfirm,
   testId,
+  destructive = false,
 }: {
   readonly label: string;
   readonly armedLabel: string;
@@ -141,6 +148,8 @@ function ArmedKey({
   readonly pendingLabel: string;
   readonly onConfirm: () => void;
   readonly testId: string;
+  /** Red. Reserved for the irreversible one — see `edgeKeyStyle`. */
+  readonly destructive?: boolean;
 }) {
   const [armed, setArmed] = useState(false);
 
@@ -149,7 +158,7 @@ function ArmedKey({
       <button
         type="button"
         className={EDGE_KEY}
-        style={edgeKeyStyle(true)}
+        style={edgeKeyStyle(destructive)}
         onClick={() => setArmed(true)}
         data-testid={testId}
       >
@@ -181,7 +190,7 @@ function ArmedKey({
         <button
           type="button"
           className={cn(EDGE_KEY, "flex-1")}
-          style={edgeKeyStyle(true)}
+          style={edgeKeyStyle(destructive)}
           onClick={onConfirm}
           disabled={pending}
           data-testid={`${testId}-confirm`}
@@ -280,9 +289,12 @@ export function ControllerSettings({
       <section className="flex flex-col gap-2">
         <ConsoleLabel>{t("controller.settings.display.title")}</ConsoleLabel>
         <div className={PLATE} style={PLATE_STYLE}>
-          <p className="text-[12px] leading-relaxed" style={{ color: CONSOLE.inkDim }}>
-            {t("controller.settings.display.description")}
-          </p>
+          {/*
+            No explanatory paragraph above the address. `ConsoleAddress`'s own
+            label already says "type this into your TV's browser", and a
+            sentence saying the same thing one line higher is two labels for one
+            field — the exact redundancy the section heading above is for.
+          */}
           <ConsoleAddress
             url={displayUrl}
             data-testid="control-settings-address"
@@ -426,8 +438,13 @@ export function ControllerSettings({
                 the owner's decision, and the right one: a number is only worth
                 showing next to the controls that change it.
               */}
+              {/*
+                A short label, not `devices.title` again — the readout sits on
+                the same line as the section heading, so repeating it printed
+                "PAIRED DEVICES … PAIRED DEVICES 0".
+              */}
               <ConsoleReadout
-                label={t("devices.title")}
+                label={t("devices.count")}
                 value={deviceList.length}
               />
             </ConsoleLabel>
@@ -494,13 +511,14 @@ export function ControllerSettings({
                   })}
                 </ul>
               )}
-            </div>
-          </section>
 
-          {/* ------------------------------------------------- the edge */}
-          <section className="flex flex-col gap-2">
-            <ConsoleLabel>{t("controller.settings.danger.title")}</ConsoleLabel>
-            <div className={PLATE} style={PLATE_STYLE}>
+              {/*
+                The two bulk revocations live HERE, with the list they act on,
+                rather than in a "danger zone" beside delete. They are the same
+                kind of thing as the per-row un-pair a few pixels above — wider,
+                not different — and everything either one takes away is
+                recoverable by scanning a code again.
+              */}
               <ArmedKey
                 label={t("devices.unpairDisplays")}
                 armedLabel={t("devices.unpairDisplaysConfirm")}
@@ -521,7 +539,16 @@ export function ControllerSettings({
                 onConfirm={() => revokeControllers.mutate({ boardId })}
                 testId="control-settings-revoke"
               />
+            </div>
+          </section>
+
+          {/* ------------------------------------------------- the edge */}
+          <section className="flex flex-col gap-2">
+            <ConsoleLabel>{t("controller.settings.danger.title")}</ConsoleLabel>
+            <div className={PLATE} style={PLATE_STYLE}>
+              {/* One control, and the only red on the page. */}
               <ArmedKey
+                destructive
                 label={t("delete.confirm")}
                 armedLabel={t("delete.confirm")}
                 cancelLabel={t("delete.cancel")}

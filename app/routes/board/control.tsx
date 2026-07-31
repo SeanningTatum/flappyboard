@@ -213,7 +213,9 @@ function RescanPrompt() {
   const { t } = useTranslation("board");
   return (
     <ConsoleField
-      className="dark mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-5 px-6 py-5 text-center"
+      // Only the additions — `ConsoleField` merges now, so restating its own
+      // layout string here would just be two places to keep in step.
+      className="items-center justify-center gap-5 text-center"
       data-testid="control-root"
       data-access="none"
     >
@@ -394,7 +396,6 @@ function Controller({
       {user !== null && (
         <ConsoleShell
           back={{ to: "/boards", label: tBoards("controller.back") }}
-          title={tBoards("shell.boards")}
           userName={user.name}
           isAdmin={user.isAdmin}
         />
@@ -449,7 +450,10 @@ function Controller({
               role="tab"
               aria-selected={tab === value}
               onClick={() => setTab(value)}
-              className={segmentClass(tab === value)}
+              // `segmentClass` sizes nothing — every other track in the app
+              // adds its own width and height, and without them two tabs
+              // collapse to their text and huddle at the left of the groove.
+              className={cn(segmentClass(tab === value), "h-11 flex-1 touch-manipulation")}
               style={segmentStyle(tab === value)}
               data-testid={`control-tab-${value}`}
             >

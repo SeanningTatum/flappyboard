@@ -7,7 +7,6 @@ import { requireSession } from "@/lib/session";
 import {
   CONSOLE,
   ConsoleField,
-  ConsoleLabel,
   PLATE_LIP,
 } from "@/components/board/console";
 import { ConsoleAddress } from "@/components/board/console-address";
@@ -104,7 +103,7 @@ export default function BoardsIndex({ loaderData }: Route.ComponentProps) {
 
   return (
     <ConsoleField data-testid="boards-root" className="gap-6">
-      <ConsoleShell title={t("shell.boards")} userName={user.name} isAdmin={user.isAdmin} />
+      <ConsoleShell userName={user.name} isAdmin={user.isAdmin} />
 
       <header className="flex flex-col gap-1.5 px-1">
         <h1
@@ -197,21 +196,18 @@ export default function BoardsIndex({ loaderData }: Route.ComponentProps) {
             TV creates its own board when it is pointed here — so this is
             genuinely an address and not a disguised button.
           */}
-          <section className="flex flex-col gap-2">
-            <ConsoleLabel>{t("rack.address.label")}</ConsoleLabel>
-            <div
-              className="flex flex-col gap-3 px-3 py-3"
-              style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
-            >
-              <ConsoleAddress
-                url={pairingUrl}
-                label={t("rack.address.label")}
-                data-testid="boards-pairing-address"
-              />
-              <p className="px-1 text-[12px]" style={{ color: CONSOLE.inkMute }}>
-                {t("rack.address.hint")}
-              </p>
-            </div>
+          <section
+            className="flex flex-col gap-3 px-3 py-3"
+            style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
+          >
+            <ConsoleAddress
+              url={pairingUrl}
+              label={t("rack.address.label")}
+              data-testid="boards-pairing-address"
+            />
+            <p className="px-1 text-[12px]" style={{ color: CONSOLE.inkMute }}>
+              {t("rack.address.hint")}
+            </p>
           </section>
         </>
       )}

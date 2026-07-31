@@ -38,13 +38,22 @@ import { CONSOLE, PLATE_LIP } from "@/components/board/console";
  */
 
 export interface ConsoleShellProps {
-  /** Rendered at the left. Omit on the rack, which is the top of the stack. */
+  /**
+   * Rendered at the left. Omit on the rack, which is the top of the stack —
+   * the wordmark takes the slot instead.
+   */
   readonly back?: { readonly to: string; readonly label: string };
-  /** The surface's own title, centred between the back link and the account. */
-  readonly title: string;
   readonly userName: string;
   readonly isAdmin: boolean;
 }
+
+/**
+ * The wordmark, in the register the bezel's own etching uses: uppercase, widely
+ * tracked, no colour. It sits where the back link goes on deeper surfaces, so
+ * the top-left of the app is either "where you came from" or "what this is" and
+ * never a second copy of the page's own heading.
+ */
+const WORDMARK = "flappyboard";
 
 /** Shared with the surfaces below so a header and a plate agree on the edge. */
 const HEADER_STYLE = {
@@ -55,12 +64,7 @@ const HEADER_STYLE = {
 const BAR_BUTTON =
   "inline-flex min-h-11 touch-manipulation items-center gap-1.5 text-[11px] font-medium uppercase";
 
-export function ConsoleShell({
-  back,
-  title,
-  userName,
-  isAdmin,
-}: ConsoleShellProps) {
+export function ConsoleShell({ back, userName, isAdmin }: ConsoleShellProps) {
   const { t, i18n } = useTranslation("boards");
   const navigate = useNavigate();
   const localeFetcher = useFetcher();
@@ -86,9 +90,10 @@ export function ConsoleShell({
         {back === undefined ? (
           <span
             className="text-[11px] font-medium uppercase"
-            style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
+            style={{ color: CONSOLE.ink, letterSpacing: "0.24em" }}
+            data-testid="console-shell-wordmark"
           >
-            {title}
+            {WORDMARK}
           </span>
         ) : (
           <Link

@@ -188,6 +188,7 @@ const BOARDS_KEYS: ReadonlyArray<{ key: string; vars?: ReadonlyArray<string> }> 
 
   // Per-device un-pairing.
   { key: "devices.title" },
+  { key: "devices.count" },
   { key: "devices.description" },
   { key: "devices.empty" },
   { key: "devices.unnamed" },

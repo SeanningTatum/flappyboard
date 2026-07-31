@@ -116,7 +116,17 @@ export function FlapWord({
       {chars.map((char, index) => (
         // Keyed by the character — see the note above. The index is in the key
         // as well so two identical characters stay distinct siblings.
-        <FlapTile key={`${index}-${char}`} char={char} color={color} />
+        //
+        // A blank stays UNLIT whatever the pigment is. Painting the padding
+        // gives an 11-character name on an 18-flap plate seven coloured cards
+        // with nothing on them, which reads as damage rather than as a word —
+        // and it is not what the real object does either: on a Vestaboard the
+        // colour is the character, and the rest of the row is unlit flap.
+        <FlapTile
+          key={`${index}-${char}`}
+          char={char}
+          color={char === " " ? "black" : color}
+        />
       ))}
     </div>
   );
@@ -126,8 +136,14 @@ export function FlapWord({
  * Which pigment a board's nameplate is painted, derived from its id.
  *
  * Stable (the same board is always the same colour, on every device and after
- * every deploy) and spread over the seven *lit* pigments — `black` is excluded
- * because an unlit nameplate is indistinguishable from an empty rack slot.
+ * every deploy) and spread over the six *coloured* pigments.
+ *
+ * `black` and `white` are both excluded, and for the same reason rather than
+ * two: on the real object they **share a fill** — `white` is a white glyph on
+ * an unlit flap, and `black` is an unlit flap (see `TILE_COLORS`). So a
+ * nameplate assigned `white` would be visually identical to the unlit padding
+ * beside it and would carry no identity at all, which is the one job this
+ * function has.
  *
  * This is identity, not status: a household with three televisions should be
  * able to find the kitchen one by colour before reading a word, which is the
@@ -140,7 +156,6 @@ const NAMEPLATE_PIGMENTS = [
   "green",
   "blue",
   "violet",
-  "white",
 ] as const satisfies ReadonlyArray<BoardColor>;
 
 export const nameplatePigment = (boardId: string): BoardColor => {

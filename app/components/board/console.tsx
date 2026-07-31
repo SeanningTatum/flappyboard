@@ -180,6 +180,7 @@ let consoleSurfaces = 0;
 
 export function ConsoleField({
   children,
+  className,
   ...rest
 }: React.ComponentProps<"main">) {
   useEffect(() => {
@@ -207,7 +208,17 @@ export function ConsoleField({
         // `.dark` precisely because these two selectors tie on specificity when
         // they land together, which is exactly here.
         data-surface="hardware"
-        className="dark mx-auto flex min-h-dvh max-w-md flex-col px-4 py-5"
+        // `cn`, not a bare literal followed by `{...rest}`. Spreading rest over
+        // a hardcoded `className` **replaces** it, so any caller passing so much
+        // as `className="gap-6"` silently lost the layout, the max width, the
+        // padding and the `dark` class that every shadcn primitive inside this
+        // field resolves its tokens from. That is exactly what happened on
+        // `/boards` — a full-bleed, gapless page whose sections overlapped —
+        // and `RescanPrompt` only escaped it by restating the whole string.
+        className={cn(
+          "dark mx-auto flex min-h-dvh max-w-md flex-col px-4 py-5",
+          className
+        )}
         style={{ backgroundColor: CONSOLE.field, color: CONSOLE.ink }}
         {...rest}
       >

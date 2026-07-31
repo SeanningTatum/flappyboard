@@ -109,6 +109,7 @@
   },
   "devices": {
     "title": "Paired devices",
+    "count": "Paired",
     "description": "Phones that can drive this board, and the TVs showing it.",
     "empty": "No phones are paired yet. Scan the code on the board to pair one.",
     "unnamed": "Unnamed phone",
