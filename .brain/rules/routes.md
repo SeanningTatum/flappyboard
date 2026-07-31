@@ -282,9 +282,39 @@ const navigate = useNavigate();
 
 Server config + Better Auth instance: [`services.md`](services.md). Auth-form UI: [`frontend.md`](frontend.md).
 
+## Dev-only behaviour (the `isDev` contract)
+
+The dev flag is **`import.meta.env.DEV`** — exported as `isDev` from [`app/lib/log-format.ts`](../../app/lib/log-format.ts), and declared again as a module constant in [`app/trpc/index.ts`](../../app/trpc/index.ts) so the tRPC edge has no import-order dependency on the logger. Vite replaces it with a literal at build time, so the production bundle contains `false` and dev-only branches are dead code.
+
+**Any library that infers dev-vs-prod itself must be told explicitly.** Non-negotiable #5 says no `process.env` in *our* code; a dependency reading it on Workers is the same bug wearing a library's name — `process.env` is absent, so a `NODE_ENV !== "production"` default silently resolves to **dev in production**.
+
+tRPC is the live example — `initTRPC.create` must be passed `isDev`:
+
+```typescript
+const isDev = import.meta.env.DEV;
+
+const t = initTRPC.context<typeof createTRPCContext>().create({
+  transformer: superjson,
+  isDev, // never let tRPC infer this — it reads process.env.NODE_ENV
+  errorFormatter: ({ shape, error }) => ({
+    ...shape,
+    data: { ...omitStack(shape.data), /* … */ },
+  }),
+});
+```
+
+Left unset, `config.isDev` is `true` in production, which means every error response carries `data.stack` (tRPC only attaches it when `isDev`) and `timingMiddleware`'s deliberate 100–499ms delay runs on every real request. Upstream measured the cost on the template's deployed worker: tRPC p50 335ms against a 111ms static-asset baseline, restored to 103ms once wired.
+
+Three habits that follow from it:
+
+- **Don't rely on the flag alone to keep a stack out of a payload.** `errorFormatter` runs `omitStack(shape.data)` **unconditionally**, in dev as well as prod — spread first, then drop `stack`. `isDev: false` already stops tRPC adding it, but a stack trace reaching a client must not depend on one flag staying right, and this is the single place every error response is shaped.
+- **Branch on `import.meta.env.DEV` directly when the goal is for code not to ship.** `timingMiddleware` reads the build-time constant rather than a runtime value like `t._config.isDev`, so the bundler sees `if (false) { … }` and removes the delay outright — it cannot ship at all, rather than merely not firing. The tradeoff is testability: `import.meta.env.DEV` is always `true` under vitest, so such a branch cannot be exercised both ways. Accept that only where dead-code elimination is the point; otherwise take a `dev: boolean` parameter and test both sides, the pattern `isLevelEnabled` (`lib/log-format.ts`) uses.
+- **Verify prod-only behaviour against the built bundle or the deployed worker.** A dev-server browser walk proves nothing here: dev is *supposed* to keep the stack and the delay.
+
 ## Anti-patterns
 
 - Building `TRPCError` directly inside a procedure body for domain errors — emit a `Data.TaggedError` and let `tagToTRPC` map it
+- **Letting a library infer dev-vs-prod from `process.env`** — there is no `process.env` on Workers, so it silently picks dev *in production*. Pass `isDev` from `lib/log-format.ts` explicitly (see "Dev-only behaviour" above).
 - Loader that imports a repository directly — go through `context.trpc.*`
 - Client `useQuery` without invalidation after a related mutation
 - `process.env` anywhere — use `context.cloudflare.env` or `CloudflareEnv` Tag
