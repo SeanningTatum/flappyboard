@@ -288,6 +288,37 @@
       "owners": [
         "sean"
       ]
+    },
+    {
+      "id": "feat-020",
+      "name": "App IA & Navigation",
+      "slug": "app-ia",
+      "doc": ".brain/features/app-ia/app-ia.md",
+      "description": "Phase 2 of the brand/IA/UX redesign. Deletes /dashboard (its own shipped copy calls it \"the post-auth landing page of the boilerplate\", four explore cards all disabled={!isAdmin}), deletes the six broken /:lng alias routes, reduces /boards from 560 lines to a thin switcher, builds the shared management shell (header + user menu), and adds sign-out for non-admin users (authClient.signOut() currently exists in exactly one file, admin/layout/nav-user.tsx:49). Adds a pure resolveSignedInHome(boardCount) beside resolveAutoLink's precedent. Adds redirect shims so no existing URL 404s. Phase 3 (console-journey-v2) ships in the same PR by owner decision.",
+      "dependencies": [
+        "feat-019"
+      ],
+      "status": "in-progress",
+      "evidence": "",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-021",
+      "name": "Console Journey v2",
+      "slug": "console-journey-v2",
+      "doc": ".brain/features/console-journey-v2/console-journey-v2.md",
+      "description": "Phase 3 of the redesign, shipped in the same PR as app-ia. Deletes resolveAutoLink, the board picker, the <select>, the receipt page and /link's entire manual mode — a board IS a TV, so scanning always creates one and lands the user on the controller with nothing to answer (5 stops -> 3). The pairing code on /tv becomes six live flap tiles. The controller gains Content|Settings tabs at the frozen /b/:boardId/c path, Settings absorbing the TV address, paired devices with count, rename, un-pair and delete. Device naming moves inline into the nameplate. The composer's live grid becomes the primary instrument.",
+      "dependencies": [
+        "feat-019",
+        "feat-020"
+      ],
+      "status": "planned",
+      "evidence": "",
+      "owners": [
+        "sean"
+      ]
     }
   ]
 }

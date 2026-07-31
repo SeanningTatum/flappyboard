@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-07-31 — app-ia (feat-020) started; console-journey-v2 (feat-021) scoped as planned — Phase 2 + phase 3 of the brand/IA/UX redesign, shipped as ONE PR by owner decision (the board-detail surface phase 2 would split out is exactly what phase 3 folds into the controller as a Settings tab). app-ia flipped to in-progress: deletes /dashboard + six broken /:lng aliases, thins /boards to a switcher, builds the shared management shell, adds sign-out for non-admin users, adds resolveSignedInHome(boardCount), adds redirect shims. console-journey-v2 recorded as planned, depends on app-ia: deletes resolveAutoLink/picker/select/receipt page/manual mode, six-flap-tile pairing code on /tv, Content|Settings tabs on the frozen /b/:boardId/c controller. Both docs carry design-critic's phase-1 P1 findings forward as blocking Acceptance Criteria (radius/elevation contract, one-product surface parity, spend-the-pigments, measured step counts) plus the load-bearing constraints from the approved plan (frozen paths, /link no-JS contract, rollback-on-approve-failure, safeNextPath, per-action requireSession, defaultBoardName signature, board-locale-parity BOARDS_KEYS, frozen board render).
+- branch: `feat/app-journey-v2`
+- in-progress feature: feat-020 (app-ia)
+- run note: none
+- next: implement app-ia (management shell, /dashboard + /:lng deletion, /boards thin switcher, non-admin sign-out, resolveSignedInHome, redirect shims), verify-done, then ship-feature before starting console-journey-v2 in the same PR.
+
+---
+
 ## 2026-07-31 — shipped brand-system: Merged as 80f1601 (PR #11). Board render frozen with zero drift across three golden comparisons; focus ring now paints, 
 - branch: `main`
 - in-progress feature: none
