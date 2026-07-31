@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import type { BoardColor } from "@/lib/schemas/board";
@@ -158,13 +158,41 @@ export const FLAP_NOTCH_MINI =
  * `className="dark"` is load-bearing too. The app's dark variant is
  * `&:is(.dark *)`, so this makes every shadcn primitive *inside* the field
  * resolve its dark tokens — the Switch, the Spinner, `FormMessage`'s
- * destructive red — without touching `<html>`, which the TV route and the
- * dashboard share.
+ * destructive red — without touching `<html>`, which the public routes share.
+ *
+ * ## Why the attribute is also written to `<html>`
+ *
+ * A Radix overlay — `Select`, `DropdownMenu`, `AlertDialog` — renders into a
+ * portal appended to `document.body`, which is **outside this `<main>`**. Custom
+ * properties inherit, so a portal takes its tokens from `<html>`: the language
+ * switcher opened on a console route would drop a white popover onto a black
+ * console, in exactly the room the dark field exists to protect.
+ *
+ * So the scope is mirrored onto the document element for as long as a console
+ * surface is mounted. An effect rather than a render is correct here: there is
+ * no portal to style during SSR (Radix mounts its content on interaction), and
+ * `<html>` belongs to `root.tsx`. Nested/overlapping console routes are counted
+ * rather than toggled, so a transition from one console route to another cannot
+ * leave the attribute off — React runs the incoming mount effect before the
+ * outgoing cleanup in some transitions, and a naive remove would win.
  */
+let consoleSurfaces = 0;
+
 export function ConsoleField({
   children,
   ...rest
 }: React.ComponentProps<"main">) {
+  useEffect(() => {
+    consoleSurfaces += 1;
+    document.documentElement.setAttribute("data-surface", "hardware");
+    return () => {
+      consoleSurfaces -= 1;
+      if (consoleSurfaces === 0) {
+        document.documentElement.removeAttribute("data-surface");
+      }
+    };
+  }, []);
+
   return (
     <>
       <div

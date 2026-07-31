@@ -2,9 +2,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { Schema } from "effect";
-import { IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconX } from "@tabler/icons-react";
 
 import { cn } from "@/lib/utils";
+import { BoardGridView } from "@/components/board/board-grid-view";
 import { effectResolver } from "@/lib/effect-form";
 import {
   Form,
@@ -30,7 +31,7 @@ import {
   segmentClass,
   segmentStyle,
 } from "@/components/board/console";
-import { compileMessage } from "@/lib/board/compile";
+import { BLANK_CELL, compileMessage } from "@/lib/board/compile";
 import { paintCell, paintCells, type CellEdit } from "@/lib/board/cell-paint";
 import {
   addStrokeCell,
@@ -965,12 +966,37 @@ function RowDetail({ form, index, row, pending, locked }: RowDetailProps) {
  */
 const DEFAULT_PAINT_COLOR = "red" as const satisfies BoardColor;
 
+/**
+ * Whether a compiled grid says nothing at all — every cell blank, no paint.
+ *
+ * Drives the one-instrument swap below. Deliberately not `formState.isDirty`:
+ * painting writes its result back through `form.reset`, which clears RHF's dirty
+ * flag, so a fully painted board would have reported itself untouched.
+ */
+const gridIsBlank = (grid: BoardGrid): boolean =>
+  grid.rows.every((row) =>
+    row.every(
+      (cell) =>
+        cell.char === BLANK_CELL.char && cell.color === BLANK_CELL.color
+    )
+  );
+
 export interface MessageEditorProps {
+  /**
+   * The board as it is on the wall right now, straight off the controller's
+   * socket. Shown in the instrument whenever there is no draft — see the swap
+   * at the render site.
+   */
+  readonly liveGrid: BoardGrid;
   readonly onSend: (message: BoardMessage) => void;
   readonly pending: boolean;
 }
 
-export function MessageEditor({ onSend, pending }: MessageEditorProps) {
+export function MessageEditor({
+  liveGrid,
+  onSend,
+  pending,
+}: MessageEditorProps) {
   const { t } = useTranslation("board");
 
   const form = useForm<MessageEditorValues>({
@@ -981,6 +1007,8 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
 
   const [painting, setPainting] = useState(false);
   const [paintColor, setPaintColor] = useState<BoardColor>(DEFAULT_PAINT_COLOR);
+  /** Whether the six typing wells are showing. See the note at the disclosure. */
+  const [rowsOpen, setRowsOpen] = useState(true);
   /** Which row the detail plate is describing. Row 1 until a caret says otherwise. */
   const [activeRow, setActiveRow] = useState(0);
 
@@ -1068,6 +1096,13 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
 
   const activeRowValues = values.rows[activeRow] ?? values.rows[0];
 
+  /**
+   * Which board the instrument is showing. Paint forces the draft even on an
+   * empty form — arming paint with nothing composed has to give the finger a
+   * canvas, not the wall's current message with taps that go nowhere.
+   */
+  const showingLive = !painting && gridIsBlank(compiled.grid);
+
   return (
     <Form {...form}>
       {/*
@@ -1081,37 +1116,22 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
         data-testid="control-editor"
       >
         {/*
-          The primary action of this screen, and it has no controls in it at all.
-          Six wells, one plate, the keyboard.
-        */}
-        <section className="flex flex-col gap-2">
-          <ConsoleLabel>{t("control.editor.title")}</ConsoleLabel>
-          <div
-            className="flex flex-col gap-1.5 rounded-none p-2"
-            style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
-            data-testid="control-editor-rows"
-          >
-            {values.rows.map((row, index) => (
-              <RowWell
-                key={index}
-                form={form}
-                index={index}
-                active={index === activeRow}
-                segments={row.segments.length}
-                pending={pending}
-                locked={painting}
-                onFocus={() => setActiveRow(index)}
-                onEnter={() => {
-                  if (index < BOARD_ROWS - 1) focusRow(index + 1);
-                }}
-              />
-            ))}
-          </div>
-        </section>
+          THE INSTRUMENT — first on the screen, and the same rectangle whether it
+          is reporting or receiving.
 
-        {/*
-          Directly under the wells, because it is the answer to them: type, look
-          down, see the board. Nothing is allowed between the two.
+          It used to sit *under* six text wells as a preview of them, with the
+          live board rendered again as a separate section above. That was two
+          boards a hand's width apart on a 390px phone and a preview that only
+          existed once you had already typed. Now there is one grid in one place:
+
+          - **Nothing composed** → the live board off the socket, animated, flaps
+            actually travelling. "What does it say right now" is answered before
+            anybody asks.
+          - **Something composed, or paint armed** → the compiled draft, which is
+            also the canvas paint lands on.
+
+          The swap is on `gridIsBlank(compiled.grid)`, so clearing the form hands
+          the screen back to the live board with no extra control to press.
         */}
         <section className="flex flex-col gap-2">
           {/*
@@ -1121,7 +1141,9 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
             of the thing it was captioning.
           */}
           <div className="flex items-center justify-between gap-2">
-            <ConsoleLabel>{t("control.preview.title")}</ConsoleLabel>
+            <ConsoleLabel>
+              {showingLive ? t("control.mirror.title") : t("control.preview.title")}
+            </ConsoleLabel>
             {compiled.truncated && (
               <span
                 className="flex items-center gap-1.5 px-1 text-[10px] font-medium uppercase"
@@ -1202,16 +1224,82 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
             </p>
           )}
 
-          <BoardPreview
-            grid={compiled.grid}
-            onPaintCell={painting ? paint : undefined}
-            onPaintStroke={painting ? paintStroke : undefined}
-            onPaintRow={painting ? paintRow : undefined}
-            paintColor={painting ? paintColor : undefined}
-            cellLabel={cellLabel}
-            rowLabel={rowLabel}
-            disabled={pending}
-          />
+          {showingLive ? (
+            /*
+              The real thing, with the real animator — 144 tiles fed by the
+              controller's socket. Silent: the clatter belongs to the room the
+              television is in, not to the phone in someone's hand.
+            */
+            <div
+              className="p-2"
+              style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
+              data-testid="control-board-mirror"
+            >
+              <BoardGridView grid={liveGrid} variant="inline" />
+            </div>
+          ) : (
+            <BoardPreview
+              grid={compiled.grid}
+              onPaintCell={painting ? paint : undefined}
+              onPaintStroke={painting ? paintStroke : undefined}
+              onPaintRow={painting ? paintRow : undefined}
+              paintColor={painting ? paintColor : undefined}
+              cellLabel={cellLabel}
+              rowLabel={rowLabel}
+              disabled={pending}
+            />
+          )}
+        </section>
+
+        {/*
+          The six typing wells, now BELOW the grid and behind a disclosure.
+
+          The plan called for them to be "behind a toggle for precise edits", and
+          this is that with one deliberate difference: the disclosure **defaults
+          open**. Collapsing the only text input on the screen by default would
+          hide the primary path behind a tap in order to promote the secondary
+          one, which is the opposite of what promoting the grid was for. What the
+          toggle actually buys is the *paint* workflow — arm paint, fold the
+          keyboard's worth of wells away, and the board is the whole screen.
+        */}
+        <section className="flex flex-col gap-2">
+          <button
+            type="button"
+            aria-expanded={rowsOpen}
+            onClick={() => setRowsOpen((open) => !open)}
+            className="flex min-h-11 touch-manipulation items-center justify-between px-1 text-[10px] leading-none font-medium uppercase"
+            style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
+            data-testid="control-editor-rows-toggle"
+          >
+            {t("control.editor.title")}
+            <IconChevronDown
+              aria-hidden
+              className={cn("size-4 transition-transform", rowsOpen && "rotate-180")}
+            />
+          </button>
+          {rowsOpen && (
+            <div
+              className="flex flex-col gap-1.5 rounded-none p-2"
+              style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
+              data-testid="control-editor-rows"
+            >
+              {values.rows.map((row, index) => (
+                <RowWell
+                  key={index}
+                  form={form}
+                  index={index}
+                  active={index === activeRow}
+                  segments={row.segments.length}
+                  pending={pending}
+                  locked={painting}
+                  onFocus={() => setActiveRow(index)}
+                  onEnter={() => {
+                    if (index < BOARD_ROWS - 1) focusRow(index + 1);
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         {/*

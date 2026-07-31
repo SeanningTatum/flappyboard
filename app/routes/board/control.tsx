@@ -2,15 +2,13 @@ import { useCallback, useState } from "react";
 import { Effect, Exit } from "effect";
 import { useTranslation } from "react-i18next";
 import { data, redirect } from "react-router";
-import { IconChevronDown, IconRefresh } from "@tabler/icons-react";
+import { IconRefresh } from "@tabler/icons-react";
 
 import type { Route } from "./+types/control";
 import { api } from "@/trpc/client";
 import { cn } from "@/lib/utils";
 import { useBoardSocket } from "@/hooks/use-board-socket";
 import { clearGrantCookie, serializeGrantCookie } from "@/lib/board/pairing";
-import { MAX_DEVICE_NAME_LENGTH } from "@/lib/board/paired-devices";
-import { Input } from "@/components/ui/input";
 import { BoardGridView } from "@/components/board/board-grid-view";
 import { MessageEditor } from "@/components/board/message-editor";
 import { PushToTalkButton } from "@/components/board/push-to-talk-button";
@@ -21,8 +19,12 @@ import {
   ConsoleField,
   ConsoleReadout,
   PLATE_LIP,
-  WELL_LIP,
+  SegmentTrack,
+  segmentClass,
+  segmentStyle,
 } from "@/components/board/console";
+import { ConsoleShell } from "@/components/board/console-shell";
+import { ControllerSettings } from "@/components/board/controller-settings";
 import type { BoardMessage } from "@/lib/schemas/board";
 // The scoped token override for the console surfaces. See the header of that
 // file for why this route runs its own visual language.
@@ -41,12 +43,12 @@ import flapFont from "@/assets/fonts/inter-flap-600.woff2?url";
  * of every outbound request from this page.
  */
 
-export const handle = { i18n: ["board"] };
+export const handle = { i18n: ["board", "boards"] };
 
 /**
- * The controller renders the board twice — the collapsible mirror and the
- * editor's miniature — so it needs the flap face for the same reason the
- * display does. See the note on the display route's `links`.
+ * The controller renders the board — live off the socket when there is nothing
+ * composed, the compiled draft when there is — so it needs the flap face for the
+ * same reason the display does. See the note on the display route's `links`.
  */
 export const links: Route.LinksFunction = () => [
   {
@@ -117,6 +119,8 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     deviceName: null,
     board: null,
     state: null,
+    displayUrl: `${url.origin}/b/${encodeURIComponent(boardId)}`,
+    user: null,
   };
 
   /*
@@ -142,15 +146,37 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     );
   }
 
+  /*
+    The owner's name, for the shell's account menu — and `null` for a grant,
+    which has no session at all. This is the only reason the loader touches
+    Better Auth: `claim` already decided authority, and re-deriving it here
+    would create a second answer to the same question.
+  */
+  const session =
+    claimed.value.access === "owner"
+      ? await context.auth.api.getSession({ headers: request.headers })
+      : null;
+
   return data({
     boardId,
     access: claimed.value.access,
-    // Null until the phone names itself (or named itself at pairing) — the
-    // controller uses it to offer the one-time naming prompt, and the server's
-    // record is the truth that keeps the prompt from coming back.
+    // Null until the phone names itself (or named itself at pairing). The
+    // naming offer used to be a one-time prompt wedged above the editor; it now
+    // lives inline in the Settings tab, so this is a value rather than a
+    // trigger — see `controller-settings.tsx`.
     deviceName: claimed.value.deviceName,
     board: claimed.value.board,
     state: claimed.value.state,
+    // The address a television is pointed at to show this board. Built from the
+    // request so it is right on localhost, preview and production alike.
+    displayUrl: `${url.origin}/b/${encodeURIComponent(boardId)}`,
+    user:
+      session === null
+        ? null
+        : {
+            name: session.user.name,
+            isAdmin: session.user.role === "admin",
+          },
   });
 }
 
@@ -168,6 +194,8 @@ export default function BoardControl({ loaderData }: Route.ComponentProps) {
       boardId={boardId}
       owner={loaderData.access === "owner"}
       deviceName={loaderData.deviceName}
+      displayUrl={loaderData.displayUrl}
+      user={loaderData.user}
       board={board}
       state={state}
     />
@@ -221,146 +249,19 @@ function RescanPrompt() {
   );
 }
 
-/**
- * The one-time offer to name this phone.
- *
- * Shown only when the server says the device has no name (`claim` →
- * `deviceName: null`) and the caller is a grant, not the owner's own browser.
- * Either answer — saved or skipped — closes it for the session, and a save
- * closes it permanently: the name now lives on the room's record, so the next
- * `claim` comes back with `deviceName` set and the prompt never renders again.
- *
- * Deliberately a plain controlled input rather than a ShadCN Form: it is one
- * optional field with nothing to validate client-side (the server normalises
- * and refuses empties), and a form scaffold would outweigh the prompt.
- */
-function DeviceNamePrompt({
-  boardId,
-  onDone,
-}: {
-  readonly boardId: string;
-  /** Called on either answer — the prompt's job is over either way. */
-  readonly onDone: () => void;
-}) {
-  const { t } = useTranslation("board");
-  const [name, setName] = useState("");
-  const [failed, setFailed] = useState(false);
-
-  const nameDevice = api.board.nameDevice.useMutation({
-    onSuccess: () => onDone(),
-    onError: () => setFailed(true),
-  });
-
-  const save = () => {
-    const trimmed = name.trim();
-    if (trimmed.length === 0 || nameDevice.isPending) return;
-    setFailed(false);
-    nameDevice.mutate({ boardId, name: trimmed });
-  };
-
-  return (
-    <section
-      className="flex flex-col gap-3 px-3 py-3"
-      style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
-      data-testid="board-device-name-prompt"
-    >
-      <div className="flex flex-col gap-1">
-        <h2
-          className="text-[11px] font-medium uppercase"
-          style={{ color: CONSOLE.ink, letterSpacing: "0.16em" }}
-        >
-          {t("control.nameDevice.title")}
-        </h2>
-        <p
-          className="text-[12px] leading-relaxed"
-          style={{ color: CONSOLE.inkDim }}
-        >
-          {t("control.nameDevice.body")}
-        </p>
-      </div>
-
-      <div className="flex items-stretch gap-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          // Words, not characters: this prints in the owner's device list
-          // verbatim — the board's own uppercase folding does not apply.
-          autoCapitalize="words"
-          autoCorrect="off"
-          spellCheck={false}
-          inputMode="text"
-          enterKeyHint="done"
-          maxLength={MAX_DEVICE_NAME_LENGTH}
-          placeholder={t("control.nameDevice.placeholder")}
-          disabled={nameDevice.isPending}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            save();
-          }}
-          // Same well the message rows use: recessed, near-square, 44px of
-          // thumb target.
-          className="h-11 rounded-[2px] border-0 px-3 py-0 text-base shadow-none placeholder:text-[#5a5a5c] focus-visible:ring-0 dark:bg-transparent"
-          style={{
-            backgroundColor: CONSOLE.well,
-            boxShadow: WELL_LIP,
-            color: CONSOLE.ink,
-          }}
-          data-testid="board-device-name-input"
-        />
-        <button
-          type="button"
-          className="h-11 shrink-0 rounded-none px-4 text-[11px] font-medium uppercase disabled:opacity-40"
-          style={{
-            backgroundColor: CONSOLE.ink,
-            color: CONSOLE.panel,
-            letterSpacing: "0.14em",
-            boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.25)",
-          }}
-          disabled={nameDevice.isPending || name.trim().length === 0}
-          onClick={save}
-          data-testid="board-device-name-save"
-        >
-          {nameDevice.isPending
-            ? t("control.nameDevice.saving")
-            : t("control.nameDevice.save")}
-        </button>
-      </div>
-
-      {failed && (
-        <p
-          role="alert"
-          className="text-[11px] font-medium uppercase text-destructive"
-          style={{ letterSpacing: "0.14em" }}
-          data-testid="board-device-name-error"
-        >
-          {t("control.nameDevice.error")}
-        </p>
-      )}
-
-      <button
-        type="button"
-        className="self-start text-[11px] font-medium uppercase disabled:opacity-40"
-        style={{ color: CONSOLE.inkMute, letterSpacing: "0.16em" }}
-        disabled={nameDevice.isPending}
-        onClick={onDone}
-        data-testid="board-device-name-skip"
-      >
-        {t("control.nameDevice.skip")}
-      </button>
-    </section>
-  );
-}
-
 interface ControllerProps {
   readonly boardId: string;
   readonly owner: boolean;
   /**
    * What the room calls this device, straight from `claim`. `null` for an
    * owner session (no record to name) and for a phone that never gave one —
-   * the second case is what the prompt above exists to fix.
+   * the second case is what the Settings tab's naming field exists to fix.
    */
   readonly deviceName: string | null;
+  /** Absolute URL a television is pointed at to show this board. */
+  readonly displayUrl: string;
+  /** The owner's account, for the shell. `null` for a grant — it has none. */
+  readonly user: { readonly name: string; readonly isAdmin: boolean } | null;
   readonly board: {
     readonly name: string;
     readonly soundPack: string;
@@ -370,9 +271,24 @@ interface ControllerProps {
   readonly state: { readonly revision: number };
 }
 
-function Controller({ boardId, owner, deviceName, board, state }: ControllerProps) {
+function Controller({
+  boardId,
+  owner,
+  deviceName,
+  displayUrl,
+  user,
+  board,
+  state,
+}: ControllerProps) {
   const { t } = useTranslation("board");
+  // The tabs, the shell and everything under Settings come from the `boards`
+  // namespace — the same bundle the rack uses, so the rename dialog's copy did
+  // not have to be duplicated when the dialog moved onto this page.
+  const { t: tBoards } = useTranslation("boards");
   const utils = api.useUtils();
+
+  /** Which tab is showing. Session-local: a reload is a fresh Content tab. */
+  const [tab, setTab] = useState<"content" | "settings">("content");
 
   /**
    * The live board. `/api/board-ws` accepts an owner session **or** a controller
@@ -403,23 +319,18 @@ function Controller({ boardId, owner, deviceName, board, state }: ControllerProp
   });
   const [status, setStatus] = useState<ControlStatus>("idle");
 
-  /**
-   * Whether the naming offer is on screen. The server decides if it ever
-   * renders (an unnamed grant only — the owner's browser has no device to
-   * name, and a named phone's `deviceName` comes back non-null on the next
-   * `claim`); this state only remembers *this* session's answer, so a skip or
-   * a save closes it without waiting on a reload.
-   */
-  const [namePromptOpen, setNamePromptOpen] = useState(
-    !owner && deviceName === null
-  );
+  /*
+    Two pieces of state used to live here and no longer do.
 
-  /**
-   * The mirror's collapse state, session-local only. Default open: "what does
-   * the board say right now" is the reason the operator is on this page, and
-   * the answer should never be a tap away.
-   */
-  const [mirrorOpen, setMirrorOpen] = useState(true);
+    `namePromptOpen` drove a one-time "name this phone" card that appeared above
+    the editor on a grant's first visit. It was a modal-shaped interruption
+    standing between somebody and the thing they scanned a QR code to do, and
+    naming a phone is not urgent — it is a setting. It is now a plain field in
+    the Settings tab, pre-filled from `deviceName`, which is also where the
+    owner's list of those names is.
+
+    `mirrorOpen` collapsed the live board. See the comment at the mirror itself.
+  */
 
   const onWriteError = useCallback((code: string | undefined) => {
     // UNAUTHORIZED is the grant having lapsed; everything else is a real failure.
@@ -475,12 +386,33 @@ function Controller({ boardId, owner, deviceName, board, state }: ControllerProp
       data-revision={baseRevision}
     >
       {/*
+        The account bar, owner only — a grant-holding phone has no session to
+        sign out of and no rack to go back to. This is where a non-admin can
+        finally sign out; before this existed the only control in the app was
+        inside the admin sidebar, behind a role gate.
+      */}
+      {user !== null && (
+        <ConsoleShell
+          back={{ to: "/boards", label: tBoards("controller.back") }}
+          title={tBoards("shell.boards")}
+          userName={user.name}
+          isAdmin={user.isAdmin}
+        />
+      )}
+
+      {/*
         The nameplate. Sticky, because the board's name and the revision it is on
         are the two facts that tell you *which* screen in the house you are about
         to change, and six rows of typing is far enough to scroll to forget.
       */}
       <header
-        className="sticky top-0 z-20 -mx-4 mb-3 flex items-center justify-between gap-3 px-4 py-2.5"
+        className={cn(
+          "sticky z-20 -mx-4 flex items-center justify-between gap-3 px-4 py-2.5",
+          // Under the account bar when there is one, at the top when there is
+          // not. Both are sticky, so the offset has to be stated rather than
+          // inherited.
+          user === null ? "top-0" : "top-[3.25rem]"
+        )}
         style={{
           backgroundColor: CONSOLE.field,
           boxShadow: `inset 0 -1px 0 ${CONSOLE.hairline}`,
@@ -495,6 +427,48 @@ function Controller({ boardId, owner, deviceName, board, state }: ControllerProp
         <ConsoleReadout label={t("control.header.rev")} value={baseRevision} />
       </header>
 
+      {/*
+        Content | Settings.
+
+        Two tabs rather than two routes, and the path stays exactly
+        `/b/:boardId/c`: the television mints its controller QR from its own
+        loader, so a path change only reaches a TV that reloads — and a
+        wall-mounted panel may never have to. A tab is free; a new URL is a
+        promise to every screen already showing the old one.
+
+        Rendered as the console's own segmented track (a recessed groove with
+        the active half raised), not as pills. `SegmentTrack` is the same
+        primitive `/link` used for its intent switch.
+      */}
+      <div className="my-3">
+        <SegmentTrack>
+          {(["content", "settings"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              onClick={() => setTab(value)}
+              className={segmentClass(tab === value)}
+              style={segmentStyle(tab === value)}
+              data-testid={`control-tab-${value}`}
+            >
+              {tBoards(`controller.tabs.${value}`)}
+            </button>
+          ))}
+        </SegmentTrack>
+      </div>
+
+      {tab === "settings" ? (
+        <ControllerSettings
+          boardId={boardId}
+          boardName={board.name}
+          owner={owner}
+          deviceName={deviceName}
+          displayUrl={displayUrl}
+        />
+      ) : (
+        <>
       {status !== "idle" && (
         <div
           className="mb-3 flex items-center gap-2.5 px-3 py-2.5"
@@ -527,49 +501,23 @@ function Controller({ boardId, owner, deviceName, board, state }: ControllerProp
 
       <div className="flex flex-col gap-6 pb-4">
         {/*
-          The live board, mirrored. The socket this page already holds feeds a
-          silent, container-sized BoardGridView, so the operator watches the
-          flaps land on the phone instead of turning to the TV. Silent on
-          purpose — the clatter belongs to the room the TV is in.
+          The live board used to be its own collapsible section, directly above
+          the editor — which put TWO board renders on one phone screen, one
+          showing what is on the wall and one showing what you are typing, a
+          hand's width apart. On a 390px viewport that is not a preview, it is a
+          spot-the-difference puzzle.
+
+          So the mirror is gone as a section and the *editor's* grid became the
+          single instrument: it shows the live board while there is nothing to
+          compose, and your draft the moment there is. Same place, same size, one
+          answer to "what will this screen say". The socket's grid is passed
+          straight in — see `MessageEditor`.
         */}
-        <section
-          className="flex flex-col"
-          style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
-          data-testid="control-board-mirror"
-          data-open={mirrorOpen}
-        >
-          <button
-            type="button"
-            aria-expanded={mirrorOpen}
-            onClick={() => setMirrorOpen((open) => !open)}
-            className="flex min-h-11 touch-manipulation items-center justify-between px-3 py-2.5 text-[11px] font-medium uppercase"
-            style={{ color: CONSOLE.inkDim, letterSpacing: "0.16em" }}
-            data-testid="control-board-mirror-toggle"
-          >
-            {t("control.mirror.title")}
-            <IconChevronDown
-              aria-hidden
-              className={cn(
-                "size-4 transition-transform",
-                mirrorOpen && "rotate-180"
-              )}
-            />
-          </button>
-          {mirrorOpen && (
-            <div className="px-3 pb-3">
-              <BoardGridView grid={live.grid} variant="inline" />
-            </div>
-          )}
-        </section>
-
-        {namePromptOpen && (
-          <DeviceNamePrompt
-            boardId={boardId}
-            onDone={() => setNamePromptOpen(false)}
-          />
-        )}
-
-        <MessageEditor onSend={send} pending={pending} />
+        <MessageEditor
+          liveGrid={live.grid}
+          onSend={send}
+          pending={pending}
+        />
 
         {/*
           Below the typed editor, not above it and not instead of it. Voice is the
@@ -599,6 +547,8 @@ function Controller({ boardId, owner, deviceName, board, state }: ControllerProp
           onReplay={send}
         />
       </div>
+        </>
+      )}
     </ConsoleField>
   );
 }

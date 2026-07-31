@@ -4,6 +4,7 @@
   "app_name_short": "CF",
   "nav": {
     "home": "首页",
+    "boards": "板子",
     "users": "用户",
     "kitchen_sink": "示例集",
     "settings": "设置",

@@ -3,6 +3,7 @@ import {
   IconCamera,
   IconChartBar,
   IconDashboard,
+  IconDeviceTv,
   IconDatabase,
   IconFileAi,
   IconFileDescription,
@@ -51,6 +52,14 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         title: t("nav.home"),
         url: "/admin/",
         icon: IconDashboard,
+      },
+      {
+        // The one link out of `/admin`. Without it the admin area is a dead
+        // end: an admin who lands here has no route back to the product they
+        // administer except by editing the address bar.
+        title: t("nav.boards"),
+        url: "/boards",
+        icon: IconDeviceTv,
       },
       {
         title: t("nav.users"),

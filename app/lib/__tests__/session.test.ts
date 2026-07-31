@@ -4,6 +4,7 @@ import {
   requireSession,
   requireAdmin,
   redirectIfAuthenticated,
+  resolveSignedInHome,
   safeNextPath,
   loginRedirectUrl,
 } from "../session";
@@ -63,11 +64,11 @@ describe("requireAdmin", () => {
     expect(result).toBe(session);
   });
 
-  it("redirects to /dashboard when the user is not an admin", async () => {
+  it("redirects to /boards when the user is not an admin", async () => {
     const session = { session: {}, user: { id: "u1", role: "user" } };
     await expectRedirect(
       requireAdmin(request(), makeContext(session)),
-      "/dashboard"
+      "/boards"
     );
   });
 
@@ -80,11 +81,11 @@ describe("requireAdmin", () => {
 });
 
 describe("redirectIfAuthenticated", () => {
-  it("redirects to /dashboard by default when a session exists", async () => {
+  it("redirects to / by default when a session exists — the index resolves the real home", async () => {
     const session = { session: {}, user: { id: "u1", role: "user" } };
     await expectRedirect(
       redirectIfAuthenticated(request(), makeContext(session)),
-      "/dashboard"
+      "/"
     );
   });
 
@@ -103,9 +104,27 @@ describe("redirectIfAuthenticated", () => {
   });
 });
 
+describe("resolveSignedInHome", () => {
+  it("sends a household with one board straight to its controller", () => {
+    expect(resolveSignedInHome([{ id: "b1" }])).toBe("/b/b1/c");
+  });
+
+  it("encodes the id — a board id reaches the path, so it has to be escaped", () => {
+    expect(resolveSignedInHome([{ id: "a b/c" }])).toBe("/b/a%20b%2Fc/c");
+  });
+
+  it("sends a new account to the rack, which is where the TV address is taught", () => {
+    expect(resolveSignedInHome([])).toBe("/boards");
+  });
+
+  it("sends a multi-TV household to the rack — there is a real question to answer", () => {
+    expect(resolveSignedInHome([{ id: "b1" }, { id: "b2" }])).toBe("/boards");
+  });
+});
+
 describe("safeNextPath", () => {
   it("accepts same-origin absolute paths", () => {
-    expect(safeNextPath("/dashboard")).toBe("/dashboard");
+    expect(safeNextPath("/boards")).toBe("/boards");
     expect(safeNextPath("/link?code=GHPLXX")).toBe("/link?code=GHPLXX");
   });
 

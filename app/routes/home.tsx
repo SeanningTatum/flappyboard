@@ -1,5 +1,6 @@
 import type { Route } from "./+types/home";
-import { Link } from "react-router";
+import { Link, redirect } from "react-router";
+import { Effect, Exit } from "effect";
 import { useTranslation } from "react-i18next";
 import {
   IconBrandGithub,
@@ -28,7 +29,7 @@ import { StackBadge } from "@/components/stack-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { FeatureCard } from "@/components/feature-card";
-import { redirectIfAuthenticated } from "@/lib/session";
+import { resolveSignedInHome } from "@/lib/session";
 
 export const handle = { i18n: ["home"] };
 
@@ -52,9 +53,34 @@ export function meta(_: Route.MetaArgs) {
   ];
 }
 
+/**
+ * The index is now the only place that answers "where does a signed-in visitor
+ * go?" — there is no `/dashboard` to send them to any more.
+ *
+ * It is the right place for it because it is the only surface that both knows
+ * there is a session and can afford to list boards server-side. The auth forms
+ * navigate here and let this loader decide, so `resolveSignedInHome`'s rule
+ * lives in one file instead of in every form.
+ */
 export async function loader({ request, context }: Route.LoaderArgs) {
-  await redirectIfAuthenticated(request, context);
-  return null;
+  const session = await context.auth.api.getSession({
+    headers: request.headers,
+  });
+  if (!session) return null;
+
+  const listed = await Effect.runPromiseExit(
+    Effect.tryPromise({
+      try: () => context.trpc.board.list(),
+      catch: (cause) => cause,
+    })
+  );
+
+  // A list failure must not strand a signed-in visitor on the marketing page.
+  // The rack is the honest fallback: it re-runs the query and renders its own
+  // empty state if it fails again, rather than guessing at a board id here.
+  throw redirect(
+    Exit.isSuccess(listed) ? resolveSignedInHome(listed.value) : "/boards"
+  );
 }
 
 export default function Home() {
@@ -136,7 +162,7 @@ export default function Home() {
               title={t("wired.cards.upload.title")}
               description={t("wired.cards.upload.description")}
               badges={["R2", "Workers"]}
-              to="/dashboard"
+              to="/boards"
               cta={t("wired.cards.upload.cta")}
               testId="card-upload"
             />
@@ -163,7 +189,7 @@ export default function Home() {
               title={t("wired.cards.i18n.title")}
               description={t("wired.cards.i18n.description")}
               badges={["remix-i18next"]}
-              to="/dashboard"
+              to="/boards"
               cta={t("wired.cards.i18n.cta")}
               testId="card-i18n"
             />

@@ -13,6 +13,7 @@ import {
   grantKey,
   grantRevokeResult,
   grantTouchResult,
+  lastSeenKey,
   normalizeDeviceName,
   overflowVictims,
   pairedDeviceList,
@@ -874,5 +875,60 @@ describe("bounds", () => {
 
   it("caps the remembered TTL at the browser Max-Age ceiling", () => {
     expect(MAX_GRANT_TTL_SECONDS).toBe(400 * 24 * 60 * 60);
+  });
+});
+
+describe("lastSeenKey", () => {
+  const NOW = 1_700_000_000_000;
+  const minutes = (count: number) => NOW - count * 60_000;
+
+  it("reads 'just now' for anything under two minutes", () => {
+    expect(lastSeenKey(NOW, NOW)).toEqual({ key: "devices.justNow", count: 0 });
+    expect(lastSeenKey(minutes(1), NOW)).toEqual({
+      key: "devices.justNow",
+      count: 0,
+    });
+  });
+
+  it("counts minutes from two up to the hour", () => {
+    expect(lastSeenKey(minutes(2), NOW)).toEqual({
+      key: "devices.minutesAgo",
+      count: 2,
+    });
+    expect(lastSeenKey(minutes(59), NOW)).toEqual({
+      key: "devices.minutesAgo",
+      count: 59,
+    });
+  });
+
+  it("switches to hours at exactly sixty minutes", () => {
+    expect(lastSeenKey(minutes(60), NOW)).toEqual({
+      key: "devices.hoursAgo",
+      count: 1,
+    });
+    expect(lastSeenKey(minutes(60 * 23), NOW)).toEqual({
+      key: "devices.hoursAgo",
+      count: 23,
+    });
+  });
+
+  it("switches to days at exactly twenty-four hours", () => {
+    expect(lastSeenKey(minutes(60 * 24), NOW)).toEqual({
+      key: "devices.daysAgo",
+      count: 1,
+    });
+    expect(lastSeenKey(minutes(60 * 24 * 9), NOW)).toEqual({
+      key: "devices.daysAgo",
+      count: 9,
+    });
+  });
+
+  it("clamps a clock that ran backwards to 'just now' rather than a negative age", () => {
+    // A phone's `lastSeenAt` is stamped by the room, and a client's `Date.now()`
+    // can legitimately be behind it. Without the clamp this printed "-3 min ago".
+    expect(lastSeenKey(NOW + 180_000, NOW)).toEqual({
+      key: "devices.justNow",
+      count: 0,
+    });
   });
 });
