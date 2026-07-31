@@ -4,7 +4,7 @@
 - **Date**: YYYY-MM-DD
 - **Verified by**: feature-verifier (Playwright CLI — headless script via `bun`)
 - **Base URL**: http://localhost:5173 _(dev server: started by agent | already running)_
-- **Role**: admin (`admin@test.local`)
+- **Role**: admin (`admin@preview.local` / `Password123!` — from `bun run db:seed`; see `rules/library.md`)
 - **Verdict**: ✅ PASS | ❌ FAIL | ⛔ BLOCKED — _one line_
   <!-- Leave the verdict word BARE. `✅ **PASS**` is not readable by `brain check`
        and blocks `brain ship`; it has had to be un-bolded in nine docs so far.

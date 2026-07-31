@@ -40,7 +40,7 @@ Form components (`signup-form.tsx`, `login-form.tsx`) call `authClient.signUp.em
 
 ### Testability
 - `app/lib/schemas/auth.ts` (`SignupSchema`, `LoginSchema`, `Email`, `Password`, `NonEmptyString`) covered by `app/lib/schemas/__tests__/auth.test.ts`
-- Better Auth itself is exercised end-to-end via Playwright with `admin@test.local` / `TestAdmin123!` (see [`../rules/library.md`](../../rules/library.md))
+- Better Auth itself is exercised end-to-end via Playwright. `e2e/auth.spec.ts` signs up a throwaway `e2e-<ts>-<rand>@test.local` per run; anything needing a *pre-existing* account uses the seeded `admin@preview.local` / `Password123!` from `bun run db:seed` (see [`../rules/library.md`](../../rules/library.md))
 - No unit test for `createAuth` itself — relies on Better Auth's own tests
 
 ## Key Files

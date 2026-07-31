@@ -273,8 +273,14 @@ import { test, expect } from "@playwright/test";
 test.describe("Widget feature", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.fill('[data-testid="email"]', "admin@test.local");
-    await page.fill('[data-testid="password"]', "TestAdmin123!");
+    // The seeded admin. `bun run db:seed` creates exactly three accounts —
+    // admin@preview.local / user@preview.local / banned@preview.local — all
+    // sharing `Password123!` (scripts/seed-preview.ts). There is no
+    // `admin@test.local`: that string was in this doc for a while and does not
+    // exist in any seed, so a verification run following it had to sign up a
+    // throwaway account mid-walk before it could reach an admin route.
+    await page.fill('[data-testid="login-email"]', "admin@preview.local");
+    await page.fill('[data-testid="login-password"]', "Password123!");
     await page.click('[data-testid="login-button"]');
     await page.waitForURL("/dashboard");
   });
