@@ -67,8 +67,8 @@ export const CONSOLE = {
   ink: "var(--foreground, #eeeef2)",
   /** Secondary text and placeholder. */
   inkDim: "var(--muted-foreground, #b4b4b8)",
-  /** Labels, units, inactive icons. */
-  inkMute: "var(--hw-ink-mute, #6a6a6c)",
+  /** Labels, units, inactive icons. Clears AA on every surface it sits on. */
+  inkMute: "var(--hw-ink-mute, #89898d)",
   /** State signal only. Never an action fill. */
   amber: "var(--signal, #ffcc00)",
 } as const;

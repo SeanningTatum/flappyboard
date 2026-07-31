@@ -87,7 +87,24 @@
   --text-body: #b4b4b8;
   --text-body-subtle: #6a6a6c;
 
-  --hw-ink-mute: #6a6a6c; /* labels, units, inactive icons — a third ink level */
+  /*
+   * The third ink level: labels, units, inactive icons.
+   *
+   * Was #6a6a6c, which measured 3.89:1 on the field and 2.94:1 on the recessed
+   * track. Everything it paints is 9–10px uppercase — small text, so the floor
+   * is 4.5:1, not the 3:1 large-text allowance. It was failing AA everywhere it
+   * was used, and `design-critic` caught it after the same defect had already
+   * been fixed once at a single call site on `/tv`.
+   *
+   * #89898d is the lightest-touch value that clears 4.5:1 against the *darkest*
+   * surface it ever sits on — the track at #222226 (4.55:1), which is the
+   * binding constraint; on the field it is 6.03:1. The three-level ink ladder
+   * survives: 0.86 / 0.46 / 0.25 relative luminance.
+   *
+   * Fixed at the token rather than the call site on purpose: a token phase that
+   * leaves live instances of the defect it closed has not closed it.
+   */
+  --hw-ink-mute: #89898d;
   --hw-field: #000000;
   --hw-panel: #151515;
   --hw-track: #222226;
