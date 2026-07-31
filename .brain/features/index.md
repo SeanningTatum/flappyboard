@@ -56,6 +56,7 @@ features/
 | TV Pairing | [`tv-pairing/tv-pairing.md`](tv-pairing/tv-pairing.md) | in-progress | — |
 | Family Grants | [`family-grants/family-grants.md`](family-grants/family-grants.md) | planned (code complete) | — |
 | Kiosk Display | [`kiosk-display/kiosk-display.md`](kiosk-display/kiosk-display.md) | planned (code complete) | — |
+| OpenTelemetry Span Tracing | [`otel-tracing/otel-tracing.md`](otel-tracing/otel-tracing.md) | shipped (synced from template) | — (upstream-verified only) |
 
 > **Why two features read "planned" with their code written.** feat-010/011/012
 > come from one approved plan and one diff, and the scope policy allows exactly

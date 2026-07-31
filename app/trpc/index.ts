@@ -120,7 +120,7 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 
   // `import.meta.env.DEV`, not `t._config.isDev`: the config value is a runtime
   // property read, so the bundler has to keep this block *and* the artificial
-  // 100-500ms delay in the production bundle. Branching on the build-time constant
+  // 100-499ms delay in the production bundle. Branching on the build-time constant
   // makes it `if (false) { … }`, which is dead code the bundler removes outright —
   // the delay cannot ship at all, rather than merely not firing.
   if (import.meta.env.DEV) {

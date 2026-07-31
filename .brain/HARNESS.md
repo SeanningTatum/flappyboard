@@ -42,7 +42,7 @@ The agent's reading list. Layered from generic to specific.
 | [`/CLAUDE.md`](../CLAUDE.md) + [`/AGENTS.md`](../AGENTS.md) | Brain pointer at repo root. Mirrored. Lists 5 non-negotiables, scope policy, brain layout. |
 | [`.brain/codebase/`](codebase/) | Programming model — Effect TS, helpers, testing patterns, tRPC API surface, i18n |
 | [`.brain/high-level-architecture/`](high-level-architecture/) | Macro view — system layers, data flow, security, integrations, user journeys |
-| [`.brain/rules/`](rules/) | 7 layer-aligned do/don't rules — frontend, cloudflare, repository, services, routes, library, errors |
+| [`.brain/rules/`](rules/) | 7 layer-aligned do/don't rules — frontend, cloudflare, repository, services, routes, library, errors. Auto-surfaced per edited path by [`rule-router.sh`](../.claude/hooks/rule-router.sh) (see Lifecycle) |
 | [`.brain/recipes/`](recipes/) | 8 deterministic step-by-step runbooks — bookended by `00-before-task.md` and `99-verify-done.md` |
 | [`.brain/features/`](features/) | One MD per shipped/in-progress feature (purpose, runtime flow, key files, changelog) |
 
@@ -72,17 +72,18 @@ Externalises "am I done?" so the agent does not declare victory on a half-built 
 
 | Tool | Purpose |
 |------|---------|
-| [`recipes/99-verify-done.md`](recipes/99-verify-done.md) | Full checklist: typecheck → test → **e2e smoke (default ON)** → build (if CF-touching) → **feature verification** (if UI, via `feature-verifier`) → harness-check → brain coherence |
+| [`recipes/99-verify-done.md`](recipes/99-verify-done.md) | Full checklist: **tests that pin the change** (if source touched, via `test-author`) → typecheck → test → **e2e smoke (default ON)** → build (if CF-touching) → **feature verification** (if UI, via `feature-verifier`) → harness-check → brain coherence |
 | [`features/<slug>/verifications/`](features/index.md) | Browser-walk evidence per feature (screenshots + verdict), produced by the `feature-verifier` sub-agent — the feature-level proof layer, co-located in each feature's folder |
 | [`/verify-done`](../.claude/commands/verify-done.md) slash command | Same checklist, runnable mid-conversation |
 | [`init.sh --baseline`](../init.sh) | Captures pre-change baseline (typecheck + test + harness-check) so post-change failures aren't blamed on you |
 | `brain check` | brain-axi's deterministic brain-state invariants: feature_list parses, ≤1 in-progress, feature doc paths, dependency refs, progress.md, plan/review integrity, verification Verdict lines. The authoritative state gate. |
-| [`scripts/harness-check.sh`](../scripts/harness-check.sh) | Wraps `brain check`, then adds repo-only invariants brain-axi does not own: HARNESS.md exists, init.sh executable, CLAUDE↔AGENTS sync, sub-agent frontmatter, core recipes, dead internal links. Run by `init.sh` + CI. |
+| [`scripts/harness-check.sh`](../scripts/harness-check.sh) | Wraps `brain check`, then adds repo-only invariants brain-axi does not own: HARNESS.md exists, init.sh executable, CLAUDE↔AGENTS sync, sub-agent frontmatter, core recipes, dead internal links, every `settings.json` hook script exists + is executable, and both hook mapping test suites pass ([`test-rule-router.sh`](../scripts/test-rule-router.sh), [`test-brain-reminder.sh`](../scripts/test-brain-reminder.sh)). Run by `init.sh` + CI. |
 | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | CI gate mirroring `init.sh` baseline + `build` + `e2e` smoke specs + non-negotiables grep sweep on every PR |
 | [`.claude/hooks/brain-reminder.sh`](../.claude/hooks/brain-reminder.sh) | Pre-commit hook listing brain docs the staged paths likely affect (deterministic, no LLM, never blocks — CI is the gate) |
+| [`.claude/hooks/rule-router.sh`](../.claude/hooks/rule-router.sh) | Pre-edit hook injecting the [`rules/`](rules/) layer doc for the touched path — moves "did you read the rule?" off agent discipline (deterministic, no LLM, never blocks) |
 | [`app/lib/effect-trpc.ts`](../app/lib/effect-trpc.ts) `appErrorToTRPC` | Compile-time exhaustiveness on tagged-error → HTTP code via `assertNever`. New tagged error w/o case = TS error. |
 
-**Verification rule**: green typecheck + green tests is *necessary, not sufficient*. UI features need a `feature-verifier` browser walk with a PASS verdict doc. CF-binding changes need `bun run build`. E2E smoke specs are default-on (opt-out only with run-note justification — see `99-verify-done.md` §2). Skipping is the single biggest source of premature "done."
+**Verification rule**: green typecheck + green tests is *necessary, not sufficient* — and a green suite that never exercised the change proves nothing, which is why `test-author` runs first (`99-verify-done.md` §1). UI features need a `feature-verifier` browser walk with a PASS verdict doc. CF-binding changes need `bun run build`. E2E smoke specs are default-on (opt-out only with run-note justification — see `99-verify-done.md` §3). Skipping is the single biggest source of premature "done."
 
 ---
 
@@ -111,6 +112,7 @@ Bootstrap, handoff, recovery.
 | Task done | `/verify-done` ([`commands/verify-done.md`](../.claude/commands/verify-done.md)) — full checklist |
 | Ship a feature | `/ship-feature` ([`commands/ship-feature.md`](../.claude/commands/ship-feature.md)) — verify-done + `brain ship <slug> --evidence` (flips `feature_list.json`, checkpoints, runs `brain check`) + update feature MD + close run note |
 | Validate harness | `/harness-check` ([`commands/harness-check.md`](../.claude/commands/harness-check.md)) — runs [`scripts/harness-check.sh`](../scripts/harness-check.sh) = `brain check` + repo supplement |
+| Before an edit | [`rule-router.sh`](../.claude/hooks/rule-router.sh) — `PreToolUse(Edit\|Write\|NotebookEdit)` hook maps the edited path to its [`rules/`](rules/) layer doc and injects the pointer (once per layer per session). Globs mirror the table in [`rules/index.md`](rules/index.md) |
 | Pre-commit | [`brain-reminder.sh`](../.claude/hooks/brain-reminder.sh) hook lists brain files to update |
 | Architectural shift | Append to [`CHANGELOG.md`](CHANGELOG.md) |
 
@@ -120,7 +122,7 @@ Bootstrap, handoff, recovery.
 /start-task    → kickoff (baseline + brain read + framing + run note + progress entry)
 /verify-done   → full verification checklist
 /ship-feature  → close out an in-progress feature
-/harness-check → validate 11 harness invariants (json schema, sync, sub-agents, files, deps, dead-links)
+/harness-check → validate harness invariants (brain state, sync, sub-agents, files, deps, dead-links, hook wiring + hook tests)
 ```
 
 `/harness-check` is the single deterministic gate — runs in seconds, no LLM, exits non-zero on any drift.
@@ -135,6 +137,7 @@ Custom subagents in [`.claude/agents/`](../.claude/agents/) wrap pieces of the h
 |-------|----------|
 | `brain-navigator` | Read-only locator. Returns "what to read for X task" by walking the brain indexes. |
 | `effect-ts-enforcer` | Reviews a diff for the 5 non-negotiables (no `throw`, no Zod, tagged errors mapped, repo/service patterns, no `process.env`). |
+| `test-author` | Writes the unit tests that pin a change (`99-verify-done.md` §1). Every test must name the regression it catches; prunes redundant ones. Writes to `**/__tests__/**` only. Runs `opus` — picking which tests are worth writing is judgment work. |
 | `verify-done-runner` | Runs the full `99-verify-done.md` checklist and reports pass/fail per step. |
 | `feature-verifier` | Drives a feature's golden + error path through the live app with the Playwright CLI (throwaway headless script run via `bun`), screenshots each step, writes a verdict doc to `verifications/`. The feature-level proof layer. |
 | `feature-tracker` | Updates `feature_list.json` + `features/<slug>/<slug>.md` on status change. Refuses to touch code. |

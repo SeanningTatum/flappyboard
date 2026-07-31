@@ -498,7 +498,8 @@ export const boardRouter = createTRPCRouter({
             ownerId: ctx.auth.user.id,
             name: input.name,
           });
-        })
+        }),
+        { span: "trpc.board.create" }
       )
     ),
 
@@ -508,7 +509,8 @@ export const boardRouter = createTRPCRouter({
       Effect.gen(function* () {
         const repo = yield* BoardRepository;
         return yield* repo.getBoardsByOwner(ctx.auth.user.id);
-      })
+      }),
+      { span: "trpc.board.list" }
     )
   ),
 
@@ -526,7 +528,8 @@ export const boardRouter = createTRPCRouter({
           const room = yield* BoardRoom;
           const state = yield* room.getState(input.boardId);
           return { board, state };
-        })
+        }),
+        { span: "trpc.board.get" }
       )
     ),
 
@@ -680,7 +683,8 @@ export const boardRouter = createTRPCRouter({
             board: publicBoard(board),
             state,
           };
-        })
+        }),
+        { span: "trpc.board.pair" }
       )
     ),
 
@@ -725,7 +729,8 @@ export const boardRouter = createTRPCRouter({
             board: publicBoard(access.right.board),
             state,
           };
-        })
+        }),
+        { span: "trpc.board.claim" }
       )
     ),
 
@@ -746,7 +751,8 @@ export const boardRouter = createTRPCRouter({
           yield* requireBoardAccess(ctx, input.boardId);
           const room = yield* BoardRoom;
           return yield* room.setMessage(input);
-        })
+        }),
+        { span: "trpc.board.setMessage" }
       )
     ),
 
@@ -820,7 +826,8 @@ export const boardRouter = createTRPCRouter({
             repaired: generated.repaired,
             attempts: generated.attempts,
           };
-        })
+        }),
+        { span: "trpc.board.generate" }
       )
     ),
 
@@ -858,7 +865,8 @@ export const boardRouter = createTRPCRouter({
             createdAt: snapshot.createdAt,
             grid: parseSnapshotCells(snapshot.cells),
           }));
-        })
+        }),
+        { span: "trpc.board.history" }
       )
     ),
 
@@ -901,7 +909,8 @@ export const boardRouter = createTRPCRouter({
           });
 
           return publicBoard(board);
-        })
+        }),
+        { span: "trpc.board.updateSettings" }
       )
     ),
 
@@ -927,7 +936,8 @@ export const boardRouter = createTRPCRouter({
           yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
           const repo = yield* BoardRepository;
           return yield* repo.deleteBoard({ boardId: input.boardId });
-        })
+        }),
+        { span: "trpc.board.delete" }
       )
     ),
 
@@ -945,7 +955,8 @@ export const boardRouter = createTRPCRouter({
           yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
           const repo = yield* BoardRepository;
           return yield* repo.renameBoard(input);
-        })
+        }),
+        { span: "trpc.board.rename" }
       )
     ),
 
@@ -984,7 +995,8 @@ export const boardRouter = createTRPCRouter({
             })
           );
           return { id: board.id, grantEpoch: board.grantEpoch };
-        })
+        }),
+        { span: "trpc.board.revokeControllers" }
       )
     ),
 
@@ -1038,7 +1050,8 @@ export const boardRouter = createTRPCRouter({
         return yield* Effect.fail(
           new ConfigurationError({ service: "DeviceCode", field: "collision" })
         );
-      })
+      }),
+      { span: "trpc.board.issueDeviceCode" }
     )
   ),
 
@@ -1118,7 +1131,8 @@ export const boardRouter = createTRPCRouter({
             Effect.annotateLogs({ boardId: input.boardId })
           );
           return { boardId: input.boardId, name: board.name };
-        })
+        }),
+        { span: "trpc.board.approveDeviceCode" }
       )
     ),
 
@@ -1161,7 +1175,8 @@ export const boardRouter = createTRPCRouter({
             state,
             pairingToken: token,
           };
-        })
+        }),
+        { span: "trpc.board.display" }
       )
     ),
 
@@ -1250,7 +1265,8 @@ export const boardRouter = createTRPCRouter({
             grant,
             grantMaxAgeSeconds: DEFAULT_DEVICE_TTL_SECONDS,
           };
-        })
+        }),
+        { span: "trpc.board.claimHandoff" }
       )
     ),
 
@@ -1268,7 +1284,8 @@ export const boardRouter = createTRPCRouter({
           yield* requireOwnedBoard(input.boardId, ctx.auth.user.id);
           const room = yield* BoardRoom;
           return yield* room.listGrants(input.boardId);
-        })
+        }),
+        { span: "trpc.board.pairedDevices" }
       )
     ),
 
@@ -1292,7 +1309,8 @@ export const boardRouter = createTRPCRouter({
             Effect.annotateLogs({ boardId: input.boardId, revoked })
           );
           return { revoked };
-        })
+        }),
+        { span: "trpc.board.revokeDevice" }
       )
     ),
 
@@ -1368,7 +1386,8 @@ export const boardRouter = createTRPCRouter({
             Effect.annotateLogs({ boardId: input.boardId })
           );
           return { named: true as const, name: result.name };
-        })
+        }),
+        { span: "trpc.board.nameDevice" }
       )
     ),
 
@@ -1396,7 +1415,8 @@ export const boardRouter = createTRPCRouter({
             })
           );
           return { id: board.id, deviceEpoch: board.deviceEpoch };
-        })
+        }),
+        { span: "trpc.board.revokeDevices" }
       )
     ),
 });

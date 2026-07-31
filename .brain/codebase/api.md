@@ -60,13 +60,15 @@ export const adminRouter = createTRPCRouter({
         Effect.gen(function* () {
           const repo = yield* UserRepository;
           return yield* repo.getUsers(input);
-        })
+        }),
+        { span: "trpc.admin.getUsers" }
       )
     ),
 });
 ```
 
 Rules:
+- **Every procedure passes `{ span: "trpc.<router>.<procedure>" }`** as `runProcedure`'s third argument — the root server span the request's `db.*` child spans and every log's `traceId` hang off. All 35 procedures across `router.ts`, `admin.ts`, `analytics.ts` and `board.ts` are named; the name must match the router registration path. Convention and debugging flow: [`observability.md`](observability.md); audit with the `span-instrumenter` sub-agent.
 - **Body always wrapped in `runProcedure(ctx.runtime, Effect.gen(...))`.** It runs the Effect on the per-request `ManagedRuntime` and converts tagged errors → `TRPCError` via `tagToTRPC`. `runProcedure` also maps failures from the runtime's own **layer construction** (a missing D1/R2/Workflow binding or broken Better Auth config, surfaced only via `runPromiseExit` — not part of the procedure's own error channel) through the same `toTRPC` mapping, so a broken binding produces a clean, logged 500 instead of a raw rejection.
 - **Input via Effect Schema:** `Schema.standardSchemaV1(MySchema)`. Decode failures surface to clients as `TRPCError({ code: "BAD_REQUEST" })` with structured `data.schemaError` (formatted by `ParseResult.ArrayFormatter`).
 - **Yield repos** (`yield* WidgetRepository`) — never call repo methods as plain functions.

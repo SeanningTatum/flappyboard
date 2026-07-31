@@ -1,8 +1,15 @@
 {
+  "extraKnownMarketplaces": {
+    "ui-ux-pro-max-skill": {
+      "source": {
+        "source": "github",
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill"
+      }
+    }
+  },
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
     "feature-dev@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
@@ -10,7 +17,8 @@
     "typescript-lsp@claude-plugins-official": true,
     "github@claude-plugins-official": true,
     "auth-skills@better-auth-agent-skills": true,
-    "claude-md-management@claude-plugins-official": true
+    "claude-md-management@claude-plugins-official": true,
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true
   },
   "permissions": {
     "deny": [
@@ -41,7 +49,18 @@
             "if": "Bash(git commit*)",
             "timeout": 5,
             "statusMessage": "Checking which .brain/ docs to update",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/brain-reminder.sh\" 2>&1 || true"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/brain-reminder.sh\" || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "statusMessage": "Routing to the .brain/rules layer doc",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/rule-router.sh\" || true"
           }
         ]
       }

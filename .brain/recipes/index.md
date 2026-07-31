@@ -7,7 +7,7 @@
 | Recipe | When to use |
 |--------|-------------|
 | [00-before-task.md](00-before-task.md) | **Start here.** Frame task, read the brain, capture baseline, open run note |
-| [99-verify-done.md](99-verify-done.md) | **End here.** Typecheck + tests + e2e smoke + feature verification (browser walk, if UI) + brain coherence before declaring done. Also runnable as `/verify-done` slash command |
+| [99-verify-done.md](99-verify-done.md) | **End here.** Tests that pin the change (via `test-author`, if source touched) + typecheck + tests + e2e smoke + feature verification (browser walk, if UI) + brain coherence before declaring done. Also runnable as `/verify-done` slash command |
 
 ## Adding code
 
@@ -20,6 +20,7 @@
 | [add-feature.md](add-feature.md) | Scoping and shipping a new product feature |
 | [add-route.md](add-route.md) | Adding a React Router page (loader/action/UI) |
 | [add-service.md](add-service.md) | Wrapping a new external client as an Effect service |
+| [`add-premium-surface.md`](add-premium-surface.md) | Building a high-visibility surface — landing/marketing page or redesign — that looks shipped rather than generated: category benchmark, reference lock, the craft moves (product panel, surface levels, depth, type pairing, accent economy, motion), `design:audit`, then `design-critic` |
 
 ## Decision trees
 

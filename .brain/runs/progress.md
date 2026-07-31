@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-07-31 — Synced cf-saas-starter-react-router 3b1b899..9a70e55 onto chore/sync-template (5 commits). Fork point identified as template 3b1b899 (2026-07-24) — our 80e73a8 'Initial commit' tree is byte-identical there outside .brain/README, and the two repos share no git history, so this was cherry-pick-with-adaptation, not merge. Took: rule-router PreToolUse hook (#16, harness-check now 10 checks incl. 58 hook-test assertions), test-author sub-agent (#18), OTel span tracing (#20) extended with all 20 board.ts procedures upstream never saw (35 spanned total, new feat-018), design gate (#21 — design-critic + ui-builder agents, /design-research, /build-feature, scripts/design-audit.ts, refero .mcp.json, ui-ux-pro-max plugin replacing frontend-design). Skipped: template .brain/CHANGELOG.md + runs/progress.md + feature_list churn, and the sample-saas-landing folder (26 PNGs for a /demo surface cut before the template PR merged) with its 4 references rewritten. The tRPC isDev fix (#17) did NOT apply — we already fixed it, more strictly: omitStack runs unconditionally where upstream only strips outside dev, and our delay branches on import.meta.env.DEV so the bundler deletes it. Took its rules/routes.md doc adapted to our helpers + its 100-499ms off-by-one correction.
+- branch: `chore/sync-template`
+- in-progress feature: none
+- run note: none
+- next: PR chore/sync-template -> main. Two owner calls surfaced by the sync: (1) upstream's runs/2026-07-30-focus-ring-defect.md reports keyboard focus rings never painting app-wide in the app/app.css we inherited at the fork point — plausibly live in flappyboard, NOT confirmed here, needs a keyboard walk on /b/:boardId, /link, /tv, console; (2) .mcp.json + extraKnownMarketplaces add a third-party plugin (nextlevelbuilder/ui-ux-pro-max-skill) and an external MCP endpoint needing REFERO_MCP_TOKEN — accept or drop. Also owed: a flappyboard OTLP capture (feat-018 is upstream-verified only; export inert until OTEL_EXPORTER_OTLP_ENDPOINT set). Pre-existing drift noticed, not fixed: .brain/features/index.md table lists 6 features with stale statuses vs feature_list.json's 18.
+
+---
+
 ## 2026-07-30 — Stack consolidated: PR #9 squash-merged into `feat/qr-first-pairing-console` (8e3202c), so PR #8 is now the single PR to `main` carrying all four features (feat-014 qr-first-tv-link, feat-015 controller-board-mirror, feat-016 pairing-experience-redesign, feat-017 auto-tv-link). PR #8 body rewritten to describe the consolidated scope; `feat/auto-tv-link` deleted (merged). Brain state reconciled onto the base branch: this cursor, the feat-014 run note's Greptile step, and four `pr.json` markers. `wrangler.jsonc` (feat-013 KV IDs) stays owner-managed and out of the branch.
 - branch: `feat/qr-first-pairing-console`
 - in-progress feature: none
