@@ -57,6 +57,7 @@ features/
 | Family Grants | [`family-grants/family-grants.md`](family-grants/family-grants.md) | planned (code complete) | — |
 | Kiosk Display | [`kiosk-display/kiosk-display.md`](kiosk-display/kiosk-display.md) | planned (code complete) | — |
 | OpenTelemetry Span Tracing | [`otel-tracing/otel-tracing.md`](otel-tracing/otel-tracing.md) | shipped (synced from template) | — (upstream-verified only) |
+| Brand System | [`brand-system/brand-system.md`](brand-system/brand-system.md) | in-progress | — |
 
 > **Why two features read "planned" with their code written.** feat-010/011/012
 > come from one approved plan and one diff, and the scope policy allows exactly

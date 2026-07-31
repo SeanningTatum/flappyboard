@@ -3,14 +3,111 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* -------------------------------------------------------------------------- */
+/* Typefaces                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Self-hosted, not a runtime Google Fonts stylesheet. The CDN cost three cold
+ * round trips before a glyph could paint (two preconnects, a render-blocking
+ * cross-origin stylesheet, then the woff2); these are served by the connection
+ * that already delivered the HTML, and Vite content-hashes them so they can be
+ * cached immutably (see `public/_headers`).
+ *
+ * Every file is a STATIC cut, deliberately. A variable font needs Chromium 62+;
+ * a 2017 Samsung Tizen panel is Chromium 56, and both `/tv` and `/b/:boardId`
+ * render on exactly that hardware. A silently-ignored `wdth` axis there would
+ * paint every glyph at full width against metrics tuned for a condensed one —
+ * on the one device that cannot be debugged remotely.
+ */
+
+/* Display + UI. Archivo — Omnibus-Type, SIL OFL 1.1. American gothic news and
+   wood-type roots: the register of a split-flap unit, not of a dashboard. */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-700.woff2") format("woff2");
+}
+
+/* Codes, readouts, tech labels. IBM Plex Mono — Bold Monday / IBM, SIL OFL 1.1.
+   Engineering-instrument provenance rather than IDE provenance, with a slashed
+   zero and an unambiguous 1/l — it renders the 6-character device code someone
+   is transcribing off a television. `block`, never `swap`: a code that reflows
+   mid-read is worse than a code that arrives 80ms later. */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("./assets/fonts/ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+  src: url("./assets/fonts/ibm-plex-mono-500.woff2") format("woff2");
+}
+
+/*
+ * The flap face. Inter, subset to exactly the 57 characters in `BOARD_CHARS`
+ * (~8KB) — every glyph a flap can physically show, and nothing else.
+ *
+ * This exists so the board can be FROZEN. `flap-tile.tsx` used to render its
+ * glyph with `font-sans`, which meant changing the app's display face would
+ * silently change the board's glyph metrics — and `GLYPH_SIZE`'s divisor is
+ * tuned to Inter's advance. Pinning the flap to its own family is the seam:
+ * `--font-sans` can now become anything without reaching a tile.
+ *
+ * `block`, for the same reason as the mono: the board must not paint 144 tiles
+ * in a fallback metric and then reflow them.
+ */
+@font-face {
+  font-family: "Inter Flap";
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+  src: url("./assets/fonts/inter-flap-600.woff2") format("woff2");
+}
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  /* The CJK fallbacks are load-bearing: Archivo carries no CJK, and this app
+     ships a full `zh` locale. Without them every Chinese string would fall to
+     an arbitrary system face. */
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif, "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Board only. Never use `font-flap` outside a flap-shaped object. */
+  --font-flap: "Inter Flap", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  @apply bg-background;
 
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
@@ -18,8 +115,15 @@ body {
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /*
+   * `max(0px, …)` is not defensive style, it is required. At `--radius: 2px`
+   * the unguarded `calc(var(--radius) - 4px)` resolves to -2px; a negative
+   * border-radius is INVALID, so the whole declaration is dropped and
+   * `.rounded-sm` silently stops applying — across avatar, badge, checkbox,
+   * dropdown-menu and select at once, with no error anywhere.
+   */
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
@@ -40,6 +144,18 @@ body {
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-text-heading: var(--text-heading);
+  --color-text-body: var(--text-body);
+  --color-text-body-subtle: var(--text-body-subtle);
+  --color-flap-red: var(--flap-red);
+  --color-flap-orange: var(--flap-orange);
+  --color-flap-yellow: var(--flap-yellow);
+  --color-flap-green: var(--flap-green);
+  --color-flap-blue: var(--flap-blue);
+  --color-flap-violet: var(--flap-violet);
+  --color-flap-unlit: var(--flap-unlit);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -55,26 +171,82 @@ body {
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* -------------------------------------------------------------------------- */
+/* The contract                                                               */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * These values are derived from the product, not picked off a scale. The ink is
+ * the unlit flap (#1f1f22). The signal is the console's pilot lamp. The radius
+ * is the object's own: `console.tsx` documents it as 0px on panels and buttons,
+ * 2px on wells and flaps, so a 10px shadcn default was the loudest single tell
+ * that this was a template.
+ *
+ * Every ratio below was measured, not estimated. Body copy, action fills and
+ * focus rings all clear their WCAG floors in both themes; see the feature doc
+ * for the table.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --radius: 0.125rem;
+
+  --background: oklch(0.982 0.0041 91.45); /* #faf9f6 — warm paper, not #fff */
+  --foreground: oklch(0.2405 0.0057 285.97); /* #1f1f22 — the unlit flap */
+  --card: oklch(1 0 89.88);
+  --card-foreground: oklch(0.2405 0.0057 285.97);
+  --popover: oklch(1 0 89.88);
+  --popover-foreground: oklch(0.2405 0.0057 285.97);
+  --primary: oklch(0.2405 0.0057 285.97);
+  --primary-foreground: oklch(0.982 0.0041 91.45);
+  --secondary: oklch(0.9575 0.0067 97.35);
+  --secondary-foreground: oklch(0.2405 0.0057 285.97);
+  --muted: oklch(0.9575 0.0067 97.35);
+  --muted-foreground: oklch(0.4762 0.0064 286.16); /* 6.32:1 on paper */
+  --accent: oklch(0.9575 0.0067 97.35);
+  --accent-foreground: oklch(0.2405 0.0057 285.97);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.9124 0.0097 93.58);
+  --input: oklch(0.8729 0.0126 91.53);
+
+  /*
+   * The signal is a STATE colour, never an action fill — `console.tsx` and
+   * `push-to-talk-button.tsx` both say so, and `--primary` paints every CTA in
+   * the app, so amber-as-primary would spend the signal everywhere.
+   *
+   * It carries two values on purpose. The lamp itself is #ffcc00, which is
+   * 1.51:1 on white — far under the 3:1 floor WCAG 2.2 SC 1.4.11 sets for a
+   * focus indicator. On light surfaces it darkens to a deep amber that clears
+   * the floor (4.72:1 on paper) while staying in the same hue family.
+   */
+  --signal: oklch(0.547 0.1122 84.38); /* #8f6a00 */
+  --signal-foreground: oklch(1 0 89.88);
+  --ring: var(--signal);
+
+  --text-heading: oklch(0.2405 0.0057 285.97);
+  --text-body: oklch(0.3577 0.0068 286.05); /* 10.43:1 */
+  --text-body-subtle: oklch(0.4762 0.0064 286.16); /* 6.32:1 */
+
+  /*
+   * The eight flap pigments, mirrored from `TILE_COLORS` in `flap-tile.tsx` and
+   * pinned to it by a parity test.
+   *
+   * Deliberately THEME-INVARIANT — declared once here and never re-declared
+   * under `.dark` or any scope. A red flap is red on a television in a lit room
+   * whatever the phone's theme is. This is also why they are not `--chart-*`:
+   * there are eight, not five, chart tokens are already consumed by recharts,
+   * and chart tokens legitimately flip between themes — which is exactly what a
+   * pigment must never do.
+   *
+   * Hex, not oklch: these are a mirror of literal values owned by another file,
+   * and the parity test compares them verbatim.
+   */
+  --flap-red: #c3352d;
+  --flap-orange: #ce6b22;
+  --flap-yellow: #d8be2e;
+  --flap-green: #2e9b58;
+  --flap-blue: #2b77ac;
+  --flap-violet: #86529a;
+  --flap-unlit: #1f1f22; /* `black` and `white` share this fill — see TILE_COLORS */
+
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -91,24 +263,33 @@ body {
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.1831 0.004 285.99); /* #121214 — never pure black */
+  --foreground: oklch(0.9503 0.0053 286.3); /* #eeeef2 — never pure white */
+  --card: oklch(0.2191 0.0058 285.91);
+  --card-foreground: oklch(0.9503 0.0053 286.3);
+  --popover: oklch(0.2191 0.0058 285.91);
+  --popover-foreground: oklch(0.9503 0.0053 286.3);
+  --primary: oklch(0.9503 0.0053 286.3);
+  --primary-foreground: oklch(0.2405 0.0057 285.97);
+  --secondary: oklch(0.2536 0.0075 285.86);
+  --secondary-foreground: oklch(0.9503 0.0053 286.3);
+  --muted: oklch(0.2536 0.0075 285.86);
+  --muted-foreground: oklch(0.7711 0.0056 286.27); /* 9.05:1 */
+  --accent: oklch(0.2536 0.0075 285.86);
+  --accent-foreground: oklch(0.9503 0.0053 286.3);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.2903 0.0054 286.06);
+  --input: oklch(0.3239 0.0123 285.69);
+
+  /* On a dark surface the lamp needs no compromise: 12.38:1 on the canvas. */
+  --signal: oklch(0.8652 0.1768 90.38); /* #ffcc00 */
+  --signal-foreground: oklch(0.2405 0.0057 285.97);
+  --ring: var(--signal);
+
+  --text-heading: oklch(0.9503 0.0053 286.3);
+  --text-body: oklch(0.856 0.0068 286.25); /* 12.05:1 */
+  --text-body-subtle: oklch(0.7711 0.0056 286.27); /* 9.05:1 */
+
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -124,11 +305,52 @@ body {
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/*
+ * The console routes (`/b/:boardId`, `/b/:boardId/c`, `/tv`, `/link`) run their
+ * own visual language through a scoped token override — same variable names,
+ * hardware values — per "Scoped design systems" in `.brain/rules/frontend.md`.
+ * Rule 2 there requires that stylesheet to live beside its routes rather than
+ * here, so the app-wide tokens above stay readable without knowing about the
+ * exception: `app/routes/board/hardware-theme.css`.
+ */
+
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  /*
+   * ONE focus indicator, TWO mechanisms, and both are load-bearing.
+   *
+   * The defect this replaces was not "the ring never paints" — it painted. The
+   * old global was `outline-ring/50` against `--ring: oklch(0.708 0 0)`, which
+   * composites to roughly #d9d9d9 on white: a measured 1.41:1, against a 3:1
+   * floor. It was there, and it was invisible. That is why two verification
+   * passes disagreed about it and why two surfaces shipped hardcoded amber
+   * outlines of their own.
+   *
+   * `outline` is what survives forced-colors / Windows High Contrast, where
+   * box-shadow is stripped entirely — which is why the shadcn `outline-none` on
+   * the button base had to go: it emits `outline-style: none` and took the only
+   * high-contrast fallback with it.
+   *
+   * `:where()` keeps specificity at zero, so any component that wants its own
+   * focus treatment can still take it without an `!important`.
+   */
+  :where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible,
+  :where([data-slot]):focus-visible {
+    --tw-outline-style: solid;
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  @media (forced-colors: active) {
+    :where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible,
+    :where([data-slot]):focus-visible {
+      outline-color: Highlight;
+    }
   }
 }

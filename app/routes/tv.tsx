@@ -7,6 +7,9 @@ import QRCode from "qrcode";
 import type { Route } from "./+types/tv";
 import { DEVICE_CODE_TTL_SECONDS } from "@/lib/board/device-code";
 import { CONSOLE, PLATE_LIP } from "@/components/board/console";
+// The scoped token override for the console surfaces. See the header of that
+// file for why this route runs its own visual language.
+import "./board/hardware-theme.css";
 
 /**
  * `/tv` — the one URL a television ever has to be told.
@@ -230,6 +233,7 @@ export default function TvPairing({ loaderData }: Route.ComponentProps) {
 
   return (
     <main
+      data-surface="hardware"
       className="flex h-screen w-screen flex-col items-center justify-center gap-[3vmin] overflow-hidden text-center"
       style={{ backgroundColor: CONSOLE.field, color: CONSOLE.ink }}
       data-testid="tv-pairing"

@@ -12,6 +12,9 @@ import { ThemeProvider } from "next-themes";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import archivo400 from "./assets/fonts/archivo-400.woff2?url";
+import archivo600 from "./assets/fonts/archivo-600.woff2?url";
+import plexMono400 from "./assets/fonts/ibm-plex-mono-400.woff2?url";
 import { TRPCProvider } from "./trpc/client";
 import { useTranslation } from "react-i18next";
 import { useChangeLanguage } from "remix-i18next/react";
@@ -19,16 +22,41 @@ import { i18nServer } from "./i18n/i18n.server";
 
 export const handle = { i18n: ["common"] };
 
+/*
+ * The typefaces are self-hosted (see `app.css`), so there is no stylesheet to
+ * fetch and no third-party origin to warm up. These imports resolve to
+ * content-hashed URLs under `/assets/`, which is what lets `public/_headers`
+ * cache them immutably.
+ *
+ * `crossOrigin: "anonymous"` is mandatory even though these are same-origin:
+ * fonts are always fetched in CORS mode, so a preload without it is treated as
+ * a different request than the one `@font-face` makes — the preload is
+ * discarded and the file is fetched twice.
+ *
+ * Only the app-wide faces are preloaded here. The flap face is preloaded by the
+ * board routes themselves, since nothing outside a board renders a tile.
+ */
 export const links: Route.LinksFunction = () => [
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
+    rel: "preload",
+    href: archivo400,
+    as: "font",
+    type: "font/woff2",
     crossOrigin: "anonymous",
   },
   {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
+    rel: "preload",
+    href: archivo600,
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  },
+  {
+    rel: "preload",
+    href: plexMono400,
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
   },
 ];
 

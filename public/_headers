@@ -1,0 +1,13 @@
+# Cloudflare Workers static-asset headers.
+#
+# Everything Vite emits under /assets/ carries a content hash in its filename, so
+# the bytes at a given URL can never change — which is what makes `immutable`
+# safe here and unsafe almost everywhere else. Without this, Workers Assets
+# serves fonts with `max-age=0, must-revalidate` and every navigation pays a
+# revalidation round trip for a file that is incapable of being stale.
+#
+# This is what makes self-hosting the typefaces a win rather than a wash: the
+# first visit fetches them on the connection that already delivered the HTML,
+# and no later visit fetches them at all.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
