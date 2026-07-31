@@ -110,9 +110,13 @@ export function ConsoleAddress({
           {url}
         </code>
         {/*
-          The ink key — the console's one action treatment, never an outline
-          button. 44px of thumb on its short side even though the label is two
-          words wide.
+          A hairline key, NOT the off-white plate.
+
+          It was the plate, and on the rack that made a copy affordance the
+          brightest, highest-contrast object on the page — louder than the three
+          boards, which are the page. Copying a URL is a convenience next to the
+          text that is the actual deliverable; the plate is reserved for the
+          action a surface exists to perform.
         */}
         <button
           type="button"
@@ -121,10 +125,9 @@ export function ConsoleAddress({
           aria-label={t("card.copy")}
           className="flex min-h-11 shrink-0 touch-manipulation items-center gap-1.5 px-3 text-[11px] font-medium uppercase"
           style={{
-            backgroundColor: CONSOLE.ink,
-            color: CONSOLE.panel,
+            color: CONSOLE.inkDim,
             letterSpacing: "0.14em",
-            boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.25)",
+            boxShadow: `inset 0 0 0 1px ${CONSOLE.hairline}`,
           }}
         >
           {state === "copied" ? (

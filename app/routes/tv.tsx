@@ -135,7 +135,7 @@ function TvQr({ url, alt }: { readonly url: string; readonly alt: string }) {
     <img
       src={dataUrl}
       alt={alt}
-      className="size-[38vmin] rounded-[1vmin] bg-white p-[1.5vmin]"
+      className="size-[38vmin] rounded-[2px] bg-white p-[1.5vmin]"
       data-testid="tv-qr-image"
       data-link-url={url}
     />

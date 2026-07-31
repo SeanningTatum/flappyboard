@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Effect, Exit } from "effect";
 import { useTranslation } from "react-i18next";
 import { Form, redirect, useNavigation } from "react-router";
@@ -10,7 +11,12 @@ import {
   normalizeDeviceCode,
   DEVICE_CODE_LENGTH,
 } from "@/lib/board/device-code";
-import { CONSOLE, ConsoleField, WELL_LIP } from "@/components/board/console";
+import {
+  CONSOLE,
+  ConsoleField,
+  PLATE_LIP,
+} from "@/components/board/console";
+import { FlapWord } from "@/components/board/flap-word";
 // The scoped token override for the console surfaces. See the header of that
 // file for why this route runs its own visual language.
 import "./board/hardware-theme.css";
@@ -240,13 +246,135 @@ const INK_KEY_STYLE = {
   boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.25)",
 } as const;
 
-/** An input cut into the plate: recessed well, 48px of thumb target. */
-const WELL_INPUT = `h-12 w-full rounded-[2px] border-0 px-3 text-base shadow-none placeholder:text-[#5a5a5c] ${FOCUS_RING}`;
-const WELL_INPUT_STYLE = {
-  backgroundColor: CONSOLE.well,
-  boxShadow: WELL_LIP,
-  color: CONSOLE.ink,
-} as const;
+/**
+ * The code field, set in the board's own flaps.
+ *
+ * The design review's sharpest finding about this page: `/tv` spells its code in
+ * six real flaps, and its counterpart screen — the same gesture, thirty seconds
+ * later, same person — answered with a stock input and a white button. Cover the
+ * wordmark and it was Netflix's TV pairing, or Spotify Connect, or any 2FA form.
+ * The two halves of one handshake have to rhyme.
+ *
+ * So the flaps **are** the field. A real `<input>` still exists and still does
+ * all the work — it sits transparently over the tiles, so the phone keyboard,
+ * autofill, selection, `maxLength` and the form submit are the platform's, not a
+ * reimplementation. The amber bar under the next empty cell is the caret.
+ *
+ * **The no-JS contract survives**, and not by accident: with scripting off the
+ * flaps can never fill (nothing re-renders), so the `<noscript>` block below
+ * hides them and restores the input to an ordinary visible well. Degrading to a
+ * plain text field is exactly right — the page's whole job is to submit six
+ * characters, and it still does.
+ */
+function FlapCodeField({
+  value,
+  onChange,
+  failed,
+}: {
+  readonly value: string;
+  readonly onChange: (next: string) => void;
+  /** Paints the tiles' surround red — the control that is wrong looks wrong. */
+  readonly failed: boolean;
+}) {
+  const { t } = useTranslation("boards");
+  const [focused, setFocused] = useState(false);
+
+  // Uppercased and folded here so the tiles show exactly what will be submitted.
+  const code = normalizeDeviceCode(value) ?? value.toUpperCase().slice(0, DEVICE_CODE_LENGTH);
+  const filled = Math.min(code.length, DEVICE_CODE_LENGTH);
+
+  return (
+    <label
+      className="relative block w-fit"
+      data-flap-code=""
+      style={{
+        padding: "6px",
+        backgroundColor: CONSOLE.panel,
+        boxShadow: failed
+          ? `inset 0 0 0 2px var(--destructive, #e8695f)`
+          : focused
+            ? `inset 0 0 0 2px ${CONSOLE.amber}`
+            : PLATE_LIP,
+      }}
+    >
+      <span data-flap-display="">
+        <FlapWord
+          text={code}
+          cells={DEVICE_CODE_LENGTH}
+          cellWidth="min(13vw, 52px)"
+          label={t("link.codeLabel")}
+          data-testid="link-code-flaps"
+        />
+        {/*
+          The caret: an amber bar under the cell the next character lands in.
+          Amber is the console's state signal and "this is where you are" is a
+          state — the same job it does as the pilot lamp on the television.
+        */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-[6px] bottom-[6px] grid"
+          style={{ gridTemplateColumns: `repeat(${DEVICE_CODE_LENGTH}, 1fr)` }}
+        >
+          {Array.from({ length: DEVICE_CODE_LENGTH }, (_, index) => (
+            <span
+              key={index}
+              className="h-[2px]"
+              style={{
+                backgroundColor:
+                  focused && index === filled ? CONSOLE.amber : "transparent",
+              }}
+            />
+          ))}
+        </span>
+      </span>
+
+      <input
+        id="code"
+        name="code"
+        data-testid="link-code"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        // A code read across a room and typed on a phone: no autocorrect, no
+        // capitalisation guessing, and a keyboard that offers letters and
+        // digits together.
+        autoCapitalize="characters"
+        autoCorrect="off"
+        autoComplete="one-time-code"
+        spellCheck={false}
+        inputMode="text"
+        autoFocus
+        maxLength={DEVICE_CODE_LENGTH}
+        required
+        aria-label={t("link.codeLabel")}
+        // Over the tiles, invisible, and still the real control. `caret-color`
+        // is transparent because the amber bar above is the caret.
+        className="absolute inset-0 h-full w-full bg-transparent text-transparent caret-transparent outline-none"
+      />
+
+      {/*
+        Scripting off → the tiles can never fill, so hide them and hand the page
+        back an ordinary well. `dangerouslySetInnerHTML` because React escapes
+        `<noscript>` children, which would print the CSS as text.
+      */}
+      <noscript
+        dangerouslySetInnerHTML={{
+          __html: `<style>
+            [data-flap-code] [data-flap-display] { display: none; }
+            [data-flap-code] input {
+              position: static; height: 3rem; width: 100%;
+              color: ${"#eeeef2"}; background-color: ${"#0e0e10"};
+              caret-color: ${"#ffcc00"};
+              font-family: ui-monospace, monospace; font-size: 1.125rem;
+              letter-spacing: 0.4em; text-transform: uppercase; padding: 0 0.75rem;
+            }
+          </style>`,
+        }}
+      />
+    </label>
+  );
+}
 
 export default function LinkTv({
   loaderData,
@@ -256,13 +384,14 @@ export default function LinkTv({
   const navigation = useNavigation();
   const pending = navigation.state === "submitting";
   const failure = actionData?.failure ?? loaderData.failure;
+  const [code, setCode] = useState(loaderData.code ?? "");
 
   return (
     <ConsoleField data-testid="link-root" className="justify-center gap-8">
       <header className="flex flex-col gap-2 px-1">
         <h1
-          className="text-[13px] font-medium uppercase"
-          style={{ color: CONSOLE.ink, letterSpacing: "0.18em" }}
+          className="text-[24px] leading-none font-semibold uppercase"
+          style={{ color: CONSOLE.ink, letterSpacing: "0.14em" }}
         >
           {t("link.title")}
         </h1>
@@ -275,35 +404,17 @@ export default function LinkTv({
       </header>
 
       <Form method="post" className="flex flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="code"
+        <div className="flex flex-col gap-2.5">
+          <span
             className="px-1 text-[10px] leading-none font-medium uppercase"
             style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
           >
             {t("link.codeLabel")}
-          </label>
-          <input
-            id="code"
-            name="code"
-            data-testid="link-code"
-            defaultValue={loaderData.code ?? ""}
-            // A code read across a room and typed on a phone: no autocorrect,
-            // no capitalisation guessing, and a keyboard that offers letters
-            // and digits together.
-            autoCapitalize="characters"
-            autoCorrect="off"
-            autoComplete="off"
-            spellCheck={false}
-            inputMode="text"
-            autoFocus
-            // Room for the spaces and dashes a phone keyboard adds; the server
-            // normalises them away.
-            maxLength={DEVICE_CODE_LENGTH * 4}
-            placeholder={t("link.codePlaceholder")}
-            required
-            className={`${WELL_INPUT} font-mono text-lg tracking-[0.4em] uppercase`}
-            style={WELL_INPUT_STYLE}
+          </span>
+          <FlapCodeField
+            value={code}
+            onChange={setCode}
+            failed={failure !== null}
           />
         </div>
 

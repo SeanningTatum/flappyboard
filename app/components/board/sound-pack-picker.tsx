@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { IconVolume, IconVolumeOff } from "@tabler/icons-react";
 
 import { cn } from "@/lib/utils";
-import { Switch } from "@/components/ui/switch";
 import {
   CONSOLE,
   ConsoleLabel,
@@ -103,32 +102,53 @@ export function SoundPackPicker({
           style={{ backgroundColor: CONSOLE.hairline }}
         />
 
-        <label
-          className="flex h-12 items-center justify-between gap-3 px-3"
-          data-testid="control-mute-row"
-        >
-          <span
-            className="flex items-center gap-2 text-[11px] font-medium uppercase"
-            style={{
-              color: muted ? CONSOLE.amber : CONSOLE.inkDim,
-              letterSpacing: "0.16em",
-            }}
-          >
-            {muted ? (
-              <IconVolumeOff className="size-4 shrink-0" aria-hidden />
-            ) : (
-              <IconVolume className="size-4 shrink-0" aria-hidden />
-            )}
-            {muted ? t("control.sound.muted") : t("control.sound.unmuted")}
-          </span>
-          <Switch
-            checked={muted}
-            disabled={pending}
-            onCheckedChange={(next) => onChange({ muted: next })}
+        {/*
+          A two-position rocker, not a switch — and this replaced a shadcn
+          `Switch` for two separate reasons, both raised by the design review.
+
+          **It was the only pill and the only circle in the product.** Every
+          other control on the console measures 0px radius against a contract
+          that says a pill would be a lie, and the white track made it the
+          loudest object on the panel — brighter than the amber lamp beside it.
+
+          **And it read backwards.** `checked` meant *muted*, so the affirmative
+          state — track lit, knob to the right — meant the board makes no sound.
+          A rocker has no affirmative state to get wrong: each half says what it
+          does, and the lit half is the one in force.
+        */}
+        <div className="p-2">
+          <SegmentTrack
+            role="radiogroup"
             aria-label={t("control.sound.mute_label")}
             data-testid="control-mute"
-          />
-        </label>
+          >
+            {([false, true] as const).map((isMuted) => {
+              const active = muted === isMuted;
+              const Icon = isMuted ? IconVolumeOff : IconVolume;
+              return (
+                <button
+                  key={String(isMuted)}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  disabled={pending}
+                  className={cn(
+                    segmentClass(active),
+                    "h-11 flex-1 basis-0 gap-2 touch-manipulation"
+                  )}
+                  style={segmentStyle(active)}
+                  onClick={() => onChange({ muted: isMuted })}
+                  data-testid={`control-mute-${isMuted ? "on" : "off"}`}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden />
+                  {isMuted
+                    ? t("control.sound.muted")
+                    : t("control.sound.unmuted")}
+                </button>
+              );
+            })}
+          </SegmentTrack>
+        </div>
       </div>
     </section>
   );

@@ -618,7 +618,7 @@ function RowWell({
                 // An empty row's placeholder must read as an empty slot, not as
                 // content: six bright "ROW 3" strings look like a board that
                 // already says something.
-                "placeholder:text-[#5a5a5c] focus-visible:ring-0 dark:bg-transparent"
+                "placeholder:text-[#89898d] focus-visible:ring-0 dark:bg-transparent"
               )}
               style={{
                 backgroundColor: CONSOLE.well,

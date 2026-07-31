@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { IconDeviceMobile } from "@tabler/icons-react";
@@ -79,6 +79,21 @@ export interface ControllerSettingsProps {
 /* Shared console vocabulary                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * A group of already-recessed controls: the caps label above it does the naming,
+ * so it needs no fill of its own.
+ *
+ * The design review's finding was that the card had been *restyled*, not
+ * removed — four `#151515` rectangles, each already labelled by the caps label
+ * sitting above it on black, and "CAREFUL" wrapping a single outlined button
+ * inside a panel gave three surface levels for one action against a ledger that
+ * says three levels is the ceiling for a whole screen. So the raised plate is
+ * now reserved for surfaces that hold **content** — a list of devices — and a
+ * group of wells and keys gets a hairline rule instead.
+ */
+const GROUP = "flex flex-col gap-3 px-1";
+
+/** A plate, for the one section that holds content rather than controls. */
 const PLATE = "flex flex-col gap-3 px-3 py-3";
 const PLATE_STYLE = {
   backgroundColor: CONSOLE.panel,
@@ -87,13 +102,32 @@ const PLATE_STYLE = {
 
 /** The one action treatment: off-white plate, dark ink, square, 44px. */
 const INK_KEY =
-  "flex min-h-11 shrink-0 touch-manipulation items-center justify-center px-4 text-[11px] font-medium uppercase disabled:opacity-40";
-const INK_KEY_STYLE = {
-  backgroundColor: CONSOLE.ink,
-  color: CONSOLE.panel,
-  letterSpacing: "0.14em",
-  boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.25)",
-} as const;
+  "flex min-h-11 shrink-0 touch-manipulation items-center justify-center px-4 text-[11px] font-medium uppercase";
+
+/**
+ * Disabled is an OUTLINE, not the off-white plate at 40%.
+ *
+ * `disabled:opacity-40` over a `#eeeef2` fill composites to a flat mid-grey —
+ * a fill weight that exists nowhere else in the console (primary is the plate,
+ * secondary is a hairline), so the one key that commits a rename read as a
+ * third, unexplained kind of button. It also measured 3.48:1 for its label,
+ * which is only exempt from the AA floor because the control is genuinely
+ * disabled — "technically exempt" is not the same as "legible".
+ */
+const inkKeyStyle = (disabled: boolean): CSSProperties =>
+  disabled
+    ? {
+        backgroundColor: "transparent",
+        color: CONSOLE.inkMute,
+        letterSpacing: "0.14em",
+        boxShadow: `inset 0 0 0 1px ${CONSOLE.hairline}`,
+      }
+    : {
+        backgroundColor: CONSOLE.ink,
+        color: CONSOLE.panel,
+        letterSpacing: "0.14em",
+        boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.25)",
+      };
 
 /**
  * An outlined key. `destructive` is spent on **one** control on this page, and
@@ -114,7 +148,7 @@ const edgeKeyStyle = (destructive: boolean) =>
   }) as const;
 
 const WELL_INPUT =
-  "h-11 w-full rounded-[2px] border-0 px-3 text-base placeholder:text-[#5a5a5c] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-[#ffcc00]";
+  "h-11 w-full rounded-[2px] border-0 px-3 text-base placeholder:text-[#89898d] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-[#ffcc00]";
 const WELL_INPUT_STYLE = {
   backgroundColor: CONSOLE.well,
   boxShadow: WELL_LIP,
@@ -287,14 +321,13 @@ export function ControllerSettings({
     <div className="flex flex-col gap-6 pb-4" data-testid="control-settings">
       {/* ------------------------------------------------ the TV address */}
       <section className="flex flex-col gap-2">
-        <ConsoleLabel>{t("controller.settings.display.title")}</ConsoleLabel>
-        <div className={PLATE} style={PLATE_STYLE}>
-          {/*
-            No explanatory paragraph above the address. `ConsoleAddress`'s own
-            label already says "type this into your TV's browser", and a
-            sentence saying the same thing one line higher is two labels for one
-            field — the exact redundancy the section heading above is for.
-          */}
+        {/*
+          ONE label. `ConsoleAddress` carries its own ("type this into your TV's
+          browser"), so a `ConsoleLabel` above it saying "this board on a TV" was
+          the same instruction twice, three lines apart — and once the panel fill
+          came off, the two sat directly on top of each other.
+        */}
+        <div className={GROUP}>
           <ConsoleAddress
             url={displayUrl}
             data-testid="control-settings-address"
@@ -306,7 +339,7 @@ export function ControllerSettings({
       {!owner && (
         <section className="flex flex-col gap-2">
           <ConsoleLabel>{t("controller.settings.thisDevice.title")}</ConsoleLabel>
-          <div className={PLATE} style={PLATE_STYLE}>
+          <div className={GROUP}>
             <p
               className="text-[12px] leading-relaxed"
               style={{ color: CONSOLE.inkDim }}
@@ -335,7 +368,9 @@ export function ControllerSettings({
               <button
                 type="button"
                 className={INK_KEY}
-                style={INK_KEY_STYLE}
+                style={inkKeyStyle(
+                  nameDevice.isPending || thisDevice.trim().length === 0
+                )}
                 disabled={
                   nameDevice.isPending || thisDevice.trim().length === 0
                 }
@@ -373,7 +408,7 @@ export function ControllerSettings({
           {/* ------------------------------------------------ board name */}
           <section className="flex flex-col gap-2">
             <ConsoleLabel>{t("controller.settings.name.title")}</ConsoleLabel>
-            <div className={PLATE} style={PLATE_STYLE}>
+            <div className={GROUP}>
               <div className="flex items-stretch gap-2">
                 <input
                   value={name}
@@ -398,7 +433,7 @@ export function ControllerSettings({
                 <button
                   type="button"
                   className={INK_KEY}
-                  style={INK_KEY_STYLE}
+                  style={inkKeyStyle(rename.isPending || name.trim() === boardName)}
                   disabled={rename.isPending || name.trim() === boardName}
                   onClick={saveName}
                   data-testid="control-settings-board-name-save"
@@ -545,7 +580,7 @@ export function ControllerSettings({
           {/* ------------------------------------------------- the edge */}
           <section className="flex flex-col gap-2">
             <ConsoleLabel>{t("controller.settings.danger.title")}</ConsoleLabel>
-            <div className={PLATE} style={PLATE_STYLE}>
+            <div className={GROUP}>
               {/* One control, and the only red on the page. */}
               <ArmedKey
                 destructive

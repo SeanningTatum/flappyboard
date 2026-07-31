@@ -158,6 +158,22 @@ const NAMEPLATE_PIGMENTS = [
   "violet",
 ] as const satisfies ReadonlyArray<BoardColor>;
 
+/**
+ * Whether a string survives the fold onto the board's charset.
+ *
+ * **Callers must check this before rendering a `FlapWord` for user or
+ * translated text.** `BOARD_CHARS` is Latin-only by construction — that is a
+ * property of the physical object, not an oversight — so a board named `客厅`,
+ * or the `zh` string for "no boards yet", folds to nothing and would render as
+ * a row of blank flaps. A silent empty rectangle where a name should be is a
+ * worse failure than plain type, so every caller here falls back to text.
+ *
+ * Not needed for the pairing code (generated from an alphabet that is already
+ * a subset of the charset) or for the six-cell code field.
+ */
+export const foldsToFlaps = (text: string): boolean =>
+  normalizeText(text).trim().length > 0;
+
 export const nameplatePigment = (boardId: string): BoardColor => {
   // FNV-1a. Chosen over `reduce`-and-multiply because it avoids the sign
   // trouble a naive hash hits on long ids, and it is four lines.

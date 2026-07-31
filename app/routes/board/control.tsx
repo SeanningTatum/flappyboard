@@ -420,8 +420,8 @@ function Controller({
         }}
       >
         <h1
-          className="min-w-0 truncate text-[13px] font-medium uppercase"
-          style={{ color: CONSOLE.ink, letterSpacing: "0.18em" }}
+          className="min-w-0 truncate text-[20px] leading-none font-semibold uppercase"
+          style={{ color: CONSOLE.ink, letterSpacing: "0.12em" }}
         >
           {board.name}
         </h1>

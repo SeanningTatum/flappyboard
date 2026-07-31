@@ -11,7 +11,11 @@ import {
 } from "@/components/board/console";
 import { ConsoleAddress } from "@/components/board/console-address";
 import { ConsoleShell } from "@/components/board/console-shell";
-import { FlapWord, nameplatePigment } from "@/components/board/flap-word";
+import {
+  FlapWord,
+  foldsToFlaps,
+  nameplatePigment,
+} from "@/components/board/flap-word";
 // The scoped token override for the console surfaces. See the header of that
 // file for why this route runs its own visual language.
 import "../board/hardware-theme.css";
@@ -105,10 +109,18 @@ export default function BoardsIndex({ loaderData }: Route.ComponentProps) {
     <ConsoleField data-testid="boards-root" className="gap-6">
       <ConsoleShell userName={user.name} isAdmin={user.isAdmin} />
 
-      <header className="flex flex-col gap-1.5 px-1">
+      {/*
+        A display size, at last. The review's finding was that nothing in the
+        whole app surface exceeded ~20px, so `FLAPPYBOARD`, `YOUR BOARDS` and a
+        board's own name were effectively peers and every screen read at one
+        volume. The lock defines a display role; this is the first thing to
+        spend it on. Still uppercase and tracked — the register is the bezel's,
+        the size is the page's.
+      */}
+      <header className="flex flex-col gap-2 px-1">
         <h1
-          className="text-[13px] font-medium uppercase"
-          style={{ color: CONSOLE.ink, letterSpacing: "0.18em" }}
+          className="text-[26px] leading-none font-semibold uppercase sm:text-[32px]"
+          style={{ color: CONSOLE.ink, letterSpacing: "0.14em" }}
         >
           {t("title")}
         </h1>
@@ -119,16 +131,39 @@ export default function BoardsIndex({ loaderData }: Route.ComponentProps) {
 
       {boards.length === 0 ? (
         <section
-          className="flex flex-col gap-3 px-3 py-4"
+          className="flex flex-col gap-4 px-3 py-4"
           style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
           data-testid="boards-empty"
         >
-          <h2
-            className="text-[11px] font-medium uppercase"
-            style={{ color: CONSOLE.ink, letterSpacing: "0.16em" }}
-          >
-            {t("rack.empty.title")}
-          </h2>
+          {/*
+            The product says it in its own voice.
+
+            This was an 11px grey heading — the app describing an empty board in
+            the flattest type on the page, while the one thing it owns that
+            nobody else has sat unused two components away. A household that has
+            never seen a flap before meets one here, before they own one, saying
+            the thing they need to know.
+          */}
+          {foldsToFlaps(t("rack.empty.title")) ? (
+            <FlapWord
+              text={t("rack.empty.title")}
+              color="yellow"
+              // No `cells`: exactly as many flaps as the words need, so the
+              // strip cannot run past the plate it sits on. A fixed 16 did.
+              cellWidth="min(6.4vw, 22px)"
+              label={t("rack.empty.title")}
+              data-testid="boards-empty-flaps"
+            />
+          ) : (
+            /* `zh` folds away entirely — see `foldsToFlaps`. */
+            <h2
+              className="text-[15px] font-medium"
+              style={{ color: CONSOLE.ink }}
+              data-testid="boards-empty-title"
+            >
+              {t("rack.empty.title")}
+            </h2>
+          )}
           <p
             className="text-[13px] leading-relaxed"
             style={{ color: CONSOLE.inkDim }}
@@ -164,14 +199,37 @@ export default function BoardsIndex({ loaderData }: Route.ComponentProps) {
                     colours before they are three words, and the pigment is
                     derived from the id so it never changes under anyone.
                   */}
-                  <FlapWord
-                    text={board.name}
-                    color={nameplatePigment(board.id)}
-                    cellWidth={NAMEPLATE_CELL}
-                    cells={NAMEPLATE_CELLS}
-                    label={board.name}
-                    data-testid="boards-rack-nameplate"
-                  />
+                  {foldsToFlaps(board.name) ? (
+                    <FlapWord
+                      text={board.name}
+                      color={nameplatePigment(board.id)}
+                      cellWidth={NAMEPLATE_CELL}
+                      cells={NAMEPLATE_CELLS}
+                      label={board.name}
+                      data-testid="boards-rack-nameplate"
+                    />
+                  ) : (
+                    /*
+                      A board named `客厅` folds to nothing on a Latin-only
+                      charset, and a blank nameplate is worse than plain type.
+                      The pigment still carries the identity — as a bar, since
+                      there are no flaps to paint.
+                    */
+                    <span
+                      className="flex items-center gap-2 truncate text-[15px] font-medium"
+                      style={{ color: CONSOLE.ink }}
+                      data-testid="boards-rack-nameplate-text"
+                    >
+                      <span
+                        aria-hidden
+                        className="h-4 w-1 shrink-0"
+                        style={{
+                          backgroundColor: `var(--flap-${nameplatePigment(board.id)}, #c3352d)`,
+                        }}
+                      />
+                      {board.name}
+                    </span>
+                  )}
                   <span
                     className="text-[10px] font-medium uppercase"
                     style={{ color: CONSOLE.inkMute, letterSpacing: "0.16em" }}
