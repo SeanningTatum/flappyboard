@@ -30,7 +30,14 @@ test.describe("Authentication", () => {
   test("signup → rack, signout → login, signin → rack", async ({ page }) => {
     // 1. Sign up. A brand-new account has no boards, so `resolveSignedInHome`
     //    sends it to the rack rather than to a controller.
-    await page.goto("/sign-up");
+    // `networkidle` before touching anything. The forms declare
+    // `method="post"` so that a pre-hydration submit cannot put a password in
+    // the URL — which means a click that lands before React attaches does a
+    // real POST to a route with no action, and the page answers 405 instead of
+    // rendering the inline error. That raced ~50% of the time against a warm
+    // dev server. Waiting is the fix in the test, not in the app: the app's
+    // behaviour there is deliberate and correct.
+    await page.goto("/sign-up", { waitUntil: "networkidle" });
     await page.fill('[data-testid="signup-name"]', name);
     await page.fill('[data-testid="signup-email"]', email);
     await page.fill('[data-testid="signup-password"]', password);
@@ -54,6 +61,7 @@ test.describe("Authentication", () => {
 
     await page.goto("/boards");
     await page.waitForURL(/\/login\?next=/);
+    await page.waitForLoadState("networkidle");
 
     // 3. Sign back in with the same credentials.
     await page.fill('[data-testid="login-email"]', email);
@@ -64,7 +72,7 @@ test.describe("Authentication", () => {
   });
 
   test("login form rejects bad credentials", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "networkidle" });
     await page.fill('[data-testid="login-email"]', "nobody@test.local");
     await page.fill('[data-testid="login-password"]', "WrongPass123!");
     await page.click('[data-testid="login-submit"]');

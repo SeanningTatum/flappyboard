@@ -58,7 +58,12 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
         return
       }
 
-      navigate(next ?? "/dashboard")
+      // `/`, not `/dashboard` — that route is gone. It still "worked" through
+      // the forwarding shim, at the cost of an extra round trip on every single
+      // sign-in, and it would have gone on working right up until the shim was
+      // retired. The index is what resolves where a session actually belongs
+      // (`resolveSignedInHome`), and it is the only place that knows.
+      navigate(next ?? "/")
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : t("login.error_failed"))
     }
