@@ -79,14 +79,46 @@ Decision ledger (one row per decision → concrete choice → which reference it
 | imagery | None; the product renders itself | Vestaboard — the object is the hero |
 
 ## Acceptance criteria
-- Golden board screenshots under `.brain/features/split-flap-board/screenshots/` still match (board render frozen)
-- `bun run design:audit` stops emitting the `fontFamilies < 2` craft note
-- Keyboard walk shows a visible focus ring on every route, verified by screenshot not computed style
-- `/admin/kitchen-sink` renders every shadcn primitive with no dropped radius
-- `console.tsx` exports keep identical names and shapes (it is shared by phases 2 and 3)
+
+| Criterion | Result |
+|---|---|
+| Golden board screenshots still match (render frozen) | ✅ Zero drift across three comparisons — `03-tv-idle` vs golden `07-redesign-idle`, `07-tv-settled` vs `08-redesign-lit`, `06-tv-mid-flip` vs `10-travel-mid`. Glyph size, weight, horizontal condensation, vertical position relative to the seam, tile alignment and pigment all identical. The `font-sans` → `font-flap` swap is a confirmed visual no-op. |
+| `design:audit` stops emitting `fontFamilies < 2` | ✅ Reports `Archivo(129) · IBM Plex Mono(30)` on the app surface, `IBM Plex Mono(3) · Archivo(2)` on the hardware surface |
+| Visible focus ring, by screenshot not computed style | ✅ App surface: `solid 2px oklch(0.547 0.1122 84.38)`. Hardware surface: `2px solid rgb(255, 204, 0)` — exactly `--signal` |
+| `/admin/kitchen-sink` renders every primitive, no dropped radius | ✅ `max(0px, …)` guard holds; no dropped `.rounded-sm` |
+| `console.tsx` exports keep identical names and shapes | ✅ Values re-pointed at `var(--hw-*, <literal>)`; no export renamed, no signature changed, 1256 tests green |
+
+## Measured contrast
+
+Every pairing computed rather than eyeballed, because two invisible focus rings have already shipped in this repo.
+
+| Pairing | Ratio | Floor |
+|---|---|---|
+| Light body (`--text-body` on paper) | 10.43:1 | 4.5 |
+| Light subtle / muted-foreground | 6.32:1 | 4.5 |
+| Light primary button | 15.61:1 | 4.5 |
+| Light focus ring on paper / on card | 4.72 / 4.97:1 | 3.0 |
+| Dark body | 12.05:1 | 4.5 |
+| Dark focus ring | 12.38:1 | 3.0 |
+| Hardware ink on field | 18.15:1 | 4.5 |
+| Hardware ring on panel | 12.08:1 | 3.0 |
+
+**The defect this replaces, measured:** the previous `--ring` at 50% alpha composited to ≈**1.41:1** on white. It painted and was invisible.
+
+**Why `--signal` carries two values:** raw `#ffcc00` is 1.51:1 on white. The lamp only survives on dark surfaces.
+
+## Verification
+
+`verifications/2026-07-31.md` — **PASS**. Golden path 8/8, error path degrades gracefully (`/b/<bogus>` → `/tv`, no 404). Two non-defects recorded honestly: a hydration warning keyed only on `caret-color` (zero matches for it in `app/` — environment artifact), and two 422s from the verification script's own sign-up fallback.
+
+Browser walk (separate, 17/17) additionally proved **non-leakage** per escape-hatch rule 3: the app surface carries zero `[data-surface="hardware"]` elements and `--hw-*` resolves to empty at `:root`.
+
+**Note for the next verifier:** the message-editor's board miniature does not use `FlapTile`/`data-flap-glyph` — it is a separate lightweight cell render carrying `font-flap` directly. Assert on `.font-flap` there.
 
 ## Changelog
 
 | Date | Type | Description |
 |------|------|-------------|
-| 2026-07-31 | feature | Feature scoped and started: token-contract phase 1 of the brand/IA/UX redesign. Implementation not yet begun. |
+| 2026-07-31 | feature | Scoped and started: token-contract phase 1 of the brand/IA/UX redesign. |
+| 2026-07-31 | feature | Implemented and verified PASS. Token contract, `[data-surface="hardware"]` scope, two self-hosted OFL typefaces, focus-ring fix, `--font-flap` decoupling of the frozen board, pigment parity test. |
+| 2026-07-31 | fix | `scripts/design-audit.ts`: `toRgb` composites over opaque black so its alpha was always 255, making every transparent-background element measure against black — nine false HARD failures on the landing page alone. Fixed, and the fix immediately caught a real one on `/tv` (3.89:1 → 10.16:1). |

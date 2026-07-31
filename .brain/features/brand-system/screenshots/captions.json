@@ -1,0 +1,9 @@
+{
+  "02-boards-list.png": "Boards list after creating verification board (light app theme, radius tokens visible)",
+  "03-tv-idle.png": "TV /b/:boardId idle board — compare against split-flap-board/screenshots/07-redesign-idle.png, no drift",
+  "04-controller-idle.png": "Controller /b/:boardId/c idle — hardware surface, collapsible mirror, message editor",
+  "06-tv-mid-flip.png": "TV mid-flip while travelling to BRAND CHECK — compare against split-flap-board/screenshots/10-travel-mid.png",
+  "07-tv-settled.png": "TV settled on BRAND CHECK — compare against split-flap-board/screenshots/08-redesign-lit.png, no drift",
+  "08-controller-focus-ring.png": "Keyboard-tab focus ring on controller, amber #ffcc00, clearly visible (fixes prior 1.41:1 defect)",
+  "E1-bogus-board-redirect.png": "Bogus /b/:boardId redirects to /tv pairing screen, no 404/crash"
+}
