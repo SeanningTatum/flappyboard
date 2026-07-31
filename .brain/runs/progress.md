@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-31 — shipped brand-system: Merged as 80f1601 (PR #11). Board render frozen with zero drift across three golden comparisons; focus ring now paints, 
+- branch: `main`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-07-31 — brand-system (feat-019) scoped and started — Phase 1 of the brand/IA/UX redesign, tokenizing the researched hardware language (app.css contract, [data-surface=hardware] scope, radius 2px, --signal amber, --flap-* parity, self-hosted Archivo + IBM Plex Mono, focus-ring fix). Board render frozen. No implementation yet.
 - branch: `feat/brand-system`
 - in-progress feature: brand-system

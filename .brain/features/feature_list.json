@@ -283,8 +283,8 @@
         "feat-008",
         "feat-016"
       ],
-      "status": "in-progress",
-      "evidence": "",
+      "status": "shipped",
+      "evidence": "Merged as 80f1601 (PR #11). Board render frozen with zero drift across three golden comparisons; focus ring now paints, replacing one that measured 1.41:1 and was invisible; non-leakage proven; every contrast pairing computed. Gates: typecheck 0, 1256 tests, build 0, harness 10/10, browser walk 17/17. design-critic DO NOT SHIP with 4 P1s — one refuted by measurement, one fixed in 69bf883, two carried into phase 2/3 as blocking criteria because both live on /boards, which phase 2 rebuilds.",
       "owners": [
         "sean"
       ]

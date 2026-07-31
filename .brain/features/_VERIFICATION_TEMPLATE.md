@@ -6,6 +6,10 @@
 - **Base URL**: http://localhost:5173 _(dev server: started by agent | already running)_
 - **Role**: admin (`admin@test.local`)
 - **Verdict**: ✅ PASS | ❌ FAIL | ⛔ BLOCKED — _one line_
+  <!-- Leave the verdict word BARE. `✅ **PASS**` is not readable by `brain check`
+       and blocks `brain ship`; it has had to be un-bolded in nine docs so far.
+       Qualifiers go after the em dash, not inside the word. -->
+
 
 ## Golden path
 

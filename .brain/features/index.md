@@ -62,7 +62,7 @@ features/
 | Auto TV Link | [`auto-tv-link/auto-tv-link.md`](auto-tv-link/auto-tv-link.md) | shipped | [2026-07-29 ✅ PASS](auto-tv-link/verifications/2026-07-29.md) |
 | Live Weather | [`live-weather/live-weather.md`](live-weather/live-weather.md) | planned | — |
 | OpenTelemetry Span Tracing | [`otel-tracing/otel-tracing.md`](otel-tracing/otel-tracing.md) | shipped (synced from template) | — (upstream-verified only) |
-| Brand System | [`brand-system/brand-system.md`](brand-system/brand-system.md) | in-progress | — |
+| Brand System | [`brand-system/brand-system.md`](brand-system/brand-system.md) | shipped | [2026-07-31 ✅ PASS](brand-system/verifications/2026-07-31.md) |
 
 > **This table mirrors `feature_list.json`, which is the source of truth
 > `brain check` enforces.** It drifted once before and stayed wrong for two
