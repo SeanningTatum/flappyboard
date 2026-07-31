@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Effect, Exit } from "effect";
 import { useTranslation } from "react-i18next";
-import { Form, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect, useNavigation } from "react-router";
 import type { AppLoadContext } from "react-router";
+
+import { IconArrowLeft } from "@tabler/icons-react";
 
 import type { Route } from "./+types/link";
 import { requireSession } from "@/lib/session";
@@ -289,7 +291,10 @@ function FlapCodeField({
       data-flap-code=""
       style={{
         padding: "6px",
-        backgroundColor: CONSOLE.panel,
+        // The WELL, not the panel: unlit faces (#1f1f22) measured 1.11:1 against
+        // the panel, so the six modules were invisible until typed. A hole is
+        // also what a set of flaps is actually cut into.
+        backgroundColor: CONSOLE.well,
         // A hairline ALWAYS, so the assembly reads as a control before anyone
         // touches it. The first pass showed a bare plate whose six unlit tiles
         // measured 1.15:1 against it — correct for a flap at rest, and
@@ -403,8 +408,27 @@ export default function LinkTv({
   const [code, setCode] = useState(loaderData.code ?? "");
 
   return (
-    <ConsoleField data-testid="link-root" className="justify-center gap-8">
-      <header className="flex flex-col gap-2 px-1">
+    /*
+      Top-anchored, not vertically centred. Centring looked calm and behaved
+      badly: when the phone keyboard opens the viewport halves and the whole
+      block re-centres, so the field a person is typing into slides under their
+      thumb mid-code. A fixed top also means the heading does not move between
+      the empty and the failed state.
+    */
+    <ConsoleField data-testid="link-root" className="gap-8">
+      {/* The way out. A refused code used to leave the browser gesture as the
+          only exit — on a phone, in a flow someone entered by scanning a QR. */}
+      <Link
+        to="/boards"
+        className={`inline-flex min-h-11 w-fit touch-manipulation items-center gap-2 text-[11px] font-medium uppercase ${FOCUS_RING}`}
+        style={{ color: CONSOLE.inkMute, letterSpacing: "0.16em" }}
+        data-testid="link-back"
+      >
+        <IconArrowLeft className="size-4" aria-hidden />
+        {t("controller.back")}
+      </Link>
+
+      <header className="flex flex-col gap-2">
         <h1
           className="text-[24px] leading-none font-semibold uppercase"
           style={{ color: CONSOLE.ink, letterSpacing: "0.14em" }}
@@ -422,7 +446,7 @@ export default function LinkTv({
       <Form method="post" className="flex flex-col gap-6">
         <div className="flex flex-col gap-2.5">
           <span
-            className="px-1 text-[10px] leading-none font-medium uppercase"
+            className="text-[10px] leading-none font-medium uppercase"
             style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
           >
             {t("link.codeLabel")}

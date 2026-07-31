@@ -89,7 +89,7 @@ export function ConsoleAddress({
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <span
-        className="px-1 text-[10px] leading-none font-medium uppercase"
+        className="text-[10px] leading-none font-medium uppercase"
         style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
       >
         {label ?? t("card.tv_label")}
@@ -123,7 +123,7 @@ export function ConsoleAddress({
           onClick={handleCopy}
           data-testid={`${testId}-copy`}
           aria-label={t("card.copy")}
-          className="flex min-h-11 shrink-0 touch-manipulation items-center gap-1.5 px-3 text-[11px] font-medium uppercase"
+          className="flex min-h-11 min-w-11 shrink-0 touch-manipulation items-center justify-center gap-1.5 px-3.5 text-[11px] font-medium uppercase"
           style={{
             color: CONSOLE.inkDim,
             letterSpacing: "0.14em",
@@ -144,7 +144,7 @@ export function ConsoleAddress({
       <span
         aria-live="polite"
         className={cn(
-          "px-1 text-[11px] transition-opacity",
+          "text-[11px] transition-opacity",
           state === "manual" ? "opacity-100" : "h-0 overflow-hidden opacity-0"
         )}
         style={{ color: CONSOLE.inkMute }}

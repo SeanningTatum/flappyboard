@@ -14,7 +14,6 @@ import {
   CONSOLE,
   ConsoleLabel,
   ConsoleReadout,
-  PLATE_LIP,
   WELL_LIP,
 } from "@/components/board/console";
 import { ConsoleAddress } from "@/components/board/console-address";
@@ -93,12 +92,12 @@ export interface ControllerSettingsProps {
  */
 const GROUP = "flex flex-col gap-3";
 
-/** A plate, for the one section that holds content rather than controls. */
-const PLATE = "flex flex-col gap-3 px-3 py-3";
-const PLATE_STYLE = {
-  backgroundColor: CONSOLE.panel,
-  boxShadow: PLATE_LIP,
-} as const;
+/*
+  There is no `PLATE` on this tab any more. The device list was the last thing
+  holding one, on the reasoning that a *list* is content rather than controls —
+  but the list is one sentence and two hairline buttons, so the fill was the
+  only nested container in the product and bought nothing.
+*/
 
 /** The one action treatment: off-white plate, dark ink, square, 44px. */
 const INK_KEY =
@@ -488,7 +487,7 @@ export function ControllerSettings({
                 value={deviceList.length}
               />
             </ConsoleLabel>
-            <div className={PLATE} style={PLATE_STYLE}>
+            <div className={GROUP}>
               {deviceList.length === 0 ? (
                 <p
                   className="text-[12px] leading-relaxed"

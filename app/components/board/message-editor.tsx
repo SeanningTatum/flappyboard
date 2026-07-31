@@ -1283,7 +1283,10 @@ export function MessageEditor({
             type="button"
             aria-expanded={rowsOpen}
             onClick={() => setRowsOpen((open) => !open)}
-            className="flex min-h-11 touch-manipulation items-center justify-between px-1 text-[10px] leading-none font-medium uppercase"
+            // Flush with the block below it — no `px-1`. This label is a
+            // button, and its inset put MESSAGE on a different left rule from
+            // LIVE BOARD and VOICE on the same screen.
+            className="flex min-h-11 touch-manipulation items-center justify-between text-[10px] leading-none font-medium uppercase"
             style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
             data-testid="control-editor-rows-toggle"
           >
