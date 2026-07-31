@@ -6,6 +6,7 @@ import { WorkflowsLive, type Workflows } from "@/services/workflows";
 import { BoardRoomLive, type BoardRoom } from "@/services/board-room";
 import { BoardAgentLive, type BoardAgent } from "@/services/board-agent";
 import { LoggerLive, MinLogLevelLive } from "@/services/logger";
+import { TracingLayer } from "@/services/tracing";
 import { UserRepository } from "@/repositories/user";
 import { AnalyticsRepository } from "@/repositories/analytics";
 import { BoardRepository } from "@/repositories/board";
@@ -52,7 +53,11 @@ export const makeAppRuntime = (env: Env, baseURL?: string) => {
   const layer = reposLayer
     .pipe(Layer.provideMerge(baseLayer))
     .pipe(Layer.provide(CloudflareEnvLive(env)))
-    .pipe(Layer.provideMerge(Layer.merge(LoggerLive, MinLogLevelLive)));
+    .pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(LoggerLive, MinLogLevelLive, TracingLayer(env))
+      )
+    );
   return ManagedRuntime.make(layer);
 };
 
