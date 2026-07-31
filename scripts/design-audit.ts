@@ -47,7 +47,14 @@ function parseArgs(): Args {
   };
 }
 
-/** Resolve any CSS colour (incl. oklch / colour-mix) to sRGB by letting the compositor paint it. */
+/**
+ * Resolve any CSS colour (incl. oklch / colour-mix) to sRGB by letting the compositor paint it.
+ *
+ * CAUTION: everything below is a template literal that gets re-parsed by `new Function`, so a
+ * backslash is consumed as a template escape before the code is ever compiled — a regex like
+ * `/x\s*y/` arrives as `/xs*y/`, and `/\/.../` arrives as `//...`, which silently becomes a
+ * comment. Keep this body free of backslashes (and of `${`), or double every one.
+ */
 const PROBE = `({ scopeSel, accent }) => {
   const scope = document.querySelector(scopeSel) || document.body;
   const els = Array.from(scope.querySelectorAll("*"));
@@ -79,6 +86,42 @@ const PROBE = `({ scopeSel, accent }) => {
   };
   const key = (color) => toRgb(color).join(",");
 
+  /**
+   * toRgb composites the colour over opaque black, so the alpha it returns is
+   * ALWAYS 255 — even for rgba(0,0,0,0). Every transparency test built on
+   * it therefore answered "opaque", which made a transparent element read as a
+   * black surface. Read the alpha off the string instead.
+   */
+  const alphaOf = (color) => {
+    const c = String(color).trim();
+    if (c === "transparent" || c === "none" || c === "") return 0;
+    const open = c.indexOf("(");
+    if (open === -1) return 1;
+    const inner = c.slice(open + 1, c.lastIndexOf(")"));
+    const pct = (v) => (v.endsWith("%") ? parseFloat(v) / 100 : parseFloat(v));
+    // Modern syntax puts alpha after a slash: rgb(R G B / A), oklch(L C H / A).
+    const slash = inner.lastIndexOf("/");
+    if (slash !== -1) return pct(inner.slice(slash + 1).trim());
+    // Legacy syntax puts it fourth: rgba(R, G, B, A).
+    const parts = inner.split(",").map((p) => p.trim()).filter(Boolean);
+    return parts.length > 3 ? pct(parts[3]) : 1;
+  };
+
+  /**
+   * What a reader actually sees behind this element. A link with no background
+   * of its own is not painted on black — it is painted on whatever ancestor
+   * last set one. Measuring against the element's own transparent background
+   * reported ~1.1:1 for ordinary dark-on-light body links, which is a false
+   * HARD failure on essentially every page.
+   */
+  const effectiveBg = (el, fallback) => {
+    for (let n = el; n instanceof Element; n = n.parentElement) {
+      const bg = getComputedStyle(n).backgroundColor;
+      if (alphaOf(bg) > 0) return bg;
+    }
+    return fallback;
+  };
+
   const surfaces = new Map();
   const fonts = new Map();
   const radii = new Map();
@@ -96,7 +139,7 @@ const PROBE = `({ scopeSel, accent }) => {
     const s = getComputedStyle(el);
     const text = (el.innerText || "").trim();
 
-    const bgA = toRgb(s.backgroundColor)[3];
+    const bgA = alphaOf(s.backgroundColor);
     if (bgA > 0) surfaces.set(key(s.backgroundColor), (surfaces.get(key(s.backgroundColor)) || 0) + 1);
     if (text) fonts.set(s.fontFamily.split(",")[0].replace(/["']/g, ""), (fonts.get(s.fontFamily.split(",")[0].replace(/["']/g, "")) || 0) + 1);
     if (parseFloat(s.borderTopLeftRadius) > 0) radii.set(s.borderTopLeftRadius, (radii.get(s.borderTopLeftRadius) || 0) + 1);
@@ -120,7 +163,7 @@ const PROBE = `({ scopeSel, accent }) => {
   const scopeBg = getComputedStyle(scope).backgroundColor;
   const actions = Array.from(scope.querySelectorAll("a,button")).slice(0, 12).map((el) => {
     const s = getComputedStyle(el);
-    const bg = toRgb(s.backgroundColor)[3] > 0 ? s.backgroundColor : scopeBg;
+    const bg = effectiveBg(el, scopeBg);
     return { label: (el.innerText || "").trim().slice(0, 24), ratio: ratio(s.color, bg) };
   });
 

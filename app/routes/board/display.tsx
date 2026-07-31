@@ -21,6 +21,10 @@ import { BoardGridView } from "@/components/board/board-grid-view";
 import { BoardOffline } from "@/components/board/board-offline";
 import { QrOverlay } from "@/components/board/qr-overlay";
 import { SoundUnlockPrompt } from "@/components/board/sound-unlock-prompt";
+// The scoped token override for the console surfaces. See the header of that
+// file for why this route runs its own visual language.
+import "./hardware-theme.css";
+import flapFont from "@/assets/fonts/inter-flap-600.woff2?url";
 
 /**
  * `/b/:boardId` — the TV. This route is the board and nothing else: no chrome,
@@ -30,6 +34,27 @@ import { SoundUnlockPrompt } from "@/components/board/sound-unlock-prompt";
  */
 
 export const handle = { i18n: ["board"] };
+
+/**
+ * The flap face is preloaded per-route rather than in `root.tsx` because
+ * nothing outside a board renders a tile — there is no reason to spend a round
+ * trip on it while someone is reading the landing page.
+ *
+ * It is declared `font-display: block`, so the alternative to arriving early is
+ * 144 tiles painting nothing until it lands. `crossOrigin` is required even
+ * same-origin: fonts fetch in CORS mode, and a preload without it is a
+ * different request than the one `@font-face` makes, so the file is fetched
+ * twice.
+ */
+export const links: Route.LinksFunction = () => [
+  {
+    rel: "preload",
+    href: flapFont,
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  },
+];
 
 /**
  * Only the non-live statuses have copy — a healthy board says nothing. Spelled
@@ -367,6 +392,7 @@ export default function BoardDisplay({ loaderData }: Route.ComponentProps) {
 
   return (
     <main
+      data-surface="hardware"
       className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-black"
       data-testid="board-display"
       data-status={status}
@@ -451,6 +477,7 @@ export function ErrorBoundary() {
   const { t } = useTranslation("board");
   return (
     <main
+      data-surface="hardware"
       className="flex h-screen w-screen flex-col items-center justify-center gap-[2vmin] overflow-hidden bg-black text-center"
       data-testid="board-error"
     >

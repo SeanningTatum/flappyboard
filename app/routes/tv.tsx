@@ -7,6 +7,9 @@ import QRCode from "qrcode";
 import type { Route } from "./+types/tv";
 import { DEVICE_CODE_TTL_SECONDS } from "@/lib/board/device-code";
 import { CONSOLE, PLATE_LIP } from "@/components/board/console";
+// The scoped token override for the console surfaces. See the header of that
+// file for why this route runs its own visual language.
+import "./board/hardware-theme.css";
 
 /**
  * `/tv` — the one URL a television ever has to be told.
@@ -230,6 +233,7 @@ export default function TvPairing({ loaderData }: Route.ComponentProps) {
 
   return (
     <main
+      data-surface="hardware"
       className="flex h-screen w-screen flex-col items-center justify-center gap-[3vmin] overflow-hidden text-center"
       style={{ backgroundColor: CONSOLE.field, color: CONSOLE.ink }}
       data-testid="tv-pairing"
@@ -243,7 +247,13 @@ export default function TvPairing({ loaderData }: Route.ComponentProps) {
       */}
       <p
         className="flex items-center gap-[1.2vmin] text-[2.4vmin] tracking-[0.3em] uppercase"
-        style={{ color: CONSOLE.inkMute }}
+        // `inkDim`, not `inkMute`. The mute level is for labels and units read
+        // at arm's length; this is the line that tells someone standing across
+        // a living room what the television is doing. On the black field
+        // `inkMute` measures 3.89:1 — technically AA for large text, and
+        // genuinely hard to read at three metres in a lit room. `inkDim` is
+        // 8.84:1 and still sits below the amber lamp in the hierarchy.
+        style={{ color: CONSOLE.inkDim }}
       >
         <span
           aria-hidden

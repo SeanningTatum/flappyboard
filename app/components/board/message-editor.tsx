@@ -182,8 +182,12 @@ export interface BoardPreviewProps {
   readonly disabled?: boolean;
 }
 
+// `font-flap`, like the real tile — this miniature quotes the board rather than
+// referencing it, so it has to be set in the board's own face. See the note on
+// `FACE_CLASS` in `flap-tile.tsx` for why the flap face is pinned separately
+// from `--font-sans`.
 const CELL_CLASS =
-  "flex items-center justify-center overflow-hidden font-sans text-[min(3vw,0.7rem)] leading-none font-semibold";
+  "flex items-center justify-center overflow-hidden font-flap text-[min(3vw,0.7rem)] leading-none font-semibold";
 
 /**
  * A 6×24 miniature — and the one place on this screen where the real board is

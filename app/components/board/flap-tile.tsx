@@ -324,7 +324,15 @@ const FACE_CLASS = cn(
   // here needs a fixed advance — and the mono face was the reason the characters
   // read as "geometric web font" rather than as the tighter industrial cut on a
   // real flap.
-  "font-sans leading-none font-semibold select-none",
+  //
+  // `font-flap`, NOT `font-sans`. The two resolve to the same face today (both
+  // Inter), so this is a visual no-op — but it is the seam that lets the app's
+  // display face change without touching the board. `GLYPH_SIZE`'s divisor in
+  // `board-grid-view.tsx` is tuned to Inter's advance, so a `--font-sans` swap
+  // reaching a tile would silently overflow every wide glyph on a television.
+  // `--font-flap` is pinned in `app.css` to an 8KB subset of exactly the 57
+  // characters in `BOARD_CHARS`.
+  "font-flap leading-none font-semibold select-none",
   // Only transform + opacity animate. `motion-reduce:transition-none` is a plain
   // media query and sets `transition-property: none`, which the animator's
   // inline `transition-duration` cannot undo — so reduced motion stays an

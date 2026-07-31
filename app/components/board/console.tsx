@@ -35,26 +35,42 @@ import { MASK_FILL as BOARD_MASK_FILL } from "@/components/board/board-frame";
 /* Tokens                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** The console's tonal ladder. Values, not tokens — see the note above. */
+/**
+ * The console's tonal ladder.
+ *
+ * These used to be bare literals, on the reasoning quoted above — the board's
+ * palette is *data*, and a theme token would let the app's light mode reach in
+ * and repaint a piece of painted aluminium. That reasoning still holds; what
+ * changed is that the values now live in the token contract too, as a scoped
+ * override (`app/routes/board/hardware-theme.css`) applied on the four console
+ * routes. So the object below is the same ladder, read from the scope instead
+ * of restating it — one source of truth, and a stylesheet can now reach the
+ * same values without importing a component.
+ *
+ * Every entry keeps its literal as a `var()` FALLBACK, and that is load-bearing
+ * in two places: the fixed backdrop `<div>` in `ConsoleField` renders as a
+ * sibling of the scoped `<main>` rather than inside it, and jsdom does not
+ * resolve custom properties at all. In both cases the fallback is what paints.
+ */
 export const CONSOLE = {
   /** Page field. The board's own surround. */
-  field: "#000000",
+  field: "var(--hw-field, #000000)",
   /** Raised panel: a plate screwed to the field. */
-  panel: "#151515",
+  panel: "var(--hw-panel, #151515)",
   /** Recessed track: segmented controls, readouts, chips. */
-  track: "#222226",
+  track: "var(--hw-track, #222226)",
   /** The bottom of a hole — input wells and flap windows. */
-  well: "#0e0e10",
+  well: "var(--hw-well, #0e0e10)",
   /** 1px separator. A step above `track` so it reads on both neighbours. */
-  hairline: "#2b2b2e",
+  hairline: "var(--hw-hairline, #2b2b2e)",
   /** Primary text. Off-white, never #fff — nothing printed is ever pure. */
-  ink: "#eeeef2",
+  ink: "var(--foreground, #eeeef2)",
   /** Secondary text and placeholder. */
-  inkDim: "#b4b4b8",
-  /** Labels, units, inactive icons. */
-  inkMute: "#6a6a6c",
+  inkDim: "var(--muted-foreground, #b4b4b8)",
+  /** Labels, units, inactive icons. Clears AA on every surface it sits on. */
+  inkMute: "var(--hw-ink-mute, #89898d)",
   /** State signal only. Never an action fill. */
-  amber: "#ffcc00",
+  amber: "var(--signal, #ffcc00)",
 } as const;
 
 /**
@@ -63,30 +79,25 @@ export const CONSOLE = {
  * economy `flap-tile`'s `WELL_SHADOW` is built on.
  */
 export const PLATE_LIP =
-  "inset 0 1px 0 rgba(255,255,255,0.05), inset 0 0 0 1px rgba(255,255,255,0.045)";
+  "var(--hw-plate-lip, inset 0 1px 0 rgba(255,255,255,0.05), inset 0 0 0 1px rgba(255,255,255,0.045))";
 
 /** The inverse: a hole, shaded at the top lip and lit along the bottom. */
 export const WELL_LIP =
-  "inset 0 1px 2px rgba(0,0,0,0.75), inset 0 0 0 1px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.045)";
+  "var(--hw-well-lip, inset 0 1px 2px rgba(0,0,0,0.75), inset 0 0 0 1px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.045))";
 
-/**
- * Board pigments, copied **verbatim** from `flap-tile.tsx`'s `TILE_COLORS`.
- *
- * Duplicated rather than imported because that module keeps them private and is
- * owned elsewhere this phase. They must stay byte-identical: the preview and the
- * swatches exist to promise what the TV will do, and a pigment that is 3 points
- * off here is a promise the board does not keep.
- *
- * Note `white` and `black` share a fill. That is not a bug and not a shortcut —
- * on the real object `white` is *a white glyph on an unlit flap* and `black` is
- * *an unlit flap*. Which is exactly why neither can be drawn as a coloured
- * circle; see `FlapSwatch`.
- */
 /**
  * Re-exported from the TV's own tile, not copied. These were byte-identical
  * duplicates for a while, which meant retuning the board's palette would have
  * silently desynced the phone's preview — the one place the two surfaces must
  * agree exactly, since the preview's whole job is to predict the board.
+ *
+ * Note `white` and `black` share a fill. That is not a bug and not a shortcut —
+ * on the real object `white` is *a white glyph on an unlit flap* and `black` is
+ * *an unlit flap*. Which is exactly why neither can be drawn as a coloured
+ * circle; see `FlapSwatch`.
+ *
+ * These are also mirrored into `app/app.css` as `--flap-*` for stylesheet
+ * consumers, pinned to this object by `__tests__/flap-pigment-parity.test.ts`.
  */
 export const TILE_PIGMENTS = TILE_COLORS;
 
@@ -162,6 +173,12 @@ export function ConsoleField({
         style={{ backgroundColor: CONSOLE.field }}
       />
       <main
+        // `data-surface="hardware"` is the scoped token override declared in
+        // `app/routes/board/hardware-theme.css`. It sits on the same element as
+        // `dark` deliberately: that stylesheet re-asserts the scope under
+        // `.dark` precisely because these two selectors tie on specificity when
+        // they land together, which is exactly here.
+        data-surface="hardware"
         className="dark mx-auto flex min-h-dvh max-w-md flex-col px-4 py-5"
         style={{ backgroundColor: CONSOLE.field, color: CONSOLE.ink }}
         {...rest}
@@ -370,7 +387,9 @@ export function FlapSwatch({
       }}
     >
       <span
-        className="absolute flex items-center justify-center overflow-hidden font-sans text-[13px] leading-none font-semibold"
+        // `font-flap`, like the real tile — this swatch promises what the TV
+        // will do, so it has to be quoted in the board's own face.
+        className="absolute flex items-center justify-center overflow-hidden font-flap text-[13px] leading-none font-semibold"
         style={{
           top: "8%",
           bottom: "20%",

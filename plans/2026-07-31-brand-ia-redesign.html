@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flappyboard — brand, IA &amp; UX redesign</title>
+<style>
+  :root {
+    --bg: #faf9f5; --surface: #ffffff; --fg: #141413; --fg-secondary: #3d3d3a;
+    --muted: #73726c; --border: #dedcd1; --highlight: #fff7ca; --accent: #d97757;
+    --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-6: 40px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Helvetica, Arial, sans-serif;
+    font-size: 16px; background: var(--bg); color: var(--fg); line-height: 1.6;
+    max-width: 72ch; margin: 0 auto; padding: var(--space-6) var(--space-4);
+  }
+  h1, h2, h3 {
+    font-family: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-weight: 600; line-height: 1.25; color: var(--fg);
+  }
+  h1 { font-size: 1.75em; }
+  h2 { font-size: 1.3em; font-weight: 500; margin-top: var(--space-6);
+    border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+  h3 { font-size: 1.05em; font-weight: 500; }
+  p, li { color: var(--fg-secondary); }
+  mark, .highlight { background: var(--highlight); color: var(--fg); padding: 0 2px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em;
+    background: color-mix(in srgb, var(--fg) 5%, var(--surface)); padding: 1px 5px;
+    border-radius: 4px; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 0.8em; font-weight: 600; border: 1px solid var(--border); }
+  .chip-status-draft { background: var(--surface); color: var(--muted); }
+  .chip-status-in-review { background: var(--highlight); color: var(--fg);
+    border-color: var(--highlight); }
+  .chip-status-reviewed { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .chip-high { color: var(--accent); border-color: var(--accent); }
+  .chip-med { color: var(--fg-secondary); }
+  .chip-low { color: var(--muted); }
+  .decision-card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: var(--space-4); margin: var(--space-4) 0; }
+  table { width: 100%; border-collapse: collapse; margin: var(--space-3) 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid
+    var(--border); vertical-align: top; font-size: 0.92em; }
+  tr:last-child td { border-bottom: none; }
+  .tag-recommended { color: var(--accent); font-weight: 600; }
+  .btn-queue, .btn-approve, .btn-request-changes {
+    border: none; border-radius: 10px; padding: 8px 16px; font-weight: 600;
+    cursor: pointer; font-size: 0.95em;
+  }
+  .btn-queue, .btn-approve { background: var(--fg); color: #fff; }
+  .btn-request-changes { background: transparent; color: var(--fg);
+    border: 1px solid var(--border); }
+  .queue-ack { margin-left: var(--space-3); font-size: 0.9em; color: var(--muted); }
+  .checklist { list-style: none; padding: 0; }
+  .checklist li { margin: var(--space-2) 0; }
+  pre.mermaid { text-align: center; }
+  pre.mermaid svg { display: block; margin: 0 auto; }
+
+  /* ---- editable list kit ---- */
+  .item-x, .item-restore, .list-add-btn { cursor: pointer; border: 1px solid var(--border);
+    background: var(--surface); border-radius: 6px; font-size: 0.85em; padding: 1px 8px;
+    color: var(--fg-secondary); }
+  [data-item-text] { cursor: text; }
+  .item-removed { opacity: 0.5; }
+  .item-removed [data-item-text] { text-decoration: line-through; }
+  .item-edited [data-item-text] { border-bottom: 2px dotted var(--accent); }
+  .item-badge { font-size: 0.75em; color: var(--muted); margin-left: 6px; font-style: italic; }
+  .item-badge-proposed { color: var(--accent); }
+  .item-proposed { border-left: 2px dashed var(--accent); padding-left: 6px; }
+  .list-add-row { display: flex; gap: 8px; margin-top: var(--space-2); }
+  .list-add-input { flex: 1; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface); color: var(--fg); }
+
+  /* ---- wireframe kit ---- */
+  .wf-screens { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-3); margin: var(--space-3) 0; }
+  .wf { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; font-size: 0.85em; }
+  .wf-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+    border-bottom: 1px solid var(--border); color: var(--muted); }
+  .wf-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border); }
+  .wf-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .wf-row { display: flex; gap: 8px; align-items: center; }
+  .wf-col { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .wf-block { background: color-mix(in srgb, var(--fg) 8%, var(--surface));
+    border-radius: 6px; height: 44px; }
+  .wf-block.tall { height: 88px; }
+  .wf-line { background: color-mix(in srgb, var(--fg) 16%, var(--surface));
+    border-radius: 3px; height: 8px; }
+  .wf-line.short { width: 40%; }
+  .wf-line.med { width: 65%; }
+  .wf-btn { display: inline-block; border: 1px solid var(--fg-secondary); border-radius: 6px;
+    padding: 3px 12px; font-size: 0.9em; color: var(--fg); }
+  .wf-btn.primary { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .wf-input { border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+    color: var(--muted); flex: 1; }
+  .wf-label { font-size: 0.8em; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.04em; }
+  .wf-caption { font-size: 0.85em; color: var(--muted); padding: 6px 12px 10px; }
+  .wf-note { border-left: 2px solid var(--accent); padding-left: 10px; font-size: 0.9em;
+    color: var(--muted); }
+  .wf-flaps { display: flex; gap: 3px; }
+  .wf-flap { width: 22px; height: 30px; border-radius: 2px;
+    background: color-mix(in srgb, var(--fg) 14%, var(--surface));
+    border: 1px solid var(--border); position: relative; }
+  .wf-flap::after { content: ""; position: absolute; left: 0; right: 0; top: 48%;
+    height: 1px; background: var(--border); }
+  .wf-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
+  .wf-cell { height: 10px; border-radius: 1px;
+    background: color-mix(in srgb, var(--fg) 12%, var(--surface)); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>flappyboard — brand, IA &amp; UX redesign</h1>
+  <div>
+    <span>2026-07-31</span> ·
+    <span>features: <code>brand-system</code>, <code>app-ia</code>, <code>console-journey-v2</code>, <code>front-door</code></span> ·
+    <span class="chip chip-status-reviewed">reviewed</span> ·
+    <span>round 1 — approved</span>
+  </div>
+</header>
+
+<section id="round-1">
+  <h2>Round 1 outcome — approved, with a bigger cut than proposed</h2>
+  <p><em>"Approved, but one thing to note with the design is keep in mind the phone is our
+  controller so let's make it easy to interface."</em></p>
+  <p><strong>The standing constraint that follows:</strong> every phone surface is judged on
+  thumb reach and target size before it is judged on looks — primary actions in the bottom
+  third, ≥44×44 everywhere, nothing load-bearing in a top corner, no hover-only affordance.
+  This outranks visual preference in any conflict.</p>
+
+  <h3>The board-count branch is deleted entirely</h3>
+  <p>Two annotations did it: <em>"I don't even want a new board setup — we should just scan
+  the QR code or input the code and it adds rather than creating a board and linking it"</em>
+  and <em>"I don't think we even check the boards — we should just link a new one if not
+  already existing. And then once we're there that's when we can have the settings."</em></p>
+  <p><mark>A board is a TV.</mark> <code>resolveAutoLink</code>, the picker, the
+  <code>&lt;select&gt;</code>, the receipt and <code>/link</code>'s entire manual mode are
+  deleted. <code>defaultBoardName</code> survives — it auto-names the new board. There is
+  never a question to answer.</p>
+  <table>
+    <thead><tr><th></th><th>Journey</th></tr></thead>
+    <tbody>
+      <tr><td>Before</td><td><code>/tv</code> → scan → login → <code>/link</code> (count boards → create | pair | picker) → receipt → controller</td></tr>
+      <tr><td>After</td><td><code>/tv</code> → scan → login → controller</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Decisions locked</h3>
+  <table>
+    <thead><tr><th>#</th><th>Decision</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Signed-in landing</td><td><strong>No <code>/dashboard</code></strong> — "it's pointless"</td></tr>
+      <tr><td>2</td><td><code>/link</code> receipt</td><td>Collapse — straight to the controller</td></tr>
+      <tr><td>3</td><td>Device naming</td><td>Inline in the nameplate</td></tr>
+      <tr><td>4</td><td>Landing board motion</td><td>Flips once on load, then rests</td></tr>
+      <tr><td>5</td><td>Token architecture</td><td>Hybrid — global contract + <code>[data-surface="hardware"]</code></td></tr>
+      <tr><td>6</td><td>Global radius</td><td><strong>2px</strong> — match the object</td></tr>
+      <tr><td>7</td><td>Typefaces</td><td>Archivo + IBM Plex Mono</td></tr>
+      <tr><td>8</td><td>Admin dead-end</td><td>Add one "Boards" nav entry</td></tr>
+      <tr><td>9</td><td>Unused upload code</td><td><strong>Keep both</strong> <span class="chip chip-low">reverses the recommendation</span></td></tr>
+      <tr><td>10</td><td>Board ≡ TV</td><td>One board per TV; scanning always makes one</td></tr>
+      <tr><td>11</td><td>Multi-board</td><td>Thin <code>/boards</code> rack in the nav — a switcher, not a destination</td></tr>
+      <tr><td>12</td><td>Name</td><td><code>flappyboard</code> stays</td></tr>
+      <tr><td>13</td><td>Board greeting on first pair</td><td><strong>Cut</strong> — "it doesn't need to do this"</td></tr>
+      <tr><td>14</td><td>Device count</td><td>Show it on the controller</td></tr>
+      <tr><td>15</td><td><code>REFERO_MCP_TOKEN</code></td><td>Not pursuing — research runs degraded, recorded in the run note</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The controller becomes the app</h3>
+  <p>Per <em>"maybe we should have 2 tabs, 1 for the board settings and 1 for the
+  content"</em> — the separate board-detail page is folded into the controller. One surface,
+  two tabs, at the already-frozen <code>/b/:boardId/c</code>: <strong>Content</strong> (live
+  grid as the primary instrument, row wells behind a toggle, hold-to-talk, history) and
+  <strong>Settings</strong> (TV address, devices + count, rename, un-pair, delete).</p>
+  <p>The path stays frozen deliberately: the TV encodes <code>/b/:boardId/c?t=…</code> into
+  the QR it re-mints from its own loader, so a path change only reaches a TV that reloads.</p>
+
+  <h3>The one thing this cut opens up</h3>
+  <p class="wf-note">If scanning <strong>always</strong> creates a board, sprawl is possible
+  — a TV whose cookie is evicted shows a fresh code, the owner scans, and a second board
+  appears for the same television. There is no stable TV identity across cookie loss to
+  dedupe on. Proposed handling, consistent with "don't check the boards": the happy path
+  never asks, and a single secondary line — <em>"…or attach this TV to an existing
+  board"</em> — covers the case where the owner spots the mistake. A one-tap escape, not a
+  branch. <strong>Open for phase 3; do not build the picker back in through the side
+  door.</strong></p>
+</section>
+
+<section id="tldr">
+  <h2>TL;DR</h2>
+  <p>The MVP works but the app around the board is stock shadcn boilerplate, and the
+  paths through it are longer than they need to be. This extracts the researched
+  hardware design language already living inside the board into the real token
+  contract, ships two self-hosted typefaces, and cuts the route map down —
+  <mark>new user reaches a working board in 3 stops instead of 5</mark>. The board
+  render itself is frozen; it is the reference, not the subject.</p>
+</section>
+
+<!-- ============================== PRODUCT BRIEF ============================== -->
+<section id="product-brief">
+  <h2>Product brief</h2>
+
+  <h3>Problem + evidence</h3>
+  <p>Someone buys into a product that mimics a ~$3k living-room object, and the
+  software around it introduces itself as a developer boilerplate.</p>
+  <ul>
+    <li><code>app/routes/home.tsx</code> — the front door — still returns
+      <code>title: "Cloudflare SaaS Starter"</code>, six cards advertising the stack,
+      and <mark>a section printing <code>/start-task</code>, <code>/verify-done</code>
+      and <code>.brain/recipes/</code> paths to end users</mark>.</li>
+    <li><code>app/locales/en/dashboard.json:5</code> says it out loud, in shipped copy:
+      <em>"This is the post-auth landing page of the boilerplate. Below is a tour of
+      what's wired and where to look in the code."</em></li>
+    <li>All four "explore" cards on that page pass <code>disabled={!isAdmin}</code>
+      (<code>dashboard/_index.tsx:129,139,150,161</code>), so a household user's
+      signed-in home page is four greyed-out cards.</li>
+    <li><code>app/app.css</code> is <strong>stock shadcn "neutral", unmodified</strong> —
+      verified against the file. Meanwhile <code>flap-tile.tsx</code>,
+      <code>board-frame.tsx</code> and <code>console.tsx</code> carry a researched
+      physical palette measured off a real Vestaboard with PIL
+      (<code>.brain/features/split-flap-board/runs/2026-07-27-progress.md</code>),
+      entirely in hardcoded hex, unreachable by any other surface.</li>
+    <li>Two source files apologize in their own comments for the same gap.
+      <code>console.tsx</code>: <em>"Condensed uppercase for labels. No condensed face
+      ships with the app, so the register is reached with uppercase + wide tracking."</em>
+      <code>flap-tile.tsx</code>: Inter reads as a <em>"geometric web font rather than
+      the tighter industrial cut."</em></li>
+  </ul>
+  <p>Three defects surfaced while researching this, none of them part of the ask:</p>
+  <ul>
+    <li><strong>Non-admin users cannot sign out.</strong> <code>authClient.signOut()</code>
+      appears in exactly one file — <code>admin/layout/nav-user.tsx:49</code>. Every
+      household user is stuck signed in.</li>
+    <li><strong>The <code>/:lng</code> routes are a soft-404 farm.</strong>
+      <code>i18nServer</code> uses remix-i18next's default detection order
+      (searchParams, cookie, session, header) — there is no pathname detector, and no
+      route reads <code>params.lng</code>. And <code>index("routes/home.tsx")</code>
+      under <code>prefix(":lng", …)</code> makes <code>/:lng</code> a catch-all, so
+      <mark><code>/pricing</code>, <code>/about</code> and <code>/asdf</code> all return
+      200 with the marketing page</mark> instead of 404.</li>
+    <li><strong>The focus ring paints and is invisible.</strong> The recorded defect
+      note (<code>.brain/runs/2026-07-30-focus-ring-defect.md</code>) has the wrong
+      mechanism — <code>--tw-ring-shadow</code> does reach <code>box-shadow</code>,
+      verified in the compiled CSS. The real cause: <code>--ring: oklch(0.708 0 0)</code>
+      at 50% alpha composites to ≈1.9:1 on white; the WCAG 2.2 floor is 3:1.</li>
+  </ul>
+
+  <h3>User + job to be done</h3>
+  <p><strong>A person standing in their living room holding a phone, with a TV in
+  front of them, who wants the board to say something.</strong> They have just bought
+  in. Their job in the first five minutes is to get words onto the screen across the
+  room; their job for the next year is to change those words in under ten seconds
+  without thinking about it. They are not evaluating a stack. They will never open
+  <code>/admin</code>.</p>
+  <p>The second user is <strong>a family member whose phone has just scanned a QR
+  code on the TV</strong> — no account, no login, one job: type something funny and
+  send it before the moment passes.</p>
+
+  <h3>Success metric</h3>
+  <p>Tier 2, countable proxy — navigations and taps, counted by the
+  <code>feature-verifier</code> browser walk that already runs on every feature:</p>
+  <table>
+    <thead><tr><th>Path</th><th>Stops now</th><th>Target</th><th>Taps now</th><th>Target</th></tr></thead>
+    <tbody>
+      <tr><td>New user → board on TV</td><td>5</td><td><strong>3</strong></td><td>5</td><td><strong>3</strong></td></tr>
+      <tr><td>Returning owner → change the message (1 board)</td><td>3</td><td><strong>1</strong></td><td>2</td><td><strong>0</strong> before typing</td></tr>
+      <tr><td>Family member's phone → control</td><td>1</td><td>1</td><td>3</td><td><strong>2</strong></td></tr>
+      <tr><td>Owner adds a second TV</td><td>2</td><td><strong>1</strong></td><td>4</td><td><strong>2</strong></td></tr>
+      <tr><td>Owner revokes a device</td><td>3</td><td>3</td><td>4</td><td><strong>3</strong></td></tr>
+    </tbody>
+  </table>
+  <p>Second check, tier 3: <code>bun run design:audit</code> currently emits the craft
+  note <code>fontFamilies &lt; 2</code> on every surface, because the app loads exactly
+  one typeface. After PR1 that note must not fire.</p>
+
+  <h3>Non-goals</h3>
+  <ul>
+    <li><strong>Redesigning the board render.</strong> A reader would reasonably expect
+      a "premium redesign" to touch the product's centerpiece. It is explicitly frozen:
+      it is already the best-researched surface in the repo, and its rAF hot loop, its
+      glyph metrics and its documented Samsung Tizen constraints
+      (<code>flap-tile.tsx:11-17</code>) are the highest-risk code to disturb for the
+      least gain.</li>
+    <li><strong>Redesigning <code>/admin</code>.</strong> Operator surface, not customer
+      surface. It keeps its sidebar and its inherited <code>kitchen-sink.tsx</code> —
+      which is also the ready-made regression surface for the token pass, since it
+      renders every shadcn primitive on one page.</li>
+    <li><strong>Changing the pairing protocol.</strong> No change to the device-code
+      handshake, the grant/device epochs, the HMAC token prefixes, or the
+      JavaScript-disabled submit contract. This is a re-skin and a step-count cut, not
+      a re-plumb.</li>
+  </ul>
+
+  <h3>Scope tiers</h3>
+  <p>These map onto phase boundaries in the plan of record — accepting a smaller tier
+  means stopping after a phase, not re-planning.</p>
+  <table>
+    <thead><tr><th>Tier</th><th>Ships</th><th>Costs</th><th>Leaves on the table</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Thin</strong></td>
+        <td>Phase 1 only — token contract, two self-hosted typefaces, focus-ring fix,
+          <code>[data-surface="hardware"]</code>, design-system doc rewritten.</td>
+        <td>1 PR</td>
+        <td>Every step count stays where it is. The app is better dressed and no
+          shorter.</td>
+      </tr>
+      <tr>
+        <td><strong>Complete</strong> <span class="tag-recommended">(recommended)</span></td>
+        <td>Phases 1–3 — plus the IA cut (<code>/dashboard</code> gone, boards split,
+          sign-out for everyone) and the pairing + composer console pass.</td>
+        <td>3 PRs</td>
+        <td>The front door still markets the boilerplate.</td>
+      </tr>
+      <tr>
+        <td><strong>Gold</strong></td>
+        <td>Phases 1–4 — plus the landing page rebuilt around a live board and the
+          login/sign-up merge.</td>
+        <td>4 PRs</td>
+        <td>Nothing this plan identified.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Prior art</h3>
+  <ul>
+    <li><code>brain plans</code> returns three plans — <code>2026-07-27-flappyboard-mvp</code>,
+      <code>2026-07-28-tv-living-room</code>, <code>2026-07-29-live-weather</code>. <strong>None
+      is a design or branding plan.</strong> This ground is new.</li>
+    <li><code>.brain/features/pairing-experience-redesign/</code> (feat-016, shipped) is the
+      closest prior art and it is a <em>restyle of three routes</em>, not a system: it
+      brought <code>/tv</code> and <code>/link</code> onto the console language without
+      registering that language anywhere. It carries the repo's only real reference lock
+      and decision ledger — this plan extends it rather than re-opening it.</li>
+    <li><code>.brain/runs/2026-07-30-design-slop-postmortem.md</code> is prior art in the
+      negative: a surface that passed every anti-slop gate and was still rejected as
+      "lame and boring." Its conclusion — a clean checklist is not a passing grade —
+      is why the design-critic step below asks for the memorability verdict by name.</li>
+    <li>Outside the repo: <strong>Vestaboard</strong> is the price anchor and the direct
+      category competitor; <strong>teenage engineering</strong> and <strong>Oxide
+      Computer</strong> are already named locks in
+      <code>.brain/features/phone-control/runs/2026-07-27-progress.md</code>, along with
+      <strong>Elektron</strong> as the primary.</li>
+    <li>Null result worth stating: <code>REFERO_MCP_TOKEN</code> is <strong>unset</strong>,
+      so the Refero MCP tools declared in <code>.mcp.json</code> are unavailable. Per
+      <code>.brain/rules/frontend.md</code> the fallback is the skill's bundled craft
+      references plus tier-1 <code>ui-ux-pro-max</code>. Exporting the token before phase 1
+      would upgrade this materially — an owner call.</li>
+  </ul>
+</section>
+
+<!-- ============================== CONTEXT ============================== -->
+<section id="context">
+  <h2>Context</h2>
+  <p><code>brain features</code> reports 18 features, 17 shipped, 1 planned
+  (<code>live-weather</code>), <strong>none in progress</strong> — so the one-in-progress
+  policy is clear for this work to claim.</p>
+  <p>The last checkpoint (2026-07-31) closed the template sync that
+  <em>brought the design gate into this repo in the first place</em>: "design gate (#21 —
+  design-critic + ui-builder agents, /design-research, /build-feature,
+  scripts/design-audit.ts, refero .mcp.json, ui-ux-pro-max plugin)". Its
+  <code>next:</code> line names two owner calls this plan answers directly — the
+  unconfirmed focus-ring defect (answered: real, different mechanism, see the product
+  brief) and whether to accept the refero MCP endpoint (still open, see open questions).</p>
+  <p>The 2026-07-29 checkpoint records feat-016 as
+  "refero-guided, direct build, extend-the-hardware-aesthetic" and notes that
+  <em>login was deliberately left light</em> — a decision this plan revisits in phase 4.</p>
+  <p><code>git status</code> shows one uncommitted file, <code>wrangler.jsonc</code> —
+  owner-managed live-weather KV ids plus a whole-file reindent. Progress notes mark it
+  deliberately out of feature branches; it stays out of all four PRs.</p>
+</section>
+
+<!-- ============================== BIG PICTURE ============================== -->
+<section id="big-picture">
+  <h2>Big picture — where the design language lives, before and after</h2>
+  <pre class="mermaid">
+flowchart TD
+  subgraph TODAY
+    A1[app/app.css<br/>stock shadcn neutral] --> A2[home · login · dashboard<br/>boards · admin]
+    A3[flap-tile.tsx<br/>board-frame.tsx<br/>console.tsx<br/>hardcoded hex] --> A4[board · tv · link · controller]
+    A1 -. no relationship .-> A3
+  end
+  subgraph AFTER
+    B1[app/app.css<br/>global semantic contract<br/>retuned off the object]
+    B1 --> B2[home · login · boards · admin]
+    B1 --> B3["[data-surface=hardware]<br/>scoped override"]
+    B3 --> B4[board · tv · link · controller]
+    B5[console.tsx<br/>reads var --hw-*] --> B3
+  end
+  </pre>
+  <p>The board render is frozen inside <code>AFTER</code>: <code>flap-tile.tsx</code> and
+  <code>board-frame.tsx</code> are not edited. What changes is that everything
+  <em>around</em> them can finally speak the same language.</p>
+</section>
+
+<!-- ============================== SCREENS ============================== -->
+<section id="screens">
+  <h2>Screens</h2>
+
+  <h3>The one structural idea</h3>
+  <p>The split-flap mechanism becomes the app's alphabet. Anything the app says with
+  authority is flipped onto flaps rather than typeset — reusing the frozen board
+  components at new call sites, changing nothing inside them. The pairing code is the
+  proof: it already rotates every 2/3 of its TTL, and today that rotation is invisible.</p>
+
+  <div class="wf-screens">
+    <div class="wf">
+      <div class="wf-bar"><span class="wf-dot"></span><span>/tv · TV browser</span></div>
+      <div class="wf-body">
+        <div class="wf-label">TV pairing · waiting</div>
+        <div class="wf-row"><div class="wf-block tall" style="width:88px"></div>
+          <div class="wf-col"><div class="wf-line med"></div><div class="wf-line short"></div></div></div>
+        <div class="wf-label">code</div>
+        <div class="wf-flaps"><span class="wf-flap"></span><span class="wf-flap"></span>
+          <span class="wf-flap"></span><span class="wf-flap"></span>
+          <span class="wf-flap"></span><span class="wf-flap"></span></div>
+      </div>
+      <div class="wf-caption">TV pairing · waiting. QR left, six real flap tiles for the
+        code — they flip when it rotates.</div>
+    </div>
+
+    <div class="wf">
+      <div class="wf-bar"><span class="wf-dot"></span><span>/boards · phone</span></div>
+      <div class="wf-body">
+        <div class="wf-row"><div class="wf-line short"></div><div class="wf-col"></div>
+          <span class="wf-btn">▦</span></div>
+        <div class="wf-row"><div class="wf-col"><div class="wf-line med"></div>
+          <div class="wf-line short"></div></div><span class="wf-btn">⋯</span></div>
+        <div class="wf-row"><div class="wf-col"><div class="wf-line med"></div>
+          <div class="wf-line short"></div></div><span class="wf-btn">⋯</span></div>
+      </div>
+      <div class="wf-caption"><strong>Revised round 1.</strong> Board rack · default — a
+        switcher, not a destination. One row per board, whole row opens the controller.
+        <mark>No "new board" action</mark>: boards are created by scanning a TV, never here.</div>
+    </div>
+
+    <div class="wf">
+      <div class="wf-bar"><span class="wf-dot"></span><span>/boards · phone</span></div>
+      <div class="wf-body">
+        <div class="wf-block tall"></div>
+        <div class="wf-note">On your TV's browser, go to <strong>yourhost/tv</strong></div>
+      </div>
+      <div class="wf-caption"><strong>Revised round 1.</strong> Board rack · empty. No
+        create form — the empty state teaches the only thing that makes a board exist:
+        point a TV at the URL.</div>
+    </div>
+
+    <div class="wf">
+      <div class="wf-bar"><span class="wf-dot"></span><span>/b/:id/c · phone</span></div>
+      <div class="wf-body">
+        <div class="wf-row"><span class="wf-btn">Content</span><span class="wf-btn primary">Settings</span></div>
+        <div class="wf-label">TV address</div>
+        <div class="wf-row"><div class="wf-input">yourhost/tv</div><span class="wf-btn">copy</span></div>
+        <div class="wf-label">devices · 2 paired</div>
+        <div class="wf-row"><div class="wf-col"><div class="wf-line med"></div></div>
+          <span class="wf-btn">un-pair</span></div>
+        <div class="wf-row"><div class="wf-col"><div class="wf-line med"></div></div>
+          <span class="wf-btn">un-pair</span></div>
+        <div class="wf-row"><span class="wf-btn">Rename</span><span class="wf-btn">Delete</span></div>
+      </div>
+      <div class="wf-caption"><strong>Revised round 1.</strong> Controller · Settings tab —
+        no longer a separate page. Device count lives here, per the annotation. Destructive
+        actions sit lowest, where the thumb already is.</div>
+    </div>
+
+    <div class="wf">
+      <div class="wf-bar"><span class="wf-dot"></span><span>/b/:id/c · phone</span></div>
+      <div class="wf-body">
+        <div class="wf-row"><div class="wf-line short"></div><div class="wf-col"></div>
+          <div class="wf-dot"></div></div>
+        <div class="wf-row"><span class="wf-btn primary">Content</span><span class="wf-btn">Settings</span></div>
+        <div class="wf-grid">
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+        </div>
+        <div class="wf-row"><span class="wf-btn">✎ rows</span><span class="wf-btn">palette</span>
+          <span class="wf-btn primary">Send</span></div>
+        <div class="wf-row"><div class="wf-block" style="flex:1"></div></div>
+      </div>
+      <div class="wf-caption"><strong>Revised round 1.</strong> Controller · Content tab.
+        The live grid is the primary instrument; the six row wells sit behind "✎ rows".
+        Hold-to-talk is the wide block, lowest on the screen — the phone is the controller,
+        so the thumb comes first.</div>
+    </div>
+
+    <div class="wf">
+      <div class="wf-bar"><span class="wf-dot"></span><span>/ · desktop</span></div>
+      <div class="wf-body">
+        <div class="wf-grid">
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+          <span class="wf-cell"></span><span class="wf-cell"></span><span class="wf-cell"></span>
+        </div>
+        <div class="wf-line med"></div>
+        <div class="wf-row"><span class="wf-btn primary">Put it on your TV</span></div>
+        <div class="wf-note">On your TV's browser, go to <strong>yourhost/tv</strong></div>
+      </div>
+      <div class="wf-caption">Landing · default. The board spells the headline. The one
+        genuinely missing instruction — what to type on the TV — is on the page.</div>
+    </div>
+  </div>
+
+  <h3>Screen-state matrix</h3>
+  <table>
+    <thead><tr><th>Screen</th><th>Empty</th><th>Loading</th><th>Error</th><th>Success</th></tr></thead>
+    <tbody>
+      <tr><td>/tv pairing</td>
+        <td>n/a — always has a code</td>
+        <td>flaps rest unlit until the code arrives</td>
+        <td>code expired → new code flips in, no page change; socket lost → static lamp goes dark</td>
+        <td>full navigation to <code>/tv/claim</code>, board appears</td></tr>
+      <tr><td>Board rack</td>
+        <td>wireframed — "Name your first board"</td>
+        <td>skeleton rows, same layout</td>
+        <td>list fails → inline banner + retry; never read as "0 boards" (the phantom-create bug fixed on 2026-07-29)</td>
+        <td>wireframed</td></tr>
+      <tr><td>Board detail</td>
+        <td>no devices yet → "Nothing paired. Point a TV at yourhost/tv"</td>
+        <td>device list skeleton; page renders without it</td>
+        <td>revoke fails → inline error on the row, row stays</td>
+        <td>row disappears, count drops</td></tr>
+      <tr><td>Controller</td>
+        <td>board never written → grid rests unlit, editor live</td>
+        <td>socket connecting → lamp amber, editor enabled optimistically</td>
+        <td>grant revoked → rescan prompt (exists today); offline → scrim over retained grid</td>
+        <td>grid flips, revision readout increments</td></tr>
+      <tr><td>/link picker</td>
+        <td>n/a — reached only with a code, and 0 boards auto-creates</td>
+        <td>n/a — server-rendered in the loader</td>
+        <td>named failure line above the form, code retained, never a dead end</td>
+        <td>redirect straight to the controller (no receipt page)</td></tr>
+      <tr><td>Landing</td>
+        <td>n/a</td>
+        <td>board renders settled, then flips once on load</td>
+        <td>n/a</td>
+        <td>n/a</td></tr>
+    </tbody>
+  </table>
+
+  <h3>User journey — what the person does</h3>
+  <pre class="mermaid">
+flowchart TD
+  H[Stands in living room<br/>TV + phone] --> T[Types yourhost/tv on the TV]
+  T --> Q[TV shows QR + six flapping characters]
+  Q -->|scans with phone| L{Signed in?}
+  L -->|no| A[Sign up / sign in<br/>one page, code preserved]
+  L -->|yes| C
+  A --> C[A board is created for this TV<br/>auto-named, nothing asked]
+  C --> D[Lands on the controller · Content tab<br/>TV flips]
+  D -->|types and sends| E[Board says it]
+  D -->|Settings tab| X[TV address · devices · rename · un-pair · delete]
+  Q -->|code expired mid-scan| Q
+  C -->|approve fails| F[Named error, code kept, board rolled back]
+  F -->|retries| L
+  F -->|gives up| G[Closes phone — TV still waiting, code still rotating]
+  </pre>
+  <p><strong>Round 1 removed the only decision node in this diagram.</strong> There is no
+  "how many boards" branch, no picker, no receipt — scanning produces a board and lands the
+  person on it. Settings are reachable once you are there, which is the point.</p>
+  <p>Two branches worth pointing at: the code-expired loop is a <em>non-event</em> by design
+  (the flaps flip to a new code and the QR re-mints), and the abandonment branch leaves the
+  TV recoverable rather than dead.</p>
+</section>
+
+<!-- ============================== PRODUCT DECISIONS ============================== -->
+<section id="product-decisions">
+  <h2>Product decisions</h2>
+
+  <div class="decision-card" id="decision-signed-in-home" data-brain-action>
+    <p><strong>1. Where does a returning owner land when they open the app?</strong></p>
+    <p>Today: <code>/dashboard</code>, which links to <code>/boards</code>, which links to
+    the controller. Three stops to change a message.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-signed-in-home" id="sh-smart"
+            value="Smart bounce: 1 board goes straight to the controller" checked data-brain-action></td>
+          <td><label for="sh-smart">Smart bounce — 0 boards → rack, 1 board → controller,
+            2+ → rack <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Zero taps before typing for the overwhelming majority (one board, one TV).
+            Mirrors the <code>resolveAutoLink</code> precedent exactly — pure, testable.</td>
+          <td>A single-board owner who wanted to manage has to tap the brand mark to
+            reach the rack.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-signed-in-home" id="sh-rack"
+            value="Always the rack" data-brain-action></td>
+          <td><label for="sh-rack">Always the board rack</label></td>
+          <td>One predictable destination. Nothing to explain.</td>
+          <td>Keeps a permanent interstitial between the owner and the only thing they
+            came to do.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-signed-in-home','Where does a returning owner land when they open the app?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-signed-in-home"></span>
+  </div>
+
+  <div class="decision-card" id="decision-receipt" data-brain-action>
+    <p><strong>2. After approving a TV, does the phone show a confirmation page?</strong></p>
+    <p>Today it lands on <code>/link?paired=…</code>, a page whose only job is to offer a
+    link to the controller.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-receipt" id="rc-collapse"
+            value="Collapse: redirect straight to the controller" checked data-brain-action></td>
+          <td><label for="rc-collapse">Collapse it — redirect straight to the controller
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>One stop and one tap fewer. Refresh-safety gets <em>better</em> — it moves
+            onto the controller's already-idempotent loader and a bespoke branch deletes.
+            Also fixes a latent wart: the manual action currently returns on success, so a
+            refresh re-POSTs a spent code.</td>
+          <td>The TV flipping is the only confirmation. Invalidates three assertions in an
+            existing verification doc.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-receipt" id="rc-keep"
+            value="Keep the receipt page" data-brain-action></td>
+          <td><label for="rc-keep">Keep the receipt</label></td>
+          <td>Explicit "it worked" moment on the device the user is looking at.</td>
+          <td>A stop with no decision on it. Buys no-JS users nothing — the controller's
+            editor is entirely mutation-driven and dead without JS either way.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-receipt','After approving a TV, does the phone show a confirmation page?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-receipt"></span>
+  </div>
+
+  <div class="decision-card" id="decision-device-name" data-brain-action>
+    <p><strong>3. When a family member's phone pairs, do we stop them to ask its name?</strong></p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-device-name" id="dn-inline"
+            value="Inline: controller renders immediately, naming lives in the nameplate" checked data-brain-action></td>
+          <td><label for="dn-inline">Inline — render the controller immediately, put
+            "This phone: Unnamed ✎" in the nameplate
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>A guest reaches the board in two taps. The owner's revoke UI already buckets
+            rows by last-seen, so unnamed devices are still identifiable.</td>
+          <td>Fewer devices end up named, making a long device list harder to read.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-device-name" id="dn-modal"
+            value="Keep the blocking one-time prompt" data-brain-action></td>
+          <td><label for="dn-modal">Keep the blocking prompt</label></td>
+          <td>Names get captured at the one moment the user knows whose phone it is.</td>
+          <td>A modal between a guest and the thing they scanned a code to reach.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-device-name','When a family member pairs, do we stop them to name the phone?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-device-name"></span>
+  </div>
+
+  <div class="decision-card" id="decision-landing-motion" data-brain-action>
+    <p><strong>4. Does the landing page's board move?</strong></p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-landing-motion" id="lm-once"
+            value="Flips once on load, then rests" checked data-brain-action></td>
+          <td><label for="lm-once">Flips once on load, then rests
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Shows the mechanism — the entire reason to buy — without becoming a carousel.
+            Cheap, and reduced-motion falls back to the settled state for free via the
+            existing <code>snapTo</code>.</td>
+          <td>A visitor who scrolls past in the first second misses it.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-landing-motion" id="lm-loop"
+            value="Cycles through several messages" data-brain-action></td>
+          <td><label for="lm-loop">Cycles through messages</label></td>
+          <td>More chances to catch the eye; can demo range.</td>
+          <td>Reads as an ad. A board in a real home changes a few times a day, not every
+            four seconds — it would misrepresent the product's own cadence.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-landing-motion" id="lm-static"
+            value="Static, settled board" data-brain-action></td>
+          <td><label for="lm-static">Static</label></td>
+          <td>Zero risk, zero cost.</td>
+          <td>Shows a picture of a board instead of a board.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-landing-motion','Does the landing page board move?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-landing-motion"></span>
+  </div>
+</section>
+
+<!-- ============================== TECHNICAL DECISIONS ============================== -->
+<section id="decisions">
+  <h2>Technical decisions needed</h2>
+
+  <div class="decision-card" id="decision-token-arch" data-brain-action>
+    <p><strong>5. How is the hardware palette expressed in the token contract?</strong></p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-token-arch" id="ta-hybrid"
+            value="Hybrid: global contract retuned + [data-surface=hardware] scope" checked data-brain-action></td>
+          <td><label for="ta-hybrid">Hybrid — retune the global contract off the object,
+            <em>and</em> add a <code>[data-surface="hardware"]</code> scope for the console
+            routes <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Every surface gets the brand; the always-dark hardware ladder gets its own
+            scope without deleting light mode. First real use of the documented escape
+            hatch. ~45 shadcn files keep working untouched because the names don't change.</td>
+          <td>Two places to reason about. Requires declaring both
+            <code>[data-surface]</code> and <code>.dark [data-surface]</code> so the scope
+            can't lose on specificity.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-token-arch" id="ta-global"
+            value="Global only: make :root the hardware ladder" data-brain-action></td>
+          <td><label for="ta-global">Global only</label></td>
+          <td>One place. Maximum coherence.</td>
+          <td>The ladder is always dark. This either deletes light mode or invents a "light
+            mode for painted metal", which is a lie about the object.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-token-arch" id="ta-scoped"
+            value="Scoped only: leave :root stock shadcn" data-brain-action></td>
+          <td><label for="ta-scoped">Scoped only</label></td>
+          <td>Zero risk to existing surfaces.</td>
+          <td>Leaves 100% of the app on stock shadcn — re-creates the exact drift this
+            plan exists to fix.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-token-arch','How is the hardware palette expressed in the token contract?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-token-arch"></span>
+  </div>
+
+  <div class="decision-card" id="decision-radius" data-brain-action>
+    <p><strong>6. What is the global corner radius?</strong></p>
+    <p>Currently <code>0.625rem</code> (10px) — the shadcn default. <code>console.tsx</code>
+    documents the object as "0px on panels and buttons, 2px on wells and flaps". This is the
+    single most visible token in the app.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-radius" id="rd-2"
+            value="2px — match the object" checked data-brain-action></td>
+          <td><label for="rd-2">2px — match the object
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Highest-leverage single change. Instantly reads as hardware rather than SaaS.</td>
+          <td><mark><code>--radius-sm: calc(var(--radius) - 4px)</code> goes negative, which
+            is invalid, so the declaration is silently dropped and <code>.rounded-sm</code>
+            stops applying</mark> across avatar, badge, checkbox, dropdown-menu, select.
+            Needs a <code>max(0px, …)</code> guard.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-radius" id="rd-4"
+            value="4px — softened compromise" data-brain-action></td>
+          <td><label for="rd-4">4px</label></td>
+          <td>Still tightens noticeably; the negative-calc trap disappears at
+            <code>sm</code>.</td>
+          <td>Reads as "a slightly tighter web app", not as an object.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-radius" id="rd-keep"
+            value="Keep 10px" data-brain-action></td>
+          <td><label for="rd-keep">Keep 10px</label></td>
+          <td>Zero regression surface.</td>
+          <td>Keeps the single loudest tell that this is a shadcn default.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-radius','What is the global corner radius?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-radius"></span>
+  </div>
+
+  <div class="decision-card" id="decision-typefaces" data-brain-action>
+    <p><strong>7. Which two typefaces ship?</strong></p>
+    <p>Both must be self-hosted and OFL-licensed. Constraint: a 2017 Samsung Tizen panel is
+    Chromium 56, so <strong>anything on the TV path must be a static cut</strong> — variable
+    fonts need Chromium 62+.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-typefaces" id="tf-archivo"
+            value="Archivo + IBM Plex Mono" checked data-brain-action></td>
+          <td><label for="tf-archivo">Archivo + IBM Plex Mono
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Archivo's roots are American gothic news/wood type — the register of a
+            split-flap unit — and it has a real <code>wdth</code> axis, so the condensed look
+            <code>console.tsx</code> fakes with tracking becomes a genuine cut. Plex Mono is
+            engineering-instrument, not IDE: slashed zero, unambiguous 1/l.</td>
+          <td>Two new families to subset and self-host. Neither covers CJK.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-typefaces" id="tf-saira"
+            value="Saira + JetBrains Mono" data-brain-action></td>
+          <td><label for="tf-saira">Saira + JetBrains Mono</label></td>
+          <td>Saira is more overtly industrial/technical; also a real <code>wdth</code> axis.</td>
+          <td>Reads more "sci-fi dashboard" than "household object". JetBrains Mono is
+            unmistakably a code editor face.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-typefaces" id="tf-inter"
+            value="Keep Inter, add a mono only" data-brain-action></td>
+          <td><label for="tf-inter">Keep Inter, add mono only</label></td>
+          <td>Smallest change; no display-face risk.</td>
+          <td>Leaves the app at one-and-a-bit faces and leaves both source files' own
+            complaints unanswered.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-typefaces','Which two typefaces ship?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-typefaces"></span>
+  </div>
+
+  <div class="decision-card" id="decision-admin-exit" data-brain-action>
+    <p><strong>8. <code>/admin</code> is scoped as untouched — but it is a one-way door.</strong></p>
+    <p><code>app-sidebar.tsx:49-65</code> has no link back to the product. The only exits are
+    the browser's back button or typing a URL.</p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-admin-exit" id="ae-fix"
+            value="Add one Boards link to the admin sidebar" checked data-brain-action></td>
+          <td><label for="ae-fix">Add one "Boards" entry to <code>navMain</code>
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>One line. Fixes a real dead end without touching admin's design.</td>
+          <td>Breaks the "byte-frozen" promise on <code>/admin</code>.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-admin-exit" id="ae-none"
+            value="Leave admin byte-frozen" data-brain-action></td>
+          <td><label for="ae-none">Leave it byte-frozen</label></td>
+          <td>Scope stays exactly where it was set.</td>
+          <td>The dead end stays.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-admin-exit','Add a Boards link to the admin sidebar, or leave admin byte-frozen?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-admin-exit"></span>
+  </div>
+
+  <div class="decision-card" id="decision-upload" data-brain-action>
+    <p><strong>9. <code>app/components/file-upload.tsx</code> has zero consumers — grep
+    returns only the file itself. So <code>/api/upload-file</code> has no UI caller at all.</strong></p>
+    <table>
+      <thead><tr><th></th><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="radio" name="decision-upload" id="up-component"
+            value="Delete the component, keep the API route" checked data-brain-action></td>
+          <td><label for="up-component">Delete the component, keep the route
+            <span class="tag-recommended">(recommended)</span></label></td>
+          <td>Removes dead UI; leaves the R2 wiring (feat-003) intact for a future use.</td>
+          <td>An endpoint with no caller is still surface area.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-upload" id="up-both"
+            value="Delete both the component and the route" data-brain-action></td>
+          <td><label for="up-both">Delete both</label></td>
+          <td>Smallest attack surface; feat-003 is recorded as shipped-but-broken anyway
+            (R2 was never provisioned).</td>
+          <td>Retiring a shipped feature is a bigger call than a redesign should make
+            silently.</td>
+        </tr>
+        <tr>
+          <td><input type="radio" name="decision-upload" id="up-keep"
+            value="Keep both" data-brain-action></td>
+          <td><label for="up-keep">Keep both</label></td>
+          <td>Nothing to argue about.</td>
+          <td>Dead code stays dead code.</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" class="btn-queue" data-brain-action
+      onclick="queueDecision('decision-upload','What happens to the unused file-upload component and its API route?')">
+      Queue answer</button>
+    <span class="queue-ack" id="ack-decision-upload"></span>
+  </div>
+</section>
+
+<!-- ============================== PLAN OF RECORD ============================== -->
+<section id="plan-of-record" data-brain-section="plan-of-record">
+  <h2>Plan of record</h2>
+  <p>Four PRs, sequential. Tier boundaries: <strong>thin</strong> stops after phase 1,
+  <strong>complete</strong> after phase 3, <strong>gold</strong> after phase 4.</p>
+  <ol>
+    <template>
+      <li data-brain-item>
+        <span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0">
+      <strong>Phase 1 — Brand foundation (<code>brand-system</code>).</strong>
+      <span data-item-text data-brain-action>Retune <code>app.css</code> (global contract,
+      radius + <code>max(0px,…)</code> guard, <code>--signal</code>, <code>--text-*</code>,
+      <code>--flap-*</code>, <code>--font-*</code>, kill the hardcoded
+      <code>bg-white dark:bg-gray-950</code>); add <code>[data-surface="hardware"]</code>
+      and apply it on the four console routes; ship both typefaces self-hosted and remove
+      the Google Fonts link; fix the focus ring app-wide and delete the two hardcoded
+      workarounds; pin <code>--font-flap</code> to Inter behind a shared
+      <code>FLAP_GLYPH_CLASS</code>; re-point <code>console.tsx</code> at
+      <code>var(--hw-*)</code> with no API change; rewrite
+      <code>design-system.md</code>. Acceptance: golden board screenshots still match;
+      <code>design:audit</code> stops emitting <code>fontFamilies &lt; 2</code>; keyboard
+      walk shows a visible ring on every route; <code>/admin/kitchen-sink</code> renders
+      every primitive without a dropped radius.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+      <details>
+        <summary>Why all of this in one phase?</summary>
+        <p>Every later phase is built from shadcn primitives whose radius, ring and surface
+        colors come from here, and the font change moves every text metric in the app.
+        Landing any piece later means re-measuring everything shipped in between. The one
+        that is easy to underestimate: if <code>[data-surface]</code> does not exist yet,
+        phase 3 writes <code>style={{ color: CONSOLE.ink }}</code> again and phase 1's work
+        gets unpicked.</p>
+      </details>
+    </li>
+    <li data-brain-item="1">
+      <strong>Phase 2 — IA &amp; navigation (<code>app-ia</code>).</strong>
+      <span data-item-text data-brain-action>Delete <code>/dashboard</code> and the six
+      <code>/:lng</code> aliases; split <code>/boards</code> into a rack and a
+      <code>/boards/:boardId</code> detail; build <code>boards/_layout.tsx</code> +
+      <code>app-header.tsx</code> + <code>user-menu.tsx</code>; <strong>add sign-out for
+      non-admins</strong>; add pure <code>resolveSignedInHome(boardCount)</code>; add
+      redirect shims so no existing URL 404s. Acceptance: every old URL redirects rather
+      than 404ing; a non-admin can sign out; <code>/pricing</code> returns 404 instead of
+      the marketing page; both board actions still carry their own
+      <code>requireSession</code>.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+    <li data-brain-item="2">
+      <strong>Phase 3 — Pairing &amp; composer (<code>console-journey-v2</code>).</strong>
+      <span data-item-text data-brain-action>Pairing code becomes six live flap tiles on
+      <code>/tv</code>; collapse the <code>/link</code> receipt and replace the
+      <code>&lt;select&gt;</code> with one button per board row; demote the device-name
+      prompt into the nameplate; promote the composer's live grid to the primary
+      instrument with the row wells behind a toggle. Acceptance: the measured step counts
+      in the success metric are hit; the no-JS submit contract still passes with
+      JavaScript disabled; <code>resolveAutoLink</code>'s signature and return values are
+      unchanged.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+      <details>
+        <summary>The risk in this phase</summary>
+        <p><code>message-editor.tsx</code> is 1265 lines — the largest file in the redesign.
+        It gets a structural read before any edit, and the pass splits into its own PR if
+        the diff stops being reviewable.</p>
+      </details>
+    </li>
+    <li data-brain-item="3">
+      <strong>Phase 4 — Front door (<code>front-door</code>).</strong>
+      <span data-item-text data-brain-action>Rebuild <code>home.tsx</code> around a live
+      board that spells its own headline, with the missing instruction ("on your TV's
+      browser, go to yourhost/tv") on the page; rewrite <code>home.json</code> in both
+      locales; merge login and sign-up into one toggled page defaulting to sign-up when
+      <code>next</code> carries a pairing code. Acceptance: no string in the shipped
+      landing page mentions the boilerplate, the stack, or a brain command; a zh visitor
+      sees no Latin-face fallback mismatch.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+  </ol>
+  <div class="list-add-row" data-brain-section-add="plan-of-record">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a phase..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<!-- ============================== FILES ============================== -->
+<section id="files-changed">
+  <h2>Files that change</h2>
+  <table>
+    <thead><tr><th>Path</th><th>Change</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>app/app.css</code></td><td>edit (P1)</td>
+        <td>The whole token contract. Also kills the hardcoded page background at lines 11-13.</td></tr>
+      <tr><td><code>app/routes/board/hardware-theme.css</code></td><td>new (P1)</td>
+        <td>The <code>[data-surface="hardware"]</code> scope, beside the routes that use it.</td></tr>
+      <tr><td><code>app/assets/fonts/*.woff2</code></td><td>new (P1)</td>
+        <td>Self-hosted, subset. In <code>assets/</code> not <code>public/</code> so Vite content-hashes them.</td></tr>
+      <tr><td><code>app/root.tsx</code></td><td>edit (P1)</td>
+        <td>Drop the three Google Fonts entries; add preloads with <code>crossOrigin="anonymous"</code>.</td></tr>
+      <tr><td><code>app/components/ui/button.tsx</code></td><td>edit (P1)</td>
+        <td>Remove <code>outline-none</code>, which suppresses the global focus outline and the High-Contrast fallback.</td></tr>
+      <tr><td><code>app/components/board/console.tsx</code></td><td>edit (P1)</td>
+        <td>Values re-pointed at <code>var(--hw-*)</code>. Same exported names and shapes — it is shared by phases 2 and 3.</td></tr>
+      <tr><td><code>app/routes.ts</code></td><td>edit (P2)</td>
+        <td>Delete <code>/dashboard</code> + the <code>/:lng</code> prefix block; add the boards layout, the detail route, and redirect shims.</td></tr>
+      <tr><td><code>app/routes/dashboard/*</code></td><td>delete (P2)</td>
+        <td>Its own copy calls it a boilerplate tour.</td></tr>
+      <tr><td><code>app/routes/boards/_index.tsx</code></td><td>edit (P2)</td>
+        <td>560 L → ~150 L rack. Action keeps <code>create</code> only.</td></tr>
+      <tr><td><code>app/routes/boards/$boardId.tsx</code></td><td>new (P2)</td>
+        <td>Detail surface; owns the five destructive intents, verbatim moves.</td></tr>
+      <tr><td><code>app/components/layout/{app-header,user-menu}.tsx</code></td><td>new (P2)</td>
+        <td>One shell for management surfaces. The user menu is where sign-out finally exists for non-admins.</td></tr>
+      <tr><td><code>app/lib/session.ts</code></td><td>edit (P2)</td>
+        <td>Six <code>/dashboard</code> defaults become <code>/boards</code>. <code>loginRedirectUrl</code> is untouched — its <code>next</code> threading is load-bearing.</td></tr>
+      <tr><td><code>app/routes/link.tsx</code></td><td>edit (P3)</td>
+        <td>675 L → ~200 L. Receipt mode and the <code>?paired=</code> re-derivation delete.</td></tr>
+      <tr><td><code>app/routes/tv.tsx</code></td><td>edit (P3)</td>
+        <td>Code readout becomes six flap tiles.</td></tr>
+      <tr><td><code>app/components/board/message-editor.tsx</code></td><td>edit (P3)</td>
+        <td>1265 L. Grid promoted to primary instrument. Highest-risk file.</td></tr>
+      <tr><td><code>app/routes/home.tsx</code></td><td>rewrite (P4)</td>
+        <td>Currently markets the template, prints brain commands to users.</td></tr>
+      <tr><td><code>app/locales/{en,zh}/*.json</code></td><td>edit (P2–P4)</td>
+        <td>Both locales, always together. <code>dashboard.json</code> deletes.</td></tr>
+      <tr><td><code>app/components/board/{flap-tile,board-frame,board-grid-view}.tsx</code></td>
+        <td><strong>frozen</strong></td>
+        <td>The reference, not the subject. One exception: <code>flap-tile</code>'s glyph class points at the shared <code>FLAP_GLYPH_CLASS</code> so a future <code>--font-sans</code> change cannot leak in.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== GOLDEN PATH ============================== -->
+<section id="golden-path">
+  <h2>Golden path — what the system does</h2>
+  <pre class="mermaid">
+sequenceDiagram
+  participant TV as TV browser
+  participant W as Worker
+  participant DO as BoardRoom DO
+  participant P as Phone
+  TV->>W: GET /tv
+  W->>DO: board.issueDeviceCode
+  DO-->>W: code + watcher
+  W-->>TV: QR + six flap tiles
+  TV->>DO: WS /api/tv-ws (holds open)
+  P->>W: GET /link?code=ABC123 (scanned)
+  W-->>P: 302 /login?next=/link?code=ABC123
+  P->>W: POST credentials
+  W-->>P: 302 back to /link?code=ABC123
+  W->>DO: resolveAutoLink → create/pair → approveDeviceCode
+  DO-->>TV: WS push {approved, boardId, handoff}
+  W-->>P: 302 /b/:boardId/c  (no receipt page)
+  TV->>W: GET /tv/claim?handoff=…
+  W-->>TV: Set-Cookie device grant, 302 /b/:boardId
+  </pre>
+  <p>The only line that changes is the second-to-last <code>302</code>: it points at the
+  controller instead of at <code>/link?paired=…</code>. Everything above it — including the
+  server-side approve inside a GET, which is what keeps the flow working with JavaScript
+  disabled — is untouched.</p>
+</section>
+
+<!-- ============================== ERROR PATHS ============================== -->
+<section id="error-paths">
+  <h2>Error paths</h2>
+  <table>
+    <thead><tr><th>Failure</th><th>Detected by</th><th>Handled by</th><th>User sees</th></tr></thead>
+    <tbody data-brain-section="error-paths">
+      <template>
+        <tr data-brain-item><td colspan="4"><span data-item-text data-brain-action></span>
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button></td></tr>
+      </template>
+      <tr data-brain-item="0">
+        <td><span data-item-text data-brain-action>Radius token drops <code>.rounded-sm</code> app-wide</span></td>
+        <td>Visual pass on <code>/admin/kitchen-sink</code>, which renders every primitive</td>
+        <td><code>max(0px, calc(…))</code> guard on the <code>sm</code>/<code>md</code> derivations</td>
+        <td>Nothing — caught before ship. Without the guard: square avatars and badges, silently</td>
+      </tr>
+      <tr data-brain-item="1">
+        <td><span data-item-text data-brain-action>Amber focus ring fails contrast on light surfaces</span></td>
+        <td>Keyboard walk with screenshots; ≈1.6:1 against a 3:1 floor</td>
+        <td>Two-value <code>--ring</code>: darkened amber in <code>:root</code>, the real lamp in <code>.dark</code> and the hardware scope</td>
+        <td>A visible focus ring on every route, in both themes</td>
+      </tr>
+      <tr data-brain-item="2">
+        <td><span data-item-text data-brain-action>zh strings fall back to a system CJK face</span></td>
+        <td><code>?lng=zh</code> walk of <code>/</code>, <code>/login</code>, <code>/boards</code></td>
+        <td>Explicit CJK fallback in the <code>--font-sans</code> stack. The board is immune — its charset is Latin-only by construction</td>
+        <td>Consistent CJK rendering; no width mismatch against the condensed Latin face</td>
+      </tr>
+      <tr data-brain-item="3">
+        <td><span data-item-text data-brain-action>Layout gate trusted for POSTs (auth hole)</span></td>
+        <td>Code review + a test that POSTs to the board action without a session</td>
+        <td>Both board actions keep their own <code>requireSession</code> — a layout loader does not run for an action</td>
+        <td>401, not a silent write</td>
+      </tr>
+      <tr data-brain-item="4">
+        <td><span data-item-text data-brain-action>A bookmarked or TV-resident URL 404s after the route move</span></td>
+        <td>Migration table walked one URL at a time</td>
+        <td>Redirect shims for <code>/dashboard</code> and the locale prefixes. <code>/b/:id</code>, <code>/b/:id/c</code>, <code>/tv</code>, <code>/tv/claim</code> <strong>do not move</strong></td>
+        <td>A redirect, never a dead page. A wall-mounted TV that has not reloaded in months keeps working</td>
+      </tr>
+      <tr data-brain-item="5">
+        <td><span data-item-text data-brain-action>Font swaps in late and reflows 144 tiles</span></td>
+        <td>Throttled load on the board route</td>
+        <td><code>font-display: block</code> on everything on the TV path; preload with <code>crossOrigin="anonymous"</code>; 57-glyph subset</td>
+        <td>Text appears once, in the right face, with no reflow</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="list-add-row" data-brain-section-add="error-paths">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a failure mode..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<!-- ============================== TESTING ============================== -->
+<section id="testing-plan" data-brain-section="testing-plan">
+  <h2>Testing plan</h2>
+  <ul class="checklist">
+    <template>
+      <li data-brain-item><label><input type="checkbox"> <span data-item-text data-brain-action></span></label>
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button></li>
+    </template>
+    <li data-brain-item="0"><label><input type="checkbox"> <span data-item-text data-brain-action>Golden path: new account, scan a TV code, reach a working controller in 3 stops — counted by the <code>feature-verifier</code> walk</span></label></li>
+    <li data-brain-item="1"><label><input type="checkbox"> <span data-item-text data-brain-action>Golden path with JavaScript disabled: the approve still happens server-side and the TV still flips</span></label></li>
+    <li data-brain-item="2"><label><input type="checkbox"> <span data-item-text data-brain-action>Error path: approve fails on a bogus code → named error, code retained, orphan board rolled back</span></label></li>
+    <li data-brain-item="3"><label><input type="checkbox"> <span data-item-text data-brain-action>Error path: POST to a board action with no session → 401, not a write</span></label></li>
+    <li data-brain-item="4"><label><input type="checkbox"> <span data-item-text data-brain-action>Migration: every old URL redirects; <code>/pricing</code> now 404s instead of serving the marketing page</span></label></li>
+    <li data-brain-item="5"><label><input type="checkbox"> <span data-item-text data-brain-action>Regression: the five golden board screenshots still match after the token and font pass</span></label></li>
+    <li data-brain-item="6"><label><input type="checkbox"> <span data-item-text data-brain-action>Regression: <code>/admin/kitchen-sink</code> renders every primitive with no dropped radius</span></label></li>
+    <li data-brain-item="7"><label><input type="checkbox"> <span data-item-text data-brain-action>a11y: keyboard walk across <code>/tv</code>, <code>/link</code>, <code>/b/:id</code>, <code>/b/:id/c</code>, <code>/boards</code> with a visible ring at every stop, verified by screenshot not computed style</span></label></li>
+    <li data-brain-item="8"><label><input type="checkbox"> <span data-item-text data-brain-action>a11y: <code>prefers-reduced-motion</code> on every flap surface — static equivalent, no motion</span></label></li>
+    <li data-brain-item="9"><label><input type="checkbox"> <span data-item-text data-brain-action>i18n: extend <code>BOARDS_KEYS</code> in the parity test <em>before</em> moving any copy, so it fails first (its coverage is currently seven keys — only the revoke dialog)</span></label></li>
+    <li data-brain-item="10"><label><input type="checkbox"> <span data-item-text data-brain-action><code>design:audit</code> at 1440 and 390 on every changed surface, all HARD failures fixed before a human is asked for an opinion</span></label></li>
+    <li data-brain-item="11"><label><input type="checkbox"> <span data-item-text data-brain-action><code>design-critic</code> on the rendered screenshots, asked explicitly for the memorability and identity verdicts — any P0/P1 blocks</span></label></li>
+    <li data-brain-item="12"><label><input type="checkbox"> <span data-item-text data-brain-action>Physical check once before phase 3 ships: a real TV across a real room — code legibility, contrast in a lit room, the new mono at 10 feet</span></label></li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="testing-plan">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add a test..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+  <p><strong>Blast radius, measured:</strong> 52 test files, almost all pure logic and
+  untouched by CSS. Genuinely exposed: <code>session.test.ts</code> (the
+  <code>/dashboard</code> strings), <code>link.test.ts</code>, and the board component tests
+  if <code>CONSOLE</code>'s export shape changes. One concrete hazard —
+  <mark>jsdom does not resolve custom properties</mark>, so any assertion on a computed
+  color breaks once values become <code>var(--…)</code>. Assert on variable names or
+  <code>data-*</code> attributes, never on resolved colors.</p>
+  <p><strong>Superseded evidence:</strong> collapsing the receipt invalidates assertions
+  R1–R3 in <code>.brain/features/auto-tv-link/verifications/2026-07-29.md</code>, which pin
+  the literal <code>/link?paired=…</code> URL and its testids. Per harness convention: write
+  a new dated verification and mark the old one superseded in the feature doc — do not edit
+  history.</p>
+</section>
+
+<!-- ============================== OPEN QUESTIONS ============================== -->
+<section id="open-questions" data-brain-section="open-questions">
+  <h2>Open questions</h2>
+  <ul>
+    <template>
+      <li data-brain-item>
+        <span data-item-text data-brain-action></span>
+        <span class="item-controls">
+          <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+          <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+        </span>
+      </li>
+    </template>
+    <li data-brain-item="0">
+      <span data-item-text data-brain-action><strong>Board sprawl</strong> — the one thing round 1's cut opens up. A TV whose cookie is evicted shows a fresh code; scanning it produces a <em>second</em> board for the same television, and there is no stable TV identity to dedupe on. Proposed: a single secondary "…or attach this TV to an existing board" line, not a branch. To settle during phase 3.</span>
+      <span class="item-controls">
+        <button type="button" class="item-x" data-brain-action title="Remove">x</button>
+        <button type="button" class="item-restore" data-brain-action hidden title="Restore">restore</button>
+      </span>
+    </li>
+  </ul>
+  <h3>Resolved in round 1</h3>
+  <ul>
+    <li><strong>Device count</strong> — shown on the controller, not the rack. So the rack's per-board Durable Object round trips drop.</li>
+    <li><strong>Board greeting on first pair</strong> — cut. "It doesn't need to do this."</li>
+    <li><strong>Name</strong> — <code>flappyboard</code> stays. The wordmark is it, set in flaps.</li>
+    <li><strong><code>REFERO_MCP_TOKEN</code></strong> — question withdrawn; not pursuing. Reference research runs on the skill's bundled craft references plus the repo's three existing dated locks (Elektron, Oxide, teenage engineering) and the PIL-measured Vestaboard, <em>recorded as a degradation in the run note</em>.</li>
+  </ul>
+  <div class="list-add-row" data-brain-section-add="open-questions">
+    <input type="text" class="list-add-input" data-brain-action placeholder="Add an open question..." />
+    <button type="button" class="list-add-btn" data-brain-action>+ Add item</button>
+  </div>
+</section>
+
+<section id="verdict">
+  <h2>Verdict</h2>
+  <div>
+    <button type="button" class="btn-approve" data-brain-action
+      onclick="queueVerdict('approve')">Approve plan</button>
+    <button type="button" class="btn-request-changes" data-brain-action
+      onclick="queueVerdict('request-changes')">Request changes</button>
+  </div>
+</section>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+</script>
+
+<script>
+  function queueDecision(cardId, question) {
+    var card = document.getElementById(cardId);
+    var checked = card.querySelector('input[type="radio"]:checked');
+    if (!checked) return;
+    var choice = checked.value;
+    if (window.brain && typeof window.brain.queuePrompt === "function") {
+      window.brain.queuePrompt({
+        tag: "decision",
+        queueKey: cardId,
+        prompt: question + ": " + choice,
+        target: { type: "decision", question: question, choice: choice }
+      });
+    }
+    var ack = document.getElementById("ack-" + cardId);
+    if (ack) ack.textContent = "Queued: " + choice;
+  }
+
+  function queueVerdict(verdict) {
+    if (!(window.brain && typeof window.brain.queuePrompt === "function")) return;
+    window.brain.queuePrompt({
+      tag: "message",
+      queueKey: "verdict",
+      prompt: verdict === "approve"
+        ? "Plan approved as written."
+        : "Requesting changes — see annotations."
+    });
+  }
+</script>
+
+<script>
+  (function () {
+    function queueList(section, queueKey, prompt, action, item, index) {
+      if (window.brain && typeof window.brain.queuePrompt === "function") {
+        window.brain.queuePrompt({
+          tag: "list-edit",
+          queueKey: queueKey,
+          prompt: prompt,
+          target: { type: "list-edit", section: section, action: action, item: item, index: index }
+        });
+      }
+    }
+    function slugify(s) {
+      return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "").slice(0, 60) || "item";
+    }
+    function itemText(el) {
+      var t = el.querySelector("[data-item-text]");
+      return (t || el).textContent.trim();
+    }
+    function addBadge(el, cls, label) {
+      var badge = el.querySelector("." + cls);
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "item-badge " + cls;
+        el.appendChild(badge);
+      }
+      badge.textContent = label;
+    }
+    function toggleRemoved(item, section) {
+      var index = Number(item.getAttribute("data-brain-item"));
+      var text = itemText(item);
+      var removed = item.classList.toggle("item-removed");
+      var xBtn = item.querySelector(".item-x");
+      var restoreBtn = item.querySelector(".item-restore");
+      if (xBtn) xBtn.hidden = removed;
+      if (restoreBtn) restoreBtn.hidden = !removed;
+      var key = section + ":remove:" + index;
+      if (removed) {
+        queueList(section, key, "Remove from " + section + ": \"" + text + "\"", "remove", text, index);
+      } else {
+        queueList(section, key, "Cancelled: keep \"" + text + "\" in " + section, "edit", text, index);
+      }
+    }
+    function startEdit(item, section) {
+      if (item.classList.contains("item-removed")) return;
+      var span = item.querySelector("[data-item-text]");
+      if (!span || span.isContentEditable) return;
+      var before = span.textContent;
+      span.setAttribute("contenteditable", "true");
+      span.focus();
+      function commit() {
+        span.removeAttribute("contenteditable");
+        span.removeEventListener("blur", commit);
+        span.removeEventListener("keydown", onKey);
+        var text = span.textContent.trim();
+        if (!text || text === before.trim()) { span.textContent = before; return; }
+        var index = Number(item.getAttribute("data-brain-item"));
+        addBadge(item, "item-badge-edited", "edited");
+        queueList(section, section + ":edit:" + index,
+          "Edit " + section + " item " + index + ": \"" + text + "\"", "edit", text, index);
+      }
+      function onKey(ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); span.blur(); }
+        else if (ev.key === "Escape") { span.textContent = before; ev.preventDefault(); span.blur(); }
+      }
+      span.addEventListener("blur", commit);
+      span.addEventListener("keydown", onKey);
+    }
+    function commitAdd(addRow) {
+      var section = addRow.getAttribute("data-brain-section-add");
+      var input = addRow.querySelector(".list-add-input");
+      var text = input.value.trim();
+      if (!text) return;
+      var list = document.querySelector("[data-brain-section=\"" + section + "\"]");
+      var tpl = list && list.querySelector("template");
+      if (!list || !tpl) return;
+      var node = document.importNode(tpl.content, true);
+      var item = node.querySelector("[data-brain-item]") || node.firstElementChild;
+      item.setAttribute("data-brain-item", "new");
+      var span = item.querySelector("[data-item-text]");
+      if (span) span.textContent = text;
+      item.classList.add("item-proposed");
+      addBadge(item, "item-badge-proposed", "proposed");
+      list.insertBefore(node, tpl.nextSibling);
+      input.value = "";
+      queueList(section, section + ":add:" + slugify(text),
+        "Add to " + section + ": \"" + text + "\"", "add", text, null);
+    }
+    document.addEventListener("click", function (ev) {
+      var xBtn = ev.target.closest(".item-x");
+      var restoreBtn = ev.target.closest(".item-restore");
+      if (xBtn || restoreBtn) {
+        var item = ev.target.closest("[data-brain-item]");
+        var section = ev.target.closest("[data-brain-section]");
+        if (item && section) toggleRemoved(item, section.getAttribute("data-brain-section"));
+        return;
+      }
+      var addBtn = ev.target.closest(".list-add-btn");
+      if (addBtn) {
+        var addRow = ev.target.closest("[data-brain-section-add]");
+        if (addRow) commitAdd(addRow);
+      }
+    });
+    document.addEventListener("dblclick", function (ev) {
+      var item = ev.target.closest("[data-brain-item]");
+      if (!item) return;
+      var section = item.closest("[data-brain-section]");
+      if (section) startEdit(item, section.getAttribute("data-brain-section"));
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
+      var addRow = ev.target.closest("[data-brain-section-add]");
+      if (addRow && ev.target.classList.contains("list-add-input")) {
+        ev.preventDefault();
+        commitAdd(addRow);
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>

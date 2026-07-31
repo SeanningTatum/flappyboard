@@ -53,18 +53,22 @@ features/
 | Split-Flap Board | [`split-flap-board/split-flap-board.md`](split-flap-board/split-flap-board.md) | shipped | — |
 | Phone Control | [`phone-control/phone-control.md`](phone-control/phone-control.md) | shipped | — |
 | LLM Board Agent | [`llm-board-agent/llm-board-agent.md`](llm-board-agent/llm-board-agent.md) | shipped | — |
-| TV Pairing | [`tv-pairing/tv-pairing.md`](tv-pairing/tv-pairing.md) | in-progress | — |
-| Family Grants | [`family-grants/family-grants.md`](family-grants/family-grants.md) | planned (code complete) | — |
-| Kiosk Display | [`kiosk-display/kiosk-display.md`](kiosk-display/kiosk-display.md) | planned (code complete) | — |
+| TV Pairing | [`tv-pairing/tv-pairing.md`](tv-pairing/tv-pairing.md) | shipped | [2026-07-28 ✅ PASS](tv-pairing/verifications/2026-07-28.md) |
+| Family Grants | [`family-grants/family-grants.md`](family-grants/family-grants.md) | shipped | [2026-07-29 ✅ PASS](family-grants/verifications/2026-07-29.md) |
+| Kiosk Display | [`kiosk-display/kiosk-display.md`](kiosk-display/kiosk-display.md) | shipped | [2026-07-29 ✅ PASS](kiosk-display/verifications/2026-07-29.md) |
+| QR-First TV Link | [`qr-first-tv-link/qr-first-tv-link.md`](qr-first-tv-link/qr-first-tv-link.md) | shipped | [2026-07-29 ✅ PASS](qr-first-tv-link/verifications/2026-07-29.md) |
+| Controller Board Mirror | [`controller-board-mirror/controller-board-mirror.md`](controller-board-mirror/controller-board-mirror.md) | shipped | [2026-07-29 ✅ PASS](controller-board-mirror/verifications/2026-07-29.md) |
+| Pairing Experience Redesign | [`pairing-experience-redesign/pairing-experience-redesign.md`](pairing-experience-redesign/pairing-experience-redesign.md) | shipped | [2026-07-29 ✅ PASS](pairing-experience-redesign/verifications/2026-07-29.md) |
+| Auto TV Link | [`auto-tv-link/auto-tv-link.md`](auto-tv-link/auto-tv-link.md) | shipped | [2026-07-29 ✅ PASS](auto-tv-link/verifications/2026-07-29.md) |
+| Live Weather | [`live-weather/live-weather.md`](live-weather/live-weather.md) | planned | — |
 | OpenTelemetry Span Tracing | [`otel-tracing/otel-tracing.md`](otel-tracing/otel-tracing.md) | shipped (synced from template) | — (upstream-verified only) |
+| Brand System | [`brand-system/brand-system.md`](brand-system/brand-system.md) | in-progress | — |
 
-> **Why two features read "planned" with their code written.** feat-010/011/012
-> come from one approved plan and one diff, and the scope policy allows exactly
-> one `in-progress` row at a time. Rather than mark two of them `blocked` —
-> which they are not — the tracker holds them at `planned` until `tv-pairing`
-> ships; they flip in dependency order (010 → 011 → 012) as each one's
-> verification lands. The status here mirrors `feature_list.json`, which is the
-> source of truth `brain check` enforces.
+> **This table mirrors `feature_list.json`, which is the source of truth
+> `brain check` enforces.** It drifted once before and stayed wrong for two
+> days: six rows carried stale statuses and five shipped features were missing
+> from it entirely, while the tracker was correct the whole time. If the two
+> ever disagree, the tracker wins and this table is the thing to fix.
 
 ## Update trigger
 

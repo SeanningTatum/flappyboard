@@ -1,0 +1,122 @@
+/*
+ * The hardware surface — a scoped design system.
+ * =============================================
+ *
+ * Sanctioned by "Scoped design systems" in `.brain/rules/frontend.md`: the same
+ * token names as `app/app.css`, different values, under one `data-surface`
+ * attribute on the route root. Imported by the four console routes —
+ * `/b/:boardId`, `/b/:boardId/c`, `/tv`, `/link`.
+ *
+ * WHY A SCOPE AND NOT THE APP THEME
+ * ---------------------------------
+ * These four surfaces are not pages about a product, they are the product's own
+ * control panel. The TV display is a piece of painted aluminium with recessed
+ * windows punched through it; the phone has to read as the same object's
+ * console. That object is always dark and always the same — it has no light
+ * mode, because a sheet of painted metal does not have one. The app itself
+ * runs `next-themes` with `defaultTheme="system"` and genuinely does need both,
+ * which is exactly the situation the escape hatch exists for.
+ *
+ * The values below are not new. They are the palette `console.tsx`,
+ * `flap-tile.tsx` and `board-frame.tsx` already carried as hardcoded literals,
+ * promoted into the token contract so every other component — including
+ * untouched ShadCN primitives — can reach them. Reference lock: Elektron
+ * (tonal ladder, amber strictly as a state signal), Oxide Computer (elevation
+ * via tonal shift and hairlines, never drop shadows), teenage engineering
+ * (industrial gray as stage), with the pigments measured off Vestaboard product
+ * photography. Recorded in `.brain/features/brand-system/brand-system.md`.
+ *
+ * DEVIATIONS FROM REPO NORMS, WITH THE RULE THAT JUSTIFIES EACH
+ * ------------------------------------------------------------
+ * 1. Literal hex rather than oklch. `frontend.md` bans hardcoded colour in JSX;
+ *    a token definition is where literals belong, and these specific values are
+ *    a measurement of a physical object rather than a point on a scale — see
+ *    the pigment note in `flap-tile.tsx`. Converting them would obscure that.
+ *
+ * 2. Dark in BOTH app themes, re-asserted under `.dark`. Rule 4 requires a
+ *    cited source for this: `console.tsx`'s own header — "A phone controller is
+ *    used standing in a living room, often with the lights down next to a dim
+ *    TV. That makes the dark field functional, not decorative — a white form
+ *    here is a flashbang aimed at the person holding it."
+ *
+ *    The duplicate selector is not redundant. Custom properties inherit, so a
+ *    scope nested *inside* `.dark` already wins on proximity alone. The case it
+ *    covers is `ConsoleField`, which sets `className="dark"` on the same
+ *    `<main>` that carries `data-surface` — there both rules target one element,
+ *    specificity ties at (0,1,0), and source order would decide it silently.
+ *
+ * 3. `--hw-*` names exist alongside the shadcn ones. Rule 1 forbids parallel
+ *    names for things components should pick up for free, and none of these are
+ *    that: they are a third ink level and the material recipes that make a
+ *    plate read as raised and a well as a hole. Anything a primitive should
+ *    inherit reuses the shadcn name instead.
+ */
+
+[data-surface="hardware"],
+.dark [data-surface="hardware"] {
+  /* 0px on panels and buttons, 2px on wells and flaps — `flap-tile` derives
+     ~2px for a real card, so a pill here would be a lie. */
+  --radius: 0.125rem;
+
+  --background: #000000; /* the board's own surround */
+  --foreground: #eeeef2; /* off-white — nothing printed is ever pure */
+  --card: #151515; /* a plate screwed to the field */
+  --card-foreground: #eeeef2;
+  --popover: #151515;
+  --popover-foreground: #eeeef2;
+  --primary: #eeeef2;
+  --primary-foreground: #1f1f22;
+  --secondary: #222226; /* recessed track */
+  --secondary-foreground: #eeeef2;
+  --muted: #222226;
+  --muted-foreground: #b4b4b8;
+  --accent: #222226;
+  --accent-foreground: #eeeef2;
+  --border: #2b2b2e; /* 1px separator, a step above the track on both sides */
+  --input: #0e0e10; /* the bottom of a hole */
+  --destructive: oklch(0.704 0.191 22.216);
+
+  /* The pilot lamp. 12.08:1 on the panel, so unlike the app's light theme this
+     one needs no darkening — and it stays a STATE signal, never an action fill.
+     `--primary` above is the off-white plate, which is what CTAs paint with. */
+  --signal: #ffcc00;
+  --signal-foreground: #1f1f22;
+  --ring: var(--signal);
+
+  --text-heading: #eeeef2;
+  --text-body: #b4b4b8;
+  --text-body-subtle: #6a6a6c;
+
+  /*
+   * The third ink level: labels, units, inactive icons.
+   *
+   * Was #6a6a6c, which measured 3.89:1 on the field and 2.94:1 on the recessed
+   * track. Everything it paints is 9–10px uppercase — small text, so the floor
+   * is 4.5:1, not the 3:1 large-text allowance. It was failing AA everywhere it
+   * was used, and `design-critic` caught it after the same defect had already
+   * been fixed once at a single call site on `/tv`.
+   *
+   * #89898d is the lightest-touch value that clears 4.5:1 against the *darkest*
+   * surface it ever sits on — the track at #222226 (4.55:1), which is the
+   * binding constraint; on the field it is 6.03:1. The three-level ink ladder
+   * survives: 0.86 / 0.46 / 0.25 relative luminance.
+   *
+   * Fixed at the token rather than the call site on purpose: a token phase that
+   * leaves live instances of the defect it closed has not closed it.
+   */
+  --hw-ink-mute: #89898d;
+  --hw-field: #000000;
+  --hw-panel: #151515;
+  --hw-track: #222226;
+  --hw-well: #0e0e10;
+  --hw-hairline: #2b2b2e;
+
+  /* The lip of a raised plate: light along the top edge, dark underneath. Both
+     layers blur-free, so this costs a fill rather than a convolution — the same
+     economy `flap-tile`'s well shadow is built on. */
+  --hw-plate-lip: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+  /* The inverse: a hole, shaded at the top lip and lit along the bottom. */
+  --hw-well-lip: inset 0 1px 2px rgba(0, 0, 0, 0.75),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.045);
+}

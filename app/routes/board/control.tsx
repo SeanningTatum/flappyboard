@@ -24,6 +24,10 @@ import {
   WELL_LIP,
 } from "@/components/board/console";
 import type { BoardMessage } from "@/lib/schemas/board";
+// The scoped token override for the console surfaces. See the header of that
+// file for why this route runs its own visual language.
+import "./hardware-theme.css";
+import flapFont from "@/assets/fonts/inter-flap-600.woff2?url";
 
 /**
  * `/b/:boardId/c` — the phone. Thumb-sized targets, one column, portrait, and no
@@ -38,6 +42,21 @@ import type { BoardMessage } from "@/lib/schemas/board";
  */
 
 export const handle = { i18n: ["board"] };
+
+/**
+ * The controller renders the board twice — the collapsible mirror and the
+ * editor's miniature — so it needs the flap face for the same reason the
+ * display does. See the note on the display route's `links`.
+ */
+export const links: Route.LinksFunction = () => [
+  {
+    rel: "preload",
+    href: flapFont,
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  },
+];
 
 /**
  * The controller is a dark console in a dim room — declare it so the phone's

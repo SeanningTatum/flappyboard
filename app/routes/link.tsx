@@ -20,6 +20,9 @@ import {
   SegmentTrack,
   WELL_LIP,
 } from "@/components/board/console";
+// The scoped token override for the console surfaces. See the header of that
+// file for why this route runs its own visual language.
+import "./board/hardware-theme.css";
 
 /**
  * `/link` — the owner's half of TV pairing, and the end of the QR journey:
