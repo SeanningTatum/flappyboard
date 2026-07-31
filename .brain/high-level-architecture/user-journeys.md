@@ -1,18 +1,18 @@
 # User Journeys
 
-Verified against current code (2026-05-07). Auth pages live at root (no locale prefix); after auth, users land on `/dashboard`. `/admin/*` is reachable but currently has no layout-level auth gate (see [`security.md`](security.md) gap #1).
+Verified against current code (2026-07-31). Auth pages live at root (no locale prefix); after auth, users land on `/`, which resolves the real destination via `resolveSignedInHome`. `/admin/*` is reachable but currently has no layout-level auth gate (see [`security.md`](security.md) gap #1).
 
 ## Authentication flows
 
 ### Sign Up (new user)
 
 ```
-User → /sign-up                                       (loader: redirect /dashboard if session)
+User → /sign-up                                       (loader: redirect / if session)
      → SignupForm submits                             (Effect Schema validation client-side)
      → authClient.signUp.email({ email, password, name })
      → Better Auth handler at /api/auth/sign-up/email
      → Inserts user + account, creates session, sets httpOnly cookie
-     → On success, form calls navigate("/dashboard")
+     → On success, form calls navigate("/")
 ```
 
 Key files:
@@ -24,11 +24,11 @@ Key files:
 ### Login (existing user)
 
 ```
-User → /login                                         (loader: redirect /dashboard if session)
+User → /login                                         (loader: redirect / if session)
      → LoginForm submits
      → authClient.signIn.email({ email, password })
      → Better Auth handler verifies, checks ban (admin plugin), creates session
-     → On success, form calls navigate("/dashboard")
+     → On success, form calls navigate("/")
 ```
 
 A banned user fails at the Better Auth layer with the ban reason in the error response — the form surfaces it inline.
@@ -39,14 +39,21 @@ A banned user fails at the Better Auth layer with the ban reason in the error re
 User clicks sign-out → authClient.signOut() → /api/auth/sign-out → cookie cleared → client redirects to /login
 ```
 
-## Dashboard journey
+## Signed-in home
+
+There is no dashboard. `/` is the only surface that both knows there is a session and can afford
+to list boards server-side, so it is where the question is answered:
 
 ```
-User → /dashboard                                     (loader: getSession → redirect /login if absent)
-     → /dashboard/_index.tsx                          (placeholder content today)
+User → /                                              (loader: getSession)
+     → no session  → the landing page
+     → 1 board     → redirect /b/:boardId/c           (the controller — nothing to tap)
+     → 0 or 2+     → redirect /boards                 (the rack: a switcher, or the TV address)
 ```
 
-Layout is gated at [`app/routes/dashboard/_layout.tsx`](../../app/routes/dashboard/_layout.tsx).
+The rule is [`resolveSignedInHome`](../../app/lib/session.ts), pure and unit-tested.
+`/dashboard` and the six `/:lng` aliases forward from
+[`app/routes/legacy-redirect.ts`](../../app/routes/legacy-redirect.ts).
 
 ## Admin journeys
 
@@ -109,9 +116,11 @@ Key files:
 ```
 Public                Protected (session)         Admin (role="admin")
 ─────────             ──────────────────          ────────────────────
-/                     /dashboard/*                /admin/*  ← layout gate currently missing;
-/login                                              data-level enforcement via adminProcedure
-/sign-up
+/                     /boards                     /admin/*  ← layout gate currently missing;
+/login                /b/:boardId/c                         data-level enforcement via adminProcedure
+/sign-up              /link
+/tv                   (each action re-gates itself)
+/b/:boardId
 /api/auth/*           /api/upload-file ⚠ no auth check
 /api/trpc/*  (mixed — per procedure)
 ```

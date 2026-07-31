@@ -74,3 +74,44 @@ From the approved 4-phase redesign plan — verify these explicitly in the featu
 | Date | Type | Description |
 |------|------|-------------|
 | 2026-07-31 | feature | Scoped as phase 3 of the brand/IA/UX redesign, planned status; ships in the same PR as `app-ia` (phase 2) by owner decision. |
+
+## What shipped (2026-07-31)
+
+Built as one PR with `app-ia` on `feat/app-journey-v2`.
+
+### Pairing: the branch is gone
+
+`resolveAutoLink` (0 → create / 1 → pair / many → picker), the picker form, the native `<select>`, the naming field, the segmented existing/new track and the refresh-safe receipt were all deleted. `/link` went from 678 lines to ~300, of which **none render on the happy path** — the loader pairs and redirects straight to the controller.
+
+A board is a television. Scanning always makes one, so there is no question to answer. What is left on screen is the code field for someone who could not scan, plus the named refusals.
+
+Preserved deliberately:
+
+- **Create-then-approve rollback.** Approve runs after create because it needs the board id, so a stale code would otherwise leave an orphaned "Living Room" behind. Verified by counting rows across four deliberate failures: 3 before, 3 after.
+- **`defaultBoardName`'s signature and its tests.** `resolveAutoLink`'s three tests were deleted with the function they described.
+- **The no-JS contract.** Still a plain `<Form method="post">`, and the loader still approves server-side.
+- **The frozen paths.** `/b/:boardId`, `/b/:boardId/c`, `/tv`, `/tv/claim` are untouched. The television mints its controller QR from its own loader, so a path change only reaches a TV that reloads — and a wall-mounted panel may never have to.
+
+**Deliberately NOT rebuilt:** an "attach this TV to an existing board" control. A TV whose cookie is evicted shows a fresh code and scanning it makes a *second* board for the same television. That is real sprawl with no stable TV identity to dedupe on, and it remains an open question rather than a reason to restore the picker through the side door.
+
+### The TV
+
+The pairing code is six real flaps (`FlapWord`), unlit with white glyphs — the board's default state, not a colour statement; a pigment on a string somebody reads across a room would be decoration. It replaces a mono readout whose instinct (a code wants a fixed advance) was right for the wrong reason: a flap has a fixed advance by construction, and this screen *is* a split-flap display.
+
+`FlapWord` is not a board — no socket, no animator, no 144 tiles. A changed character remounts the tile (instant cut, not a flip), because the frozen `FlapTile` paints its faces once and never revisits them. Its size is explicit width/height derived from one cell width rather than `aspect-ratio`: that property is Chromium 88 and the Tizen panel is 56, where a grid with no intrinsic height collapses to nothing.
+
+### The controller
+
+**Content | Settings**, at the unchanged path.
+
+Settings absorbs the whole of the old `/boards`: TV address, rename, paired devices with their count, per-device un-pair, un-pair all TVs, revoke all phones, delete. As inline console controls, not Radix dialogs — a portal escapes the `data-surface` scope, traps focus and positions against the viewport, none of which earns its keep on a phone held one-handed in a dim room. Destructive controls arm **in place** (`ArmedKey`): the two-step is preserved, the overlay is not. Only `delete` is red; the two un-pair actions are recoverable by scanning again and sit next to the device list they act on.
+
+The one-time "name this phone" prompt became a plain field there. It was a modal-shaped interruption standing between someone and the thing they scanned a QR code to do.
+
+Content now has **one board instead of two**. The separate live mirror plus the editor's preview put two grids a hand's width apart on a 390px screen — a spot-the-difference puzzle, not a preview. The editor's grid is now the single instrument: live off the socket while nothing is composed, the compiled draft as soon as something is, swapping on `gridIsBlank(compiled.grid)`. The six typing wells moved below it, behind a disclosure.
+
+**Deviation from the plan, stated:** that disclosure **defaults open**. "Wells behind a toggle" was the instruction; collapsing the only text input by default would hide the primary path to promote the secondary one. What the toggle actually buys is the paint workflow — arm paint, fold the wells away, and the board is the whole screen.
+
+### Evidence
+
+`.brain/features/console-journey-v2/verifications/2026-07-31.md` — PASS. Signed-in `design:audit` HARD checks pass on the controller and `/link`. Still owed: the physical-TV check (legibility at 10 feet, Tizen render).

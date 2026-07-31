@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-07-31 — app-ia (feat-020) + console-journey-v2 (feat-021) implemented on feat/app-journey-v2 — /dashboard and the six /:lng aliases deleted behind literal forwarding routes (/pricing is a real 404 now), resolveSignedInHome added, /boards rebuilt as a hardware-scoped rack with flap nameplates, resolveAutoLink and the whole picker deleted (/link 678 -> ~300 lines, none rendered on the happy path), /tv pairing code set in six real flaps, controller gained Content|Settings tabs at the frozen path with the old board manager inlined as console controls, and the Content tab reduced from two board renders to one live-or-draft instrument. Three defects found beyond the brief: non-admin sign-out did not exist, /admin was a dead end, and ConsoleField's className was clobbered by its own prop spread. design:audit could not see any signed-in surface and was silently measuring /login; it now takes --sign-in and refuses when --scope matches nothing. Gates: typecheck green, 1262 unit tests, 6 e2e (4 asserting the migration), build green, harness 10/10, signed-in design:audit HARD checks pass on /boards, the controller, /link and /tv. Two verification docs written, both PASS.
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+- next: read design-critic's verdict and fix any P0/P1, then open the PR
+
+---
+
 ## 2026-07-31 — app-ia (feat-020) started; console-journey-v2 (feat-021) scoped as planned — Phase 2 + phase 3 of the brand/IA/UX redesign, shipped as ONE PR by owner decision (the board-detail surface phase 2 would split out is exactly what phase 3 folds into the controller as a Settings tab). app-ia flipped to in-progress: deletes /dashboard + six broken /:lng aliases, thins /boards to a switcher, builds the shared management shell, adds sign-out for non-admin users, adds resolveSignedInHome(boardCount), adds redirect shims. console-journey-v2 recorded as planned, depends on app-ia: deletes resolveAutoLink/picker/select/receipt page/manual mode, six-flap-tile pairing code on /tv, Content|Settings tabs on the frozen /b/:boardId/c controller. Both docs carry design-critic's phase-1 P1 findings forward as blocking Acceptance Criteria (radius/elevation contract, one-product surface parity, spend-the-pigments, measured step counts) plus the load-bearing constraints from the approved plan (frozen paths, /link no-JS contract, rollback-on-approve-failure, safeNextPath, per-action requireSession, defaultBoardName signature, board-locale-parity BOARDS_KEYS, frozen board render).
 - branch: `feat/app-journey-v2`
 - in-progress feature: feat-020 (app-ia)

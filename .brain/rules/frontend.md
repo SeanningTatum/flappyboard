@@ -3,7 +3,15 @@
 UI components, forms, modals, styling. **Source-of-truth files**: `app/components/**`, `app/routes/**/*.tsx`, `app/app.css`.
 
 > Programming model basics: see [`../codebase/effect-ts.md`](../codebase/effect-ts.md).
-> Public marketing surface (home, login/sign-up, dashboard entry) has its own visual language: see [`../codebase/design-system.md`](../codebase/design-system.md).
+> Public marketing surface (home, login/sign-up) has its own visual language: see [`../codebase/design-system.md`](../codebase/design-system.md).
+>
+> **Every signed-in surface is hardware-scoped.** `/boards`, `/link`, `/tv`, `/b/:boardId` and
+> `/b/:boardId/c` all import `app/routes/board/hardware-theme.css` and render inside `ConsoleField`.
+> Build with the console vocabulary (`ConsolePlate`, `ConsoleLabel`, `ConsoleReadout`, `SegmentTrack`,
+> `ConsoleAddress`, `ConsoleShell`, `FlapWord`) rather than shadcn cards and dialogs — a Radix overlay
+> portals to `document.body`, and although `ConsoleField` now mirrors `data-surface` onto `<html>` so a
+> portal inherits the right tokens, a focus-trapping overlay is still the wrong instrument for a phone
+> held one-handed. Destructive controls arm **in place** (see `ArmedKey` in `controller-settings.tsx`).
 
 ## Forms
 
@@ -115,7 +123,10 @@ Exception: gray scale OK for subtle layout (`border-gray-200 dark:border-gray-80
 
 ### Shared components / patterns (2026-07-15 remediation)
 
-- **`FeatureCard`** (`app/components/feature-card.tsx`) — the linked icon/title/badges/CTA card used by both `home.tsx` and `dashboard/_index.tsx` (optional `disabled`/`disabledHint`). Don't re-roll per-route card components.
+- **`FeatureCard`** (`app/components/feature-card.tsx`) — the linked icon/title/badges/CTA card used by `home.tsx` (optional `disabled`/`disabledHint`). Slated for deletion with the landing-page rewrite (phase 4, `front-door`).
+- **`FlapWord`** (`app/components/board/flap-word.tsx`) — a short string set in real flaps, plus `nameplatePigment(boardId)`. Used for the `/tv` pairing code and each board's nameplate on the rack. It is **not** a board: no socket, no animator, and a changed character remounts (instant cut, not a flip). Never reach into the frozen `board-grid-view` animator to "improve" it.
+- **`ConsoleShell`** (`app/components/board/console-shell.tsx`) — the account bar on signed-in console surfaces. Carries the wordmark, the language keys, the admin link and **the only sign-out a non-admin can reach**. A disclosure, not a `DropdownMenu`.
+- **`ConsoleAddress`** (`app/components/board/console-address.tsx`) — a TV address as a recessed readout, with the three-step clipboard degradation. Was `boards/board-tv-url.tsx`.
 - **Loader auth gating** — use `requireSession` / `requireAdmin` / `redirectIfAuthenticated` from `app/lib/session.ts`, never inline `context.auth.api.getSession` + redirect branching (see `routes.md`).
 - **Admin client actions** — route `authClient.admin.*` calls through the `runAdminAction` helper in `user-data-table.tsx` (checks `response.error`, toasts, revalidates). Never toast success before checking the response.
 - **Theme switcher** — one source: `themeItems` exported from `app/components/theme-toggle.tsx` (values double as `common.theme.*` i18n key suffixes; translate at the render site).

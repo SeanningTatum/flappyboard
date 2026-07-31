@@ -7,7 +7,7 @@ Email/password authentication with role-based access control (`user` / `admin`) 
 
 ## When It's Used
 - Public visitor opens `/sign-up` or `/login`
-- Loader on protected routes (`/dashboard/*`, intended for `/admin/*`) calls `getSession`
+- Loader on protected routes (`/boards`, `/link`, intended for `/admin/*`) calls `getSession` via `requireSession`
 - Every tRPC procedure resolves `ctx.auth` from the cookie
 - Admin actions (ban / unban / impersonate / role change) on `/admin/users`
 
@@ -29,7 +29,7 @@ const session = yield* Effect.promise(() => api.getSession({ headers }));
 
 [`createTRPCContext`](../../../app/trpc/index.ts) calls `api.getSession` once per request and exposes `ctx.auth = { session, user } | null`. `protectedProcedure` and `adminProcedure` enforce non-null and role respectively, throwing `TRPCError` directly (control-flow, not domain error).
 
-Form components (`signup-form.tsx`, `login-form.tsx`) call `authClient.signUp.email` / `authClient.signIn.email` from the browser; on success they `navigate("/dashboard")`.
+Form components (`signup-form.tsx`, `login-form.tsx`) call `authClient.signUp.email` / `authClient.signIn.email` from the browser; on success they `navigate(next ?? "/")` — and `/`'s loader resolves where that actually goes (`resolveSignedInHome`).
 
 ### Persistence details
 - D1 tables (Better Auth's drizzle schema): `user`, `session`, `account`, `verification` — see [`app/db/schema.ts`](../../../app/db/schema.ts)
@@ -58,7 +58,8 @@ Form components (`signup-form.tsx`, `login-form.tsx`) call `authClient.signUp.em
 | [`app/routes/authentication/components/login-form.tsx`](../../../app/routes/authentication/components/login-form.tsx) | Login form (RHF + `effectResolver(LoginSchema)`) |
 | [`app/routes/authentication/components/signup-form.tsx`](../../../app/routes/authentication/components/signup-form.tsx) | Sign-up form |
 | [`app/routes/api/auth.$.ts`](../../../app/routes/api/auth.$.ts) | `/api/auth/*` catch-all delegating to `auth.handler` |
-| [`app/routes/dashboard/_layout.tsx`](../../../app/routes/dashboard/_layout.tsx) | Canonical loader-level auth gate |
+| [`app/lib/session.ts`](../../../app/lib/session.ts) | `requireSession` / `requireAdmin` / `redirectIfAuthenticated` / `resolveSignedInHome` — the canonical loader-level auth gate |
+| [`app/components/board/console-shell.tsx`](../../../app/components/board/console-shell.tsx) | The account menu — **the only sign-out a non-admin can reach** |
 
 ## Dependencies
 

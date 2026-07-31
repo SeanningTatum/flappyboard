@@ -135,14 +135,14 @@ From [`app/routes.ts`](../../app/routes.ts):
 | `/api/auth/*` | `routes/api/auth.$.ts` | Better Auth handler |
 | `/api/upload-file` | `routes/api/upload-file.ts` | R2 upload — auth + size/type validated |
 | `/` | `routes/home.tsx` | Public marketing page |
-| `/:lng` | same | Locale-prefixed variant |
-| `/login`, `/sign-up` | `routes/authentication/{login,sign-up}.tsx` | Redirect to `/dashboard` if session present. `:lng` variants exist. |
-| `/dashboard`, `/dashboard/_index` | `routes/dashboard/{_layout,_index}.tsx` | Layout loader gates: redirects to `/login` if no session |
+| `/login`, `/sign-up` | `routes/authentication/{login,sign-up}.tsx` | Redirect to `/` if session present; `/` then resolves the real home. |
+| `/boards` | `routes/boards/_index.tsx` | The rack. `requireSession`; hardware-scoped |
+| `/dashboard`, `/en/*`, `/zh/*` | `routes/legacy-redirect.ts` | Forwarding addresses for the URLs the IA redesign removed (302 / 301) |
 | `/admin` | `routes/admin/_layout.tsx` + `_index.tsx` | ⚠ **Layout has no auth gate today.** Index is the analytics dashboard |
 | `/admin/users` | `routes/admin/users.tsx` | User management |
 | `/admin/kitchen-sink` | `routes/admin/kitchen-sink.tsx` | Component showcase |
 
-Locale prefixes: only `/`, `/login`, `/sign-up` accept the `/:lng/` variant. `/dashboard` and `/admin` are not locale-prefixed.
+Locale prefixes: **none.** Locale is a cookie; the `/:lng/` variants were deleted (see `i18n.md`).
 
 ## Auth endpoints (Better Auth)
 

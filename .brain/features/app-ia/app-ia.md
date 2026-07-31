@@ -72,3 +72,38 @@ From the approved 4-phase redesign plan — verify these explicitly in the featu
 | Date | Type | Description |
 |------|------|-------------|
 | 2026-07-31 | feature | Scoped and started as phase 2 of the brand/IA/UX redesign; status flipped to in-progress. |
+
+## What shipped (2026-07-31)
+
+Built as one PR with `console-journey-v2` on `feat/app-journey-v2`.
+
+### Deleted
+
+| Thing | Why |
+|---|---|
+| `app/routes/dashboard/{_layout,_index}.tsx` | A signed-in landing page whose only job was to link elsewhere, with four cards all `disabled={!isAdmin}` |
+| `app/locales/{en,zh}/dashboard.json`, the `dashboard` namespace | Went with the route |
+| The six `/:lng` alias routes | `...prefix(":lng", [index(...)])` matched **any** single segment, so `/pricing` served the marketing page with a 200 |
+| `app/components/boards/*` (6 files) | The board manager moved onto the controller's Settings tab as console controls |
+
+### Added
+
+- **`resolveSignedInHome(boards)`** in `app/lib/session.ts` — pure, unit-tested at all three branches. Takes the boards rather than the `boardCount` the plan named: a count cannot address `/b/:boardId/c`, and a helper answering "the rack, or somewhere I can't tell you" pushes the interesting half back to every caller. Called from exactly one place, `home.tsx`'s loader — the only surface that both knows there is a session and can afford to list boards server-side, so the client-side auth forms navigate to `/` and let it decide.
+- **`app/routes/legacy-redirect.ts`** — seven literal forwarding routes. `/dashboard` 302s (a product decision, reversible); `/en/*` and `/zh/*` 301 (duplicate-URL consolidation). Literal, **not** a `/:lng/*` splat: a splat would rebuild the soft-404 farm one status code over. Query survives the forward, because `/en/login?next=%2Flink%3Fcode%3D…` is a URL a QR-scanning visitor really lands on.
+- **`ConsoleShell`** — the account bar. Carries the wordmark, language keys, the admin link and **sign-out for non-admins**, which no user could reach before: `authClient.signOut()` existed in exactly one file, behind the admin role gate.
+- **A "Boards" entry in the admin sidebar** — `/admin` was a dead end.
+- **`lastSeenKey`** moved from `components/boards/board-devices.tsx` into `lib/board/paired-devices.ts` with 6 unit tests. It was a helper with none, which is one of the five non-negotiables; the clock-ran-backwards case now has a test.
+
+### Changed
+
+- `/boards` is a **hardware-scoped rack**, not a manager: 560 lines → ~200. Each board wears its name in real flaps in a pigment derived from its id (`FlapWord` + `nameplatePigment`). Per-board device fetches are gone — that was one Durable Object round trip per board on the page a household opens standing up, and the count now lives beside the controls that change it.
+- `requireAdmin` → `/boards`; `redirectIfAuthenticated` → `/`.
+- `BOARDS_KEYS` in `board-locale-parity.test.ts` went from 7 keys (the revoke dialog only) to the full namespace, so every string that moved is guarded in both bundles.
+
+### The trap that was not fallen into
+
+Moving `requireSession` into a layout does **not** protect a POST — React Router runs the leaf `action` on its own. Every action kept its own gate, and `/link`'s says so in a comment.
+
+### Evidence
+
+`.brain/features/app-ia/verifications/2026-07-31.md` — PASS. `bunx playwright test` 6/6, including four tests that assert the migration itself. Harness 10/10.

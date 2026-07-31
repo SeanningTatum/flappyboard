@@ -52,7 +52,8 @@ if (session.session.impersonatedBy) {
 
 ### Layer 1: route protection (loaders)
 
-Canonical pattern (used by [`app/routes/dashboard/_layout.tsx`](../../app/routes/dashboard/_layout.tsx)):
+Canonical pattern, centralised in [`requireSession`](../../app/lib/session.ts) and used by
+[`/boards`](../../app/routes/boards/_index.tsx) and [`/link`](../../app/routes/link.tsx):
 
 ```typescript
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -62,7 +63,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 ```
 
-Auth pages (`/login`, `/sign-up`) flip the check — redirect to `/dashboard` if a session already exists. After successful sign-in / sign-up the form components `navigate("/dashboard")`.
+Auth pages (`/login`, `/sign-up`) flip the check via `redirectIfAuthenticated`, whose default
+destination is now `/` — the index resolves where a session actually belongs with
+`resolveSignedInHome(boards)`: one board goes straight to its controller, zero or several go to
+`/boards`. There is no `/dashboard`; `/dashboard` and the six `/:lng` aliases are 302/301 shims
+(`app/routes/legacy-redirect.ts`).
+
+> **A loader gate does not protect a POST.** React Router runs the leaf `action` on its own, so
+> every action keeps its own `requireSession` — `/link`'s does, explicitly. Moving the gate "up"
+> into a layout would leave every action unauthenticated.
 
 > ⚠ **Current gap (verified 2026-05-07):** [`app/routes/admin/_layout.tsx`](../../app/routes/admin/_layout.tsx) has **no loader** — it does not gate on session or admin role. Admin pages rely on `adminProcedure` middleware throwing `UNAUTHORIZED` / `FORBIDDEN` from any tRPC call inside the loader (e.g. `context.trpc.admin.getUsers`), which surfaces as a 500-page rather than a redirect. To harden, add a loader to `_layout.tsx` that calls `getSession`, checks `role === "admin"`, and redirects to `/login` or `/` accordingly.
 
