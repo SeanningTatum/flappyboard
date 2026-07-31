@@ -247,7 +247,13 @@ export default function TvPairing({ loaderData }: Route.ComponentProps) {
       */}
       <p
         className="flex items-center gap-[1.2vmin] text-[2.4vmin] tracking-[0.3em] uppercase"
-        style={{ color: CONSOLE.inkMute }}
+        // `inkDim`, not `inkMute`. The mute level is for labels and units read
+        // at arm's length; this is the line that tells someone standing across
+        // a living room what the television is doing. On the black field
+        // `inkMute` measures 3.89:1 — technically AA for large text, and
+        // genuinely hard to read at three metres in a lit room. `inkDim` is
+        // 8.84:1 and still sits below the amber lamp in the hierarchy.
+        style={{ color: CONSOLE.inkDim }}
       >
         <span
           aria-hidden
