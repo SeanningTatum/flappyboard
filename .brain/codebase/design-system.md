@@ -1,189 +1,138 @@
-# Design System — Boilerplate Surface
+# Design System — flappyboard
 
-> Visual language for the **public marketing surface** (home, login/sign-up, dashboard entry). Synthesized from refero `DESIGN.md` references for [Cursor](https://styles.refero.design/style/4e3b4717-84c8-4599-baaf-a343c3d619b6) and [Linear](https://styles.refero.design/style/90ce5883-bb24-4466-93f7-801cd617b0d1) — both target a developer audience and read as "credible, technical, polished."
->
-> **This is the surface design language.** Internal app surfaces (admin, dashboard sub-pages) should reuse the same tokens but lean denser/more utilitarian. ShadCN component defaults still apply unless overridden here.
+> **The board is the brand.** This document was re-opened and rewritten on 2026-07-31. The previous direction (Cursor + Linear, restrained/technical, aimed at "engineers evaluating whether to fork the repo") was inherited from the starter template and was aimed at the wrong reader. flappyboard is a ~$3k-feeling split-flap object for a living room, driven from a phone. Approved in review round 1 — `plans/2026-07-31-brand-ia-redesign.html`.
 
 ## Direction
 
-A boilerplate that says, in one glance: _serious tech stack, low-noise UI, no marketing slop_. The audience is engineers evaluating whether to fork the repo. They don't want aspirational hero copy — they want to see the wiring.
+The repo used to carry two design systems and only one of them was any good.
+
+`app/app.css` was stock shadcn "neutral", unmodified. Meanwhile `flap-tile.tsx`, `board-frame.tsx` and `console.tsx` carried a researched physical language — a tonal ladder, hairlines instead of blurs, 1px lips instead of shadows, eight pigments measured off a real Vestaboard with PIL — entirely in hardcoded hex, unreachable by any other surface.
+
+**The work was extraction, not invention.** The board's language is now the token contract. Nothing here was made up; it was promoted.
 
 | Pillar | What it means concretely |
 |---|---|
-| **Restrained** | One accent color (CTA only). Monochrome surface palette. No gradients on text except as deliberate accent on a single hero word. |
-| **Technical** | Mono font for stack badges, route paths, file references, code-like UI strings. |
-| **Generous spacing** | 4px base unit; minimum vertical rhythm of 16/24/32/48 between sections. |
-| **Educational** | Every page surfaces _what's wired_ — stack badges, "powered by" rails, links into source/brain docs. |
-| **Honest** | Dashboard cards link to features that actually exist; remove placeholder/random-user clutter. |
+| **Physical** | Depth is a tonal step plus a hairline plus a 1px lip. Never a blur, never a drop shadow imitating a photograph. |
+| **Tight** | `--radius: 0.125rem`. The object is 0px on panels and 2px on wells; a pill would be a lie. |
+| **Ink, not black** | `--foreground` is the unlit flap (`#1f1f22`), `--background` is warm paper. Nothing printed is ever pure. |
+| **One signal** | Amber is a *state*. It is `--signal`, never `--primary`, and never an action fill. |
+| **The product is the hero** | We render a working split-flap board at 60fps. Any surface that needs to impress should show it rather than describe it. |
+
+**The register to avoid** is skeuomorphic costume — fake screws, brushed-metal photo textures, bevels imitating a photograph. The object earns its physicality from gradients and lips. `.brain/recipes/add-premium-surface.md` step 3: never build the metaphor literally.
+
+## Two surfaces, one contract
+
+| | App surface | Hardware surface |
+|---|---|---|
+| **Where** | `/`, `/login`, `/sign-up`, `/boards`, `/admin/*` | `/b/:boardId`, `/b/:boardId/c`, `/tv`, `/link` |
+| **Themes** | Light + dark, `next-themes`, `defaultTheme="system"` | Dark always — a sheet of painted metal has no light mode |
+| **Defined in** | `app/app.css` `:root` / `.dark` | `app/routes/board/hardware-theme.css`, `[data-surface="hardware"]` |
+
+The hardware surface is a **scoped token override** — the same variable names with different values, per "Scoped design systems" in [`../rules/frontend.md`](../rules/frontend.md). Because the names are the shadcn names, every primitive rendered inside the scope re-themes for free with zero component edits.
+
+Two things about that scope are load-bearing and easy to break:
+
+1. It is declared **twice** — `[data-surface="hardware"]` and `.dark [data-surface="hardware"]`, identical values. `ConsoleField` sets `className="dark"` on the same `<main>` that carries the attribute; there the two selectors tie on specificity and source order would decide it silently.
+2. `console.tsx`'s exported `CONSOLE` object reads the scope through `var(--hw-*, <literal>)`. **The fallbacks are not decoration.** The fixed backdrop `<div>` in `ConsoleField` renders as a *sibling* of the scoped `<main>`, and jsdom does not resolve custom properties at all. In both cases the fallback is what paints.
 
 ## Tokens
 
-Reuse existing `app/app.css` semantic tokens (`--background`, `--foreground`, `--card`, `--primary`, `--muted-foreground`, `--border`, etc.). **Do not introduce a new color palette** — the existing oklch monochrome works for the Linear/Cursor direction.
+Semantic names only. Full values in `app/app.css`; the ones that are new or easy to misuse:
 
-### Spacing scale (Linear-inspired, 4px unit)
-
-Use Tailwind's default scale (`1`=4px, `2`=8px, `3`=12px, …). Layout rhythm:
-
-| Use | Tailwind |
-|---|---|
-| Tight inline gap (icon ↔ label) | `gap-2` (8px) |
-| Card padding | `p-6` (24px) |
-| Section vertical rhythm (within page) | `space-y-12` / `gap-12` (48px) |
-| Hero block top/bottom | `py-20` / `py-24` (80–96px) |
-| Container max-width (marketing) | `max-w-6xl mx-auto` |
-| Container max-width (auth + dashboard) | `max-w-5xl mx-auto` |
-
-### Radius
-
-Match Linear's restraint: `rounded-md` (6px) for cards/buttons/inputs, `rounded-full` only for badges/avatars. Avoid `rounded-2xl` and above on functional surfaces.
-
-### Elevation
-
-Use a single subtle shadow on elevated cards (`shadow-sm`) and a hover lift (`hover:shadow-md transition-shadow`). Do not stack multiple shadows. The page background does not nest more than two surface levels (`bg-background` → `bg-card`).
-
-### Typography
-
-Inter (already wired via `--font-sans`) covers everything. Add a **mono** family for stack badges and code-like surfaces — use the system stack already common in this codebase: `ui-monospace, SFMono-Regular, Menlo, monospace`. We can reference it via `font-mono` (Tailwind default).
-
-| Role | Class | Notes |
-|---|---|---|
-| Display (hero) | `text-5xl sm:text-6xl font-semibold tracking-tight` | Drop the `font-extrabold`; `semibold` reads more refined. |
-| H1 (page) | `text-3xl font-semibold tracking-tight` | |
-| H2 (section) | `text-xl font-semibold tracking-tight` | |
-| Body | `text-base text-muted-foreground` | Default; `text-foreground` only when emphasis matters. |
-| Caption / meta | `text-sm text-muted-foreground` | |
-| Stack badge / code-ish | `font-mono text-xs uppercase tracking-wide` | |
-
-### Accent
-
-Single accent: existing `--primary` (oklch dark in light mode, oklch light in dark mode — i.e., it's monochrome by design). Use it for:
-
-- Primary CTA button background
-- Active-link underline
-- Single-word hero highlight (`text-primary` instead of orange→yellow gradient)
-
-The orange→yellow gradient currently in `home.tsx` should go. It dates the page and conflicts with "restrained / technical."
-
-## Components — surface patterns
-
-### Stack badge (new pattern)
-
-A small, monospace, uppercase label with a subtle border that names a piece of the stack ("WORKERS", "tRPC", "DRIZZLE"). Used in hero callouts, login context panel, dashboard feature cards.
-
-```tsx
-<span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-  <span className="size-1.5 rounded-full bg-primary" />
-  Workers
-</span>
-```
-
-### Educational feature card
-
-A card that explains what's wired, links to the live feature, and shows the relevant stack badges. Used on home + dashboard.
-
-```tsx
-<Link to="/admin" className="group">
-  <Card className="h-full transition-shadow hover:shadow-md">
-    <CardHeader>
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        <StackBadge>tRPC</StackBadge>
-        <StackBadge>Drizzle</StackBadge>
-      </div>
-      <CardTitle className="text-base">Admin dashboard</CardTitle>
-      <CardDescription>
-        Role-gated /admin route, user management, analytics.
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <span className="inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:gap-1.5 transition-all">
-        View admin → 
-      </span>
-    </CardContent>
-  </Card>
-</Link>
-```
-
-### Auth split-pane
-
-Login + sign-up: form on left (current width `max-w-sm`), context panel on right at `md:` and up. Context panel shows what the auth system is (Better Auth + D1) and a few stack badges. Mobile collapses to single column (form only — context drops).
-
-## Page-specific direction
-
-### Home (`/`)
-
-Replace current "showcase + random-user button + raw user list" page with:
-
-1. **Top bar** — small wordmark left, theme toggle + GitHub link right.
-2. **Hero** — H1 + one-line description + two CTAs ("Sign up", "Sign in"). Stack badges row beneath ("Workers · React Router · tRPC · Better Auth · Drizzle · Effect TS").
-3. **What's wired** — 6 educational cards (Auth, Admin, File Upload, Analytics, i18n, Effect TS). Each links to the most relevant route or brain doc.
-4. **Try it** — small inline panel: "Sign up with a random email" button (the existing demo, but reframed and isolated, not the centerpiece).
-5. **Footer** — repo link, brain link, "Built on the [stack]" line.
-
-Drop entirely:
-- The raw `UserList` rendering (it's a debug surface, not marketing).
-- The orange→yellow gradient.
-- The `🔐` `✨` emoji card icons (replaced with Tabler/Lucide icons).
-
-### Login + Sign-up
-
-Wrap the existing form in a split-pane layout:
-
-- Left (sm: only column, md: 5/12 col): form card (essentially today's `LoginForm`), with a tightened header and a small "← back to home" link top-left of the page.
-- Right (md: 7/12 col): context panel with a single h2, a short paragraph explaining what the auth system is, and a vertical list of stack badges. Hides on `<md`.
-
-### Dashboard entry (`/dashboard`)
-
-Replace the three placeholder cards (Getting Started, Recent Activity, Quick Actions — none of which actually do anything) with **four real boilerplate orientation cards**:
-
-| Card | Links to | Icon | Badges |
+| Token | Light | Dark | Notes |
 |---|---|---|---|
-| Auth & session | docs section / `/admin/users` | `IconLock` | Better Auth, D1 |
-| Admin dashboard | `/admin` (admin-only) | `IconShield` | tRPC, Drizzle |
-| File upload | brain doc | `IconUpload` | R2, Workers |
-| Effect TS API | brain doc | `IconCode` | Effect, tRPC |
+| `--signal` | `#8f6a00` | `#ffcc00` | The pilot lamp. **State only, never an action fill.** |
+| `--ring` | → `--signal` | → `--signal` | Two values on purpose — see below |
+| `--text-heading` / `--text-body` / `--text-body-subtle` | ink ladder | ink ladder | Closes drift where `frontend.md` documented tokens that did not exist |
+| `--flap-red` … `--flap-unlit` | — | — | **Theme-invariant**, declared once, never re-declared |
+| `--hw-*` | — | scope only | Material recipes with no shadcn equivalent |
+| `--font-sans` | Archivo | | + explicit CJK fallback |
+| `--font-mono` | IBM Plex Mono | | Ships on the TV path |
+| `--font-flap` | Inter (subset) | | **Board only.** Never use `font-flap` outside a flap-shaped object |
 
-Welcome row keeps `Welcome back, {name}!` but adds a one-line subtitle that points at "what to explore first."
+### Why amber carries two values
+
+`#ffcc00` on white is **1.51:1**. The WCAG 2.2 floor for a focus indicator (SC 1.4.11) is 3:1. So the lamp itself only survives on dark surfaces; light surfaces get a deep amber at 4.72:1 on paper. This is the trap hiding inside "the brand owns the focus color" — a single-value brand accent would have shipped an invisible focus ring for the second time.
+
+### Why the pigments are not `--chart-*`
+
+There are eight, not five; `--chart-*` is already consumed by `ui/chart.tsx` and recharts; and chart tokens legitimately flip between themes — which is exactly what a pigment must never do. A red flap is red on a television in a lit room whatever the phone's theme is. They are mirrored from `TILE_COLORS` and pinned to it by `app/components/board/__tests__/flap-pigment-parity.test.ts`.
+
+## Type
+
+Two real faces, both **SIL OFL 1.1**, both self-hosted from `app/assets/fonts/` (Vite content-hashes them; `public/_headers` caches them immutably). There is no runtime Google Fonts request.
+
+- **Archivo** — display and UI. American gothic news/wood-type roots: the register of a split-flap unit, not of a dashboard.
+- **IBM Plex Mono** — codes, readouts, tech labels. Engineering-instrument provenance rather than IDE provenance, with a slashed zero and an unambiguous `1`/`l`. It renders the six-character device code someone is transcribing off a television.
+
+**Every cut is static, deliberately.** A variable font needs Chromium 62+; a 2017 Samsung Tizen panel is Chromium 56, and both `/tv` and `/b/:boardId` render on exactly that hardware. A silently-ignored `wdth` axis there would paint every glyph at full width against metrics tuned for a condensed one, on the one device nobody can debug remotely.
+
+`font-display: block` on anything on the TV path (mono and flap); `swap` on Archivo.
+
+| Role | Class |
+|---|---|
+| Display | `text-5xl sm:text-6xl font-semibold tracking-tight` |
+| H1 / H2 | `text-3xl` / `text-xl font-semibold tracking-tight` |
+| Body | `text-base text-text-body` |
+| Tech label | `font-mono text-xs uppercase tracking-wider` |
+| Flap glyph | `font-flap leading-none font-semibold` — **board only** |
+
+## The board is frozen — and that took work
+
+`flap-tile.tsx`, `board-frame.tsx` and `board-grid-view.tsx` are not restyled. But freezing meant *actively decoupling*, not leaving alone: the glyph used `font-sans`, so changing the app's display face would have moved the metrics `GLYPH_SIZE`'s divisor is tuned to and overflowed wide glyphs on a television.
+
+It now uses `--font-flap`, pinned to an 8KB Inter subset of exactly the 57 characters in `BOARD_CHARS`. A visual no-op today, and a seam forever. Three call sites share it — `flap-tile.tsx`, `console.tsx`'s `FlapSwatch`, and `message-editor.tsx`'s miniature — because one decision in three places drifts.
+
+Do not touch: `GLYPH_SIZE`, `INLINE_GLYPH_SIZE`, the `26` divisor, `scaleX(0.85)`, the rAF loop, or the Tizen constraints at `flap-tile.tsx:11-17` (no `@keyframes`, no `:has()`, no container queries on the TV path).
 
 ## Do / Don't
 
-### Do
-- Reuse `--primary` for the single accent. Let dark mode invert it as it does today.
-- Use `font-mono` + `uppercase tracking-wider text-xs` for any stack/tech label.
-- Use `cn()` for every conditional class.
-- Add `data-testid` on every interactive element (per `frontend.md`).
-- Keep all copy in `app/locales/en/*.json`.
+**Do**
+- Reuse semantic tokens. A reference's accent becomes `--primary` or `--signal`, never a new hex in JSX.
+- Spend amber on state: a lamp, a live indicator, a focus ring. Count the painted elements.
+- Use `cn()` for every conditional class; `data-testid` on every interactive element.
+- Keep copy in `app/locales/{en,zh}/*.json` — **both**, always.
+- Measure contrast before shipping a colour pairing. Two invisible focus rings have already shipped here.
 
-### Don't
-- Don't reintroduce the orange→yellow text gradient.
-- Don't hardcode hex/rgb in JSX (per `frontend.md`).
-- Don't add a third surface level (no nested cards).
-- Don't write copy that promises features that don't exist (no "Recent Activity" placeholder).
-- Don't add new colors or radius tokens to `app.css` for this pass — reuse existing.
-- Don't put emojis in the UI.
+**Don't**
+- Don't make amber `--primary`. It paints every CTA in the app and spends the signal everywhere.
+- Don't re-declare a `--flap-*` under a theme. A pigment with a dark-mode variant is a category error.
+- Don't use `font-flap` outside a flap-shaped object.
+- Don't add a blur to create depth. Tonal step, hairline, 1px lip.
+- Don't put emojis in the UI. Icons come from `@tabler/icons-react` / `lucide-react`.
+- Don't assert on computed colours in tests — **jsdom does not resolve custom properties**.
 
-## A surface with its own design system
+## Reference lock
 
-This document governs the **starter's** surfaces. A surface that markets a different product (or a white-label skin) may run its own visual language through a **scoped token override** — same variable names, new values, under a `[data-surface="…"]` selector, in a stylesheet next to its route. Rules and the non-leakage requirement: [`../rules/frontend.md`](../rules/frontend.md) "Scoped design systems".
+Extends the existing hardware lock rather than re-opening it. All four were recorded in this repo when the Refero MCP was available:
 
-Worked example, from upstream and cut before that PR merged: a `/demo` surface ran a complete dark product-page system of its own — its own canvas, panels, accent, type pairing and radius scale — while `/` and every other route kept the tokens above, verified unchanged in the same browser session and pinned by an e2e test in both directions. The technique and its rules are in [`../rules/frontend.md`](../rules/frontend.md) "Scoped design systems"; the recipe that uses it is [`../recipes/add-premium-surface.md`](../recipes/add-premium-surface.md).
+| Reference | Traits taken | Recorded in |
+|---|---|---|
+| **Elektron** (primary) | Tonal ladder, sharp corners, amber strictly as a state signal | `features/phone-control/runs/2026-07-27-progress.md` |
+| **Oxide Computer** | Elevation via tonal shift + hairlines, never drop shadows | same |
+| **teenage engineering** | Industrial gray as stage, hairline dividers as structure | same |
+| **Vestaboard** | The category and price anchor; pigments measured with PIL | `features/split-flap-board/runs/2026-07-27-progress.md` |
+
+**Research degradation, stated plainly.** `REFERO_MCP_TOKEN` is unset by owner decision (round 1, decision 15), so the Refero MCP tools declared in `.mcp.json` are unavailable. Per [`../rules/frontend.md`](../rules/frontend.md) the fallback is the `refero-design` skill's bundled craft references plus tier-1 `ui-ux-pro-max`. No live Refero research backs this direction — it rests on the four locks above and on measurements of the real object.
+
+**Retired:** the Cursor (`4e3b4717-…`) and Linear (`90ce5883-…`) lock, and the "restrained / technical / educational / honest" pillars that came with it. They described a developer boilerplate, which is what this repo was forked from and is no longer.
+
+## Decision ledger
+
+| Decision | Choice | Traces to |
+|---|---|---|
+| layout | Three surface levels max; tonal steps, never nested cards | Elektron / Oxide |
+| type | Archivo + IBM Plex Mono, self-hosted, static cuts on the TV path | closes `console.tsx`'s own "no condensed face ships with the app" |
+| colour | Global contract retuned off the object; amber → `--signal` | Elektron — amber is state, never an action surface |
+| radius | `0.125rem` | `console.tsx` documents the object as 0px panels / 2px wells |
+| elevation | Hairline + 1px lip, no blur | Oxide — elevation via tonal shift |
+| motion | Unchanged this phase; when added, at the flap's real cadence | `add-premium-surface.md` step 6 |
+| imagery | None. The product renders itself | Vestaboard — the object is the hero |
+
+## Still to come (phases 2–4)
+
+The landing page still markets the starter template, `/dashboard` still exists, and the pairing journey still asks questions it does not need to. Those are phases 2–4 of the approved plan; this document covers the foundation they build on.
 
 ## Re-running the research
 
-This direction came from Refero. To extend it (new marketing section, new surface) or re-open it (deliberate redesign), run [`/design-research`](../../.claude/commands/design-research.md) — it drives the `refero-design` skill across the three Refero layers (styles → screens → flows), cross-checks a11y with `ui-ux-pro-max`, and writes a decision ledger before any JSX. Requires the `refero` MCP server ([`.mcp.json`](../../.mcp.json), `REFERO_MCP_TOKEN`).
-
-Locked reference set for this surface — pass these UUIDs to `refero_get_style` rather than re-searching from scratch:
-
-| Reference | Style UUID | Traits taken |
-|---|---|---|
-| Cursor | `4e3b4717-84c8-4599-baaf-a343c3d619b6` | Warm light surface, mono accents, multi-layer shadow, deliberate type |
-| Linear | `90ce5883-bb24-4466-93f7-801cd617b0d1` | 4px spacing unit, 6px radius, dense type, restrained palette |
-
-Adjacent references worth studying for a *technical, monochrome, dev-audience* surface (dominant-direction candidates — do not blend them): `ui.shadcn.com` `c14c0a94-1037-449e-bf5b-4cb972656ac7` (component-showcase grid, typographic authority), `sst.dev` `7b6c53c7-7145-476e-aed8-f2367eef3adb` (code block as the hero motif), `linear.app/changelog` `11d3e58a-87d7-4a9a-bbf5-720f4fd3ffc6` (dark restrained changelog rhythm).
-
-## References
-
-- `ui-ux-pro-max` skill — offline design-rule database (styles, layouts, UX/a11y checks, chart rules) queried before net-new UI. Advisory on **structure and behavior only**; the tokens above win on color/type. Invocation + guardrail: [`../rules/frontend.md`](../rules/frontend.md) "Design intelligence".
-- Refero MCP + `refero-design` skill — reference research for complex/net-new surfaces (tier 2 in `frontend.md`). Same guardrail: structure and behavior, never raw color.
-- Refero — Cursor `DESIGN.md` (warm light, mono-accented, multi-layer shadow, deliberate type).
-- Refero — Linear `DESIGN.md` (4px spacing unit, 6px radius, dense type, restrained palette).
-- `.brain/rules/frontend.md` — repo-wide frontend conventions (Tailwind tokens, `cn`, ShadCN forms, `data-testid`).
+To extend this direction, run [`/design-research`](../../.claude/commands/design-research.md). To re-open it, say so explicitly and get the owner's confirmation first — that is what happened here, and it ends in a rewrite of this file in the same PR.
