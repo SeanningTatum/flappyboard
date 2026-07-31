@@ -420,8 +420,8 @@ function Controller({
         }}
       >
         <h1
-          className="min-w-0 truncate text-[20px] leading-none font-semibold uppercase"
-          style={{ color: CONSOLE.ink, letterSpacing: "0.12em" }}
+          className="min-w-0 truncate text-[24px] leading-none font-semibold uppercase"
+          style={{ color: CONSOLE.ink, letterSpacing: "0.1em" }}
         >
           {board.name}
         </h1>
@@ -503,7 +503,12 @@ function Controller({
         </div>
       )}
 
-      <div className="flex flex-col gap-6 pb-4">
+      {/*
+        `pb-24`, not `pb-4`. The composer's action bar is pinned to the bottom
+        of the viewport, so without clearance the last thing in this column —
+        the history strip — sits under it permanently.
+      */}
+      <div className="flex flex-col gap-6 pb-24">
         {/*
           The live board used to be its own collapsible section, directly above
           the editor — which put TWO board renders on one phone screen, one

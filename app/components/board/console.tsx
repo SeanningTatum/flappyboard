@@ -242,7 +242,10 @@ export function ConsoleLabel({
   return (
     <h2
       className={cn(
-        "flex items-center gap-2 px-1 text-[10px] leading-none font-medium uppercase",
+        // No `px-1`. The label used to sit 4px inside the surface it names,
+        // which put three different left gutters in one Settings stack once the
+        // panel fills came off. Silkscreen lines up with the control.
+        "flex items-center gap-2 text-[10px] leading-none font-medium uppercase",
         className
       )}
       style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
@@ -413,7 +416,10 @@ export function FlapSwatch({
   return (
     <span
       aria-hidden
-      className="relative block h-8 w-full"
+      // `h-full`, not a fixed 32px. The swatch used to sit in the middle of a
+      // 44px button leaving 12px of dead target above and below, so the control
+      // measured smaller than it was and read smaller still.
+      className="relative block h-full w-full"
       style={{
         backgroundColor: CONSOLE.well,
         borderRadius: "2px",

@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils";
 import { authClient } from "@/auth/client";
 import { supportedLngs } from "@/i18n";
 import { useFetcher } from "react-router";
-import { CONSOLE, PLATE_LIP } from "@/components/board/console";
+import {
+  CONSOLE,
+  PLATE_LIP,
+  SegmentTrack,
+  segmentClass,
+  segmentStyle,
+} from "@/components/board/console";
 
 /**
  * The bar across the top of every signed-in console surface — the rack and the
@@ -135,34 +141,43 @@ export function ConsoleShell({ back, userName, isAdmin }: ConsoleShellProps) {
             and it submits to the same endpoint this does — what is lost by not
             reusing it is a portal, and what is gained is a control that reads
             as part of the panel it is screwed to.
+
+
+            `SegmentTrack` + `segmentStyle`, like every other "which one is
+            current" control in the product. It used to roll its own — a
+            `--hw-track` fill with ink text — which made this the THIRD encoding
+            of "selected" on a surface that already had two, and a viewer
+            genuinely could not tell whether a lit segment meant "current" or
+            "press me". One archetype, one encoding.
           */}
-          <div className="flex" role="group" aria-label={t("shell.menu")}>
-            {supportedLngs.map((lng) => {
-              const active = i18n.language === lng;
-              return (
-                <button
-                  key={lng}
-                  type="button"
-                  aria-pressed={active}
-                  disabled={active || localeFetcher.state !== "idle"}
-                  onClick={() =>
-                    localeFetcher.submit(
-                      { lng },
-                      { method: "post", action: "/api/set-locale" }
-                    )
-                  }
-                  className="flex min-h-11 flex-1 touch-manipulation items-center justify-center text-[11px] font-medium uppercase disabled:opacity-100"
-                  style={{
-                    letterSpacing: "0.16em",
-                    color: active ? CONSOLE.ink : CONSOLE.inkMute,
-                    backgroundColor: active ? CONSOLE.track : undefined,
-                  }}
-                  data-testid={`console-shell-lng-${lng}`}
-                >
-                  {lng === "zh" ? "中文" : "EN"}
-                </button>
-              );
-            })}
+          <div className="p-2">
+            <SegmentTrack role="group" aria-label={t("shell.menu")}>
+              {supportedLngs.map((lng) => {
+                const active = i18n.language === lng;
+                return (
+                  <button
+                    key={lng}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={active || localeFetcher.state !== "idle"}
+                    onClick={() =>
+                      localeFetcher.submit(
+                        { lng },
+                        { method: "post", action: "/api/set-locale" }
+                      )
+                    }
+                    className={cn(
+                      segmentClass(active),
+                      "h-11 flex-1 basis-0 touch-manipulation disabled:opacity-100"
+                    )}
+                    style={segmentStyle(active)}
+                    data-testid={`console-shell-lng-${lng}`}
+                  >
+                    {lng === "zh" ? "中文" : "EN"}
+                  </button>
+                );
+              })}
+            </SegmentTrack>
           </div>
 
           {isAdmin && (

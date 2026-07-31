@@ -439,10 +439,13 @@ export function PushToTalkButton({
         {recording && <ConsoleReadout value={readout} />}
       </div>
 
-      <div
-        className="flex flex-col gap-2 rounded-none p-2"
-        style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
-      >
+      {/*
+        No plate. The key inside already carries its own border and the caption
+        below it is silkscreen on the field — wrapping both in a raised
+        rectangle was a card with the corners filed off, and the section label
+        above already names the group.
+      */}
+      <div className="flex flex-col gap-2 rounded-none py-1">
         {/*
           One tall key. No fill of its own — the console's single filled control
           is "Send", and a second one would make the panel argue with itself.

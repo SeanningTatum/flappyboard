@@ -91,7 +91,7 @@ export interface ControllerSettingsProps {
  * now reserved for surfaces that hold **content** — a list of devices — and a
  * group of wells and keys gets a hairline rule instead.
  */
-const GROUP = "flex flex-col gap-3 px-1";
+const GROUP = "flex flex-col gap-3";
 
 /** A plate, for the one section that holds content rather than controls. */
 const PLATE = "flex flex-col gap-3 px-3 py-3";
@@ -118,9 +118,14 @@ const inkKeyStyle = (disabled: boolean): CSSProperties =>
   disabled
     ? {
         backgroundColor: "transparent",
+        // Dimmer than a live outline key's `inkDim` label, and on a dimmer
+        // hairline. The first correction swapped a dead mid-grey fill for an
+        // outline identical to the live UN-PAIR keys, so "disabled" started
+        // reading as "available" — over-corrected in the other direction.
         color: CONSOLE.inkMute,
+        opacity: 0.55,
         letterSpacing: "0.14em",
-        boxShadow: `inset 0 0 0 1px ${CONSOLE.hairline}`,
+        boxShadow: `inset 0 0 0 1px ${CONSOLE.track}`,
       }
     : {
         backgroundColor: CONSOLE.ink,
@@ -466,7 +471,7 @@ export function ControllerSettings({
 
           {/* --------------------------------------------------- devices */}
           <section className="flex flex-col gap-2">
-            <ConsoleLabel className="justify-between">
+            <ConsoleLabel className="justify-between px-0">
               <span>{t("devices.title")}</span>
               {/*
                 The device count, on the controller rather than on the rack —

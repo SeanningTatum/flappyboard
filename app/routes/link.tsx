@@ -290,11 +290,15 @@ function FlapCodeField({
       style={{
         padding: "6px",
         backgroundColor: CONSOLE.panel,
+        // A hairline ALWAYS, so the assembly reads as a control before anyone
+        // touches it. The first pass showed a bare plate whose six unlit tiles
+        // measured 1.15:1 against it — correct for a flap at rest, and
+        // completely wrong for the only input on the page.
         boxShadow: failed
           ? `inset 0 0 0 2px var(--destructive, #e8695f)`
           : focused
             ? `inset 0 0 0 2px ${CONSOLE.amber}`
-            : PLATE_LIP,
+            : `${PLATE_LIP}, inset 0 0 0 1px ${CONSOLE.hairline}`,
       }}
     >
       <span data-flap-display="">
@@ -306,13 +310,21 @@ function FlapCodeField({
           data-testid="link-code-flaps"
         />
         {/*
-          The caret: an amber bar under the cell the next character lands in.
-          Amber is the console's state signal and "this is where you are" is a
-          state — the same job it does as the pilot lamp on the television.
+          Six slots, always drawn — not a caret that only exists while focused.
+          That was the previous version and it failed the only test that
+          matters: at rest the field showed nothing at all, so there was no way
+          to see that it was an input, how many characters it wanted, or where
+          typing would land. A slot bar under every cell answers all three
+          before the first tap.
+
+          The bar under the NEXT cell is amber while focused — the console's
+          signal colour doing its one job, "this is where you are" — and ink at
+          rest, so the position is legible even when the field is not focused.
+          Cells already filled drop back to the mute level.
         */}
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-[6px] bottom-[6px] grid"
+          className="pointer-events-none absolute inset-x-[6px] bottom-[6px] grid gap-[2px]"
           style={{ gridTemplateColumns: `repeat(${DEVICE_CODE_LENGTH}, 1fr)` }}
         >
           {Array.from({ length: DEVICE_CODE_LENGTH }, (_, index) => (
@@ -321,7 +333,11 @@ function FlapCodeField({
               className="h-[2px]"
               style={{
                 backgroundColor:
-                  focused && index === filled ? CONSOLE.amber : "transparent",
+                  index === filled
+                    ? focused
+                      ? CONSOLE.amber
+                      : CONSOLE.ink
+                    : CONSOLE.inkMute,
               }}
             />
           ))}
