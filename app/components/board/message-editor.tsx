@@ -828,7 +828,8 @@ function RowDetail({ form, index, row, pending, locked }: RowDetailProps) {
         </ConsoleLabel>
         <button
           type="button"
-          className="h-8 shrink-0 rounded-none px-2 text-[10px] font-medium uppercase disabled:opacity-40"
+          // 44px, like every other target on this screen. It was 32.
+          className="h-11 shrink-0 touch-manipulation rounded-none px-3 text-[10px] font-medium uppercase disabled:opacity-40"
           style={{
             color: CONSOLE.inkDim,
             letterSpacing: "0.14em",
@@ -852,7 +853,9 @@ function RowDetail({ form, index, row, pending, locked }: RowDetailProps) {
               disabled={pending}
               className={cn(
                 segmentClass(active),
-                "h-9 min-w-0 flex-1 basis-0 px-0.5"
+                // 44px: four alignment keys share one track, so each is already
+                // narrow — losing height as well put them at 36.
+                "h-11 min-w-0 flex-1 basis-0 touch-manipulation px-0.5"
               )}
               style={segmentStyle(active)}
               onClick={() =>
@@ -1169,7 +1172,7 @@ export function MessageEditor({
             <SegmentTrack className="ml-auto shrink-0">
               <button
                 type="button"
-                className={cn(segmentClass(painting), "h-9 px-3")}
+                className={cn(segmentClass(painting), "h-11 touch-manipulation px-3")}
                 style={segmentStyle(painting)}
                 onClick={() => setPainting((on) => !on)}
                 aria-pressed={painting}
