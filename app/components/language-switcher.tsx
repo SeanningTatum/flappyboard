@@ -72,7 +72,15 @@ export function LanguageSwitcher({
           // in the DOM and painted a single "E" on the landing page and both
           // auth pages. Measured, not inferred.
           "*:data-[slot=select-value]:shrink-0",
-          compact ? "h-8 w-auto gap-1 px-2 text-xs" : "w-[140px]",
+          // `data-[size=default]:h-11`, not `h-11`. `SelectTrigger`'s base sets
+          // its height behind a `data-[size=default]:` variant, which outranks
+          // a plain utility on specificity — and tailwind-merge does not dedupe
+          // across a variant boundary, so a caller passing `h-11` silently got
+          // 36px. Measured at 44×36 on both the landing page and the auth
+          // pages, under the 44px floor the phone-first constraint sets.
+          compact
+            ? "w-auto gap-1 px-2 text-xs data-[size=default]:h-11"
+            : "w-[140px]",
           className,
         )}
         data-testid="language-switcher"

@@ -103,13 +103,18 @@ test.describe("Removed URLs", () => {
   });
 
   test("a locale alias keeps ?next= across the forward", async ({ page }) => {
-    // A QR-scanning visitor can legitimately land on `/en/login?next=/link?...`,
-    // and dropping `next` there strands them at the top of the app instead of at
-    // the pairing they started.
-    await page.goto("/en/login?next=%2Flink%3Fcode%3DGHPLXX");
+    // A gated visitor can legitimately land on `/en/login?next=…`, and dropping
+    // `next` there strands them at the top of the app instead of where they
+    // were going.
+    //
+    // `next` is `/boards` rather than the `/link?code=…` this test used to
+    // carry: a pairing `next` now lands on `/sign-up` (see the next test), which
+    // would make this assertion about two behaviours at once and fail for the
+    // wrong reason if either moved.
+    await page.goto("/en/login?next=%2Fboards");
     const url = new URL(page.url());
     expect(url.pathname).toBe("/login");
-    expect(url.searchParams.get("next")).toBe("/link?code=GHPLXX");
+    expect(url.searchParams.get("next")).toBe("/boards");
   });
 
   test("/pricing is a 404, not the marketing page", async ({ page }) => {
@@ -118,5 +123,69 @@ test.describe("Removed URLs", () => {
     // farm across the whole URL space. This is the regression test for it.
     const response = await page.goto("/pricing");
     expect(response?.status()).toBe(404);
+  });
+});
+
+test.describe("Pairing arrivals", () => {
+  test("an anonymous QR scan lands on sign-up, code intact and in flaps", async ({
+    page,
+  }) => {
+    // The real journey, driven end to end rather than asserted on a hand-built
+    // URL: `/tv` prints a code, the phone scans `/link?code=…`, `requireSession`
+    // gates it. Somebody who minted that code on their own television seconds
+    // ago has no account, so a password field is the wrong thing to show them.
+    await page.goto("/link?code=GHPLXX", { waitUntil: "networkidle" });
+    const url = new URL(page.url());
+    expect(url.pathname).toBe("/sign-up");
+    expect(url.searchParams.get("next")).toBe("/link?code=GHPLXX");
+    await expect(page.getByTestId("signup-form")).toBeVisible();
+
+    // The code itself is on the page, set in real flaps, so the six characters
+    // on the phone can be compared with the six on the television.
+    await expect(page.getByTestId("auth-flaps")).toHaveAttribute(
+      "data-text",
+      "GHPLXX"
+    );
+
+    // And "Sign in" is one tap away for a returning owner adding a second
+    // television — carrying `next`, and NOT bouncing back here. An earlier pass
+    // put this redirect in `/login`'s loader and made that toggle a dead
+    // control; this assertion is the regression guard.
+    await page.click('[data-testid="auth-mode-sign-in"]');
+    await page.waitForURL(/\/login\?next=/);
+    expect(new URL(page.url()).searchParams.get("next")).toBe(
+      "/link?code=GHPLXX"
+    );
+    await expect(page.getByTestId("login-form")).toBeVisible();
+    await expect(page.getByTestId("auth-flaps")).toHaveAttribute(
+      "data-text",
+      "GHPLXX"
+    );
+  });
+
+  test("a gated page with no code still bounces to sign-in", async ({
+    page,
+  }) => {
+    await page.goto("/boards", { waitUntil: "networkidle" });
+    const url = new URL(page.url());
+    expect(url.pathname).toBe("/login");
+    expect(url.searchParams.get("next")).toBe("/boards");
+    await expect(page.getByTestId("login-form")).toBeVisible();
+  });
+
+  test("an off-origin next cannot steer the redirect", async ({
+    page,
+    baseURL,
+  }) => {
+    // `safeNextPath` rejects `//host` before the code is ever read, so this is
+    // an ordinary sign-in page with a `next` that will be dropped — not a
+    // redirect to somebody else's origin. The pairing branch is a new place
+    // `next` is read, so it gets its own guard rather than trusting the unit
+    // test alone.
+    await page.goto("/login?next=%2F%2Fevil.com%2Flink%3Fcode%3DGHPLXX");
+    const url = new URL(page.url());
+    expect(url.origin).toBe(new URL(baseURL!).origin);
+    expect(url.pathname).toBe("/login");
+    await expect(page.getByTestId("login-form")).toBeVisible();
   });
 });

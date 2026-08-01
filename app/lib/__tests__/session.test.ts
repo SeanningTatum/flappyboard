@@ -7,6 +7,7 @@ import {
   resolveSignedInHome,
   safeNextPath,
   loginRedirectUrl,
+  pairingCodeFromNext,
 } from "../session";
 
 const makeContext = (session: unknown): AppLoadContext =>
@@ -48,11 +49,19 @@ describe("requireSession", () => {
 
   it("preserves the gated page's path and query in ?next=", async () => {
     await expectRedirect(
+      requireSession(request("http://localhost/boards?page=2"), makeContext(null)),
+      "/login?next=%2Fboards%3Fpage%3D2"
+    );
+  });
+
+  it("sends an anonymous QR scan to sign-up rather than sign-in", async () => {
+    // The gate is what knows the visitor was *sent*; see `loginRedirectUrl`.
+    await expectRedirect(
       requireSession(
         request("http://localhost/link?code=GHPLXX"),
         makeContext(null)
       ),
-      "/login?next=%2Flink%3Fcode%3DGHPLXX"
+      "/sign-up?next=%2Flink%3Fcode%3DGHPLXX"
     );
   });
 });
@@ -150,16 +159,67 @@ describe("safeNextPath", () => {
   });
 });
 
+describe("pairingCodeFromNext", () => {
+  it("reads the code a gated /link visit carried into ?next=", () => {
+    expect(pairingCodeFromNext("/link?code=GHPLXX")).toBe("GHPLXX");
+  });
+
+  it("normalizes presentation the way the code field does", () => {
+    // A TV free to print `GHPL-XX` for legibility must not force the owner (or
+    // this helper) to reproduce the grouping.
+    expect(pairingCodeFromNext("/link?code=ghpl-xx")).toBe("GHPLXX");
+  });
+
+  it("is null for any other destination", () => {
+    expect(pairingCodeFromNext("/boards")).toBeNull();
+    expect(pairingCodeFromNext("/link")).toBeNull();
+    // Not `/link`: a prefix match here would read a code out of a path the
+    // pairing flow never uses.
+    expect(pairingCodeFromNext("/linkedin?code=GHPLXX")).toBeNull();
+  });
+
+  it("is null for a code that is not one", () => {
+    expect(pairingCodeFromNext("/link?code=SHORT")).toBeNull();
+    // `0`, `1`, `I` and `O` are absent from the alphabet on purpose — a code
+    // containing one was misread, and refusing beats silently substituting.
+    expect(pairingCodeFromNext("/link?code=GHPL0X")).toBeNull();
+  });
+
+  it("re-applies the open-redirect guard rather than trusting its caller", () => {
+    expect(pairingCodeFromNext(null)).toBeNull();
+    expect(pairingCodeFromNext("")).toBeNull();
+    expect(pairingCodeFromNext("//evil.com/link?code=GHPLXX")).toBeNull();
+    expect(pairingCodeFromNext("/\\evil.com/link?code=GHPLXX")).toBeNull();
+    expect(pairingCodeFromNext("https://evil.com/link?code=GHPLXX")).toBeNull();
+  });
+});
+
 describe("loginRedirectUrl", () => {
   it("carries the gated path and query as ?next=", () => {
-    expect(
-      loginRedirectUrl(request("http://localhost/link?code=GHPLXX"))
-    ).toBe("/login?next=%2Flink%3Fcode%3DGHPLXX");
+    expect(loginRedirectUrl(request("http://localhost/boards?page=2"))).toBe(
+      "/login?next=%2Fboards%3Fpage%3D2"
+    );
   });
 
   it("uses the bare path when there is no query", () => {
     expect(loginRedirectUrl(request("http://localhost/boards"))).toBe(
       "/login?next=%2Fboards"
+    );
+  });
+
+  it("sends a pairing arrival to sign-up instead of sign-in", () => {
+    // Somebody who just scanned the code on their own television has no
+    // account. This is the only place that knows they were *sent* here rather
+    // than that they chose to sign in, which is why the choice lives here and
+    // not in `/login`'s loader.
+    expect(loginRedirectUrl(request("http://localhost/link?code=GHPLXX"))).toBe(
+      "/sign-up?next=%2Flink%3Fcode%3DGHPLXX"
+    );
+  });
+
+  it("keeps a codeless /link visit on sign-in", () => {
+    expect(loginRedirectUrl(request("http://localhost/link"))).toBe(
+      "/login?next=%2Flink"
     );
   });
 });

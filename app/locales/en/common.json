@@ -1,7 +1,7 @@
 {
   "company_name": "Acme Inc.",
-  "app_name": "CloudFlare SaaS Starter",
-  "app_name_short": "CF",
+  "app_name": "Flappyboard",
+  "app_name_short": "FB",
   "nav": {
     "home": "Home",
     "boards": "Boards",

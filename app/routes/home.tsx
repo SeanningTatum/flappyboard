@@ -179,7 +179,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             the controller: 44 px is the floor for anything a thumb has to hit.
           */}
           <div className="flex items-center gap-1 [&_button]:size-11">
-            <LanguageSwitcher compact className="h-11" />
+            <LanguageSwitcher compact />
             <ThemeToggle />
           </div>
         </div>

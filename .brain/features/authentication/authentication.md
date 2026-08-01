@@ -29,7 +29,7 @@ const session = yield* Effect.promise(() => api.getSession({ headers }));
 
 [`createTRPCContext`](../../../app/trpc/index.ts) calls `api.getSession` once per request and exposes `ctx.auth = { session, user } | null`. `protectedProcedure` and `adminProcedure` enforce non-null and role respectively, throwing `TRPCError` directly (control-flow, not domain error).
 
-Form components (`signup-form.tsx`, `login-form.tsx`) call `authClient.signUp.email` / `authClient.signIn.email` from the browser; on success they `navigate(next ?? "/")` — and `/`'s loader resolves where that actually goes (`resolveSignedInHome`).
+Form components (`sign-up-form.tsx`, `sign-in-form.tsx`) call `authClient.signUp.email` / `authClient.signIn.email` from the browser; on success they `navigate(next ?? "/")` — and `/`'s loader resolves where that actually goes (`resolveSignedInHome`).
 
 ### Persistence details
 - D1 tables (Better Auth's drizzle schema): `user`, `session`, `account`, `verification` — see [`app/db/schema.ts`](../../../app/db/schema.ts)
@@ -55,8 +55,10 @@ Form components (`signup-form.tsx`, `login-form.tsx`) call `authClient.signUp.em
 | [`app/lib/schemas/auth.ts`](../../../app/lib/schemas/auth.ts) | `LoginSchema`, `SignupSchema`, `Email`, `Password` |
 | [`app/routes/authentication/login.tsx`](../../../app/routes/authentication/login.tsx) | Login page |
 | [`app/routes/authentication/sign-up.tsx`](../../../app/routes/authentication/sign-up.tsx) | Sign-up page |
-| [`app/routes/authentication/components/login-form.tsx`](../../../app/routes/authentication/components/login-form.tsx) | Login form (RHF + `effectResolver(LoginSchema)`) |
-| [`app/routes/authentication/components/signup-form.tsx`](../../../app/routes/authentication/components/signup-form.tsx) | Sign-up form |
+| [`app/routes/authentication/components/auth-page.tsx`](../../../app/routes/authentication/components/auth-page.tsx) | The merged surface — one page, a Sign in / Create account toggle, both URLs real |
+| [`app/routes/authentication/components/sign-in-form.tsx`](../../../app/routes/authentication/components/sign-in-form.tsx) | Sign-in form (RHF + `effectResolver(LoginSchema)`) |
+| [`app/routes/authentication/components/sign-up-form.tsx`](../../../app/routes/authentication/components/sign-up-form.tsx) | Sign-up form |
+| [`app/routes/authentication/auth-route.ts`](../../../app/routes/authentication/auth-route.ts) | One loader body for both routes |
 | [`app/routes/api/auth.$.ts`](../../../app/routes/api/auth.$.ts) | `/api/auth/*` catch-all delegating to `auth.handler` |
 | [`app/lib/session.ts`](../../../app/lib/session.ts) | `requireSession` / `requireAdmin` / `redirectIfAuthenticated` / `resolveSignedInHome` — the canonical loader-level auth gate |
 | [`app/components/board/console-shell.tsx`](../../../app/components/board/console-shell.tsx) | The account menu — **the only sign-out a non-admin can reach** |
