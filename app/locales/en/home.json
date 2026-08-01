@@ -1,86 +1,84 @@
 {
   "meta": {
-    "title": "Cloudflare SaaS Starter",
-    "description": "Production-ready full-stack TypeScript starter for Cloudflare Workers — React Router v7, tRPC, Better Auth, Drizzle, Effect TS, and an agent harness so AI coding tools don't drift."
+    "title": "Flappyboard — a split-flap message board for your television",
+    "description": "Type on your phone and the flaps turn on the TV in the other room. 24 × 6 flaps, 144 in all, running in the television's own browser."
   },
-  "brand": "Cloudflare SaaS Starter",
-  "topbar": {
-    "sign_in": "Sign in",
-    "sign_up": "Sign up"
+  "brand": "Flappyboard",
+  "lede": {
+    "title": "A split-flap message board that runs on the television you already own.",
+    "body": "Point the TV's browser at one address and it becomes a board. After that anyone in the house can write to it from their phone — or ask the LLM a question and let it set the answer in flaps.",
+    "screensaver": "Is it just a screensaver? No. A screensaver has nothing to say. This holds whatever the last person put there, in the room they put it, until somebody changes it."
   },
-  "hero": {
-    "eyebrow": "Boilerplate · v2",
-    "title_lead": "A serious starting point for your next ",
-    "title_accent": "Cloudflare",
-    "title_trail": " SaaS.",
-    "description": "Auth, admin dashboard, file upload to R2, analytics, dark mode, i18n — all wired with Effect TS, tRPC, and Drizzle. Fork it, rip out what you don't need, and ship.",
-    "cta_primary": "Create account",
-    "cta_secondary": "Sign in"
-  },
-  "wired": {
-    "title": "What's already wired",
-    "subtitle": "Each card links into a route or surface in this repo. Nothing here is a stub — these features are live and tested.",
-    "cards": {
-      "auth": {
-        "title": "Email + password auth",
-        "description": "Better Auth with role-based access (user / admin) and a ban system, persisted in D1 via Drizzle.",
-        "cta": "Try sign-in"
-      },
-      "admin": {
-        "title": "Admin dashboard",
-        "description": "Role-gated /admin route with user management, ban controls, and analytics — gated through tRPC adminProcedure.",
-        "cta": "Open admin"
-      },
-      "upload": {
-        "title": "File upload to R2",
-        "description": "Server-side multipart upload through /api/upload-file, hitting Cloudflare R2 via a typed BucketRepository.",
-        "cta": "See upload"
-      },
-      "analytics": {
-        "title": "Read-only analytics",
-        "description": "User growth, role + verification distribution, recent signups — all queried with parallel Effect.all in a repository.",
-        "cta": "See analytics"
-      },
-      "effect": {
-        "title": "Effect TS programming model",
-        "description": "Tagged errors, Effect.Service repositories, Effect.Schema validation. No Zod, no try/catch, fully typed errors mapped to tRPC.",
-        "cta": "Browse kitchen sink"
-      },
-      "i18n": {
-        "title": "i18n out of the box",
-        "description": "remix-i18next wired into loaders + client. Add a locale by dropping a JSON file under app/locales/<lng>.",
-        "cta": "Toggle language"
-      }
+  "say": {
+    "label": "Type here — the board follows",
+    "placeholder": "Say something",
+    "counter": "{{used}} / {{capacity}}",
+    "hint": {
+      "dropped": "A flap can show A–Z, 0–9 and punctuation. Anything else was left off — the real board does the same.",
+      "nothing": "Nothing in that line has a flap, so the board is holding what it last showed. The drums are Latin: a real split-flap shows the same letters everywhere it is sold.",
+      "full": "That is more than the board holds. The rest fell off the bottom."
     }
   },
-  "harness": {
-    "eyebrow": "What's different in v2",
-    "title": "An agent harness, not just a stack",
-    "subtitle": "v2 ships with the scaffolding around the LLM — instructions, state, verification, scope, and lifecycle — so coding agents (Claude Code, Cursor, Codex) stay coherent across sessions instead of regressing every time the context window fills.",
-    "commands_label": "deterministic gates",
-    "pillars": {
-      "brain": {
-        "title": "Brain",
-        "description": "Layered docs the agent reads before touching code. High-level architecture, codebase patterns, 7 layer-aligned rules, per-feature memory, and run notes."
+  "cta": {
+    "primary": "Put one on your TV",
+    "have_one": "Already have a board?",
+    "sign_in": "Sign in"
+  },
+  "tv": {
+    "label": "On your TV's browser, go to",
+    "body": "That is the setup, all of it. A television with a browser opens the address and shows a six-character code; the phone that types the code owns the board. Nothing to install, nothing to plug in, no box on the shelf.",
+    "lamp": "Live"
+  },
+  "specs": {
+    "title": "Specifications",
+    "caption": "What the board is and what it runs on",
+    "rows": {
+      "display": {
+        "label": "Display",
+        "value": "24 × 6 flaps — 144 in all"
       },
-      "recipes": {
-        "title": "Recipes",
-        "description": "Step-by-step runbooks for the common moves — add a tRPC endpoint, a DB table, a tagged error, a CF binding. Bookended by 00-before-task and 99-verify-done."
+      "characters": {
+        "label": "Character set",
+        "value": "57 flaps per drum: the blank, A–Z, 0–9 and 20 marks of punctuation"
       },
-      "gates": {
-        "title": "Verification gates",
-        "description": "Slash commands that run typecheck, tests, e2e, brain coherence, and harness invariants. The agent can't claim done until every gate is green."
+      "pigments": {
+        "label": "Pigments",
+        "value": "6 colours, plus lit white and unlit — measured off a real unit"
+      },
+      "rate": {
+        "label": "Flap rate",
+        "value": "14 a second — one flap every 72 ms"
+      },
+      "travel": {
+        "label": "Longest travel",
+        "value": "4.2 s, one end of the drum to the other"
+      },
+      "written": {
+        "label": "Written from",
+        "value": "Any phone in the house, over a live socket"
+      },
+      "agent": {
+        "label": "Or written by",
+        "value": "The LLM, when you ask it a question instead of typing an answer"
+      },
+      "runs": {
+        "label": "Runs on",
+        "value": "Any television with a browser — Chromium 56 and up, so a 2017 panel is fine"
+      },
+      "address": {
+        "label": "TV address"
+      },
+      "pairing": {
+        "label": "Pairing",
+        "value": "A six-character code on the screen, or scan the QR beside it"
+      },
+      "sound": {
+        "label": "Sound",
+        "value": "The clatter, out of the television — not out of your phone"
       }
     }
-  },
-  "quickstart": {
-    "title": "Quickstart",
-    "subtitle": "Three commands and you have a working dev server, a local D1, and the marketing site you're looking at right now.",
-    "repo": "View repo",
-    "docs": "Browse code samples",
-    "terminal": "your terminal"
   },
   "footer": {
-    "tagline": "MIT — fork it, ship it."
+    "note": "A message board that lives in the room, not in a feed."
   }
 }

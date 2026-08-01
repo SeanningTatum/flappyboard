@@ -123,7 +123,8 @@ Exception: gray scale OK for subtle layout (`border-gray-200 dark:border-gray-80
 
 ### Shared components / patterns (2026-07-15 remediation)
 
-- **`FeatureCard`** (`app/components/feature-card.tsx`) — the linked icon/title/badges/CTA card used by `home.tsx` (optional `disabled`/`disabledHint`). Slated for deletion with the landing-page rewrite (phase 4, `front-door`).
+- ~~**`FeatureCard`**~~ — **deleted** 2026-07-31 with the landing-page rewrite (phase 4, `front-door`). It had exactly one caller, and the page it served was six of them advertising the starter's stack. If a new surface wants a grid of icon/title/CTA boxes, that is the anti-slop tell the rewrite removed — reach for a spec table, ruled rows or columns first (`codebase/design-system.md`, and `features/front-door/front-door.md` "Slop risks").
+- **Landing board helpers** — `app/lib/board/landing-board.ts` (`OPENING_GRID`, `typedBoard`) and `app/lib/board/tv-address.ts`. The landing page composes the frozen board with `BoardGridView variant="inline"`; it never hand-builds a grid, and `BoardFrame` cannot be composed inline (`board-frame.tsx:64` is `h-screen w-screen`).
 - **`FlapWord`** (`app/components/board/flap-word.tsx`) — a short string set in real flaps, plus `nameplatePigment(boardId)`. Used for the `/tv` pairing code and each board's nameplate on the rack. It is **not** a board: no socket, no animator, and a changed character remounts (instant cut, not a flip). Never reach into the frozen `board-grid-view` animator to "improve" it.
 - **`ConsoleShell`** (`app/components/board/console-shell.tsx`) — the account bar on signed-in console surfaces. Carries the wordmark, the language keys, the admin link and **the only sign-out a non-admin can reach**. A disclosure, not a `DropdownMenu`.
 - **`ConsoleAddress`** (`app/components/board/console-address.tsx`) — a TV address as a recessed readout, with the three-step clipboard degradation. Was `boards/board-tv-url.tsx`.

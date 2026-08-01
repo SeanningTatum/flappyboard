@@ -15,6 +15,15 @@ const languageLabels: Record<string, string> = {
   zh: "中文",
 };
 
+/**
+ * What the trigger says in `compact` mode. The menu still lists the full names —
+ * this is only the closed state, where there is room for a tag and not a word.
+ */
+const compactLabels: Record<string, string> = {
+  en: "EN",
+  zh: "中文",
+};
+
 interface LanguageSwitcherProps {
   className?: string;
   /** Compact pill suitable for top bars. Defaults to false (wide select). */
@@ -55,12 +64,24 @@ export function LanguageSwitcher({
     <Select value={i18n.language} onValueChange={handleLanguageChange} disabled={pending}>
       <SelectTrigger
         className={cn(
+          // `shrink-0` on the value is load-bearing, not tidying. `SelectTrigger`
+          // styles its value slot with `line-clamp-1` *and* `flex`; the `flex`
+          // wins the `display` cascade, which strips `-webkit-box` and leaves
+          // `overflow: hidden` on a flex item that is free to shrink. In a
+          // `w-auto` trigger it collapsed to **6px** — the label read "English"
+          // in the DOM and painted a single "E" on the landing page and both
+          // auth pages. Measured, not inferred.
+          "*:data-[slot=select-value]:shrink-0",
           compact ? "h-8 w-auto gap-1 px-2 text-xs" : "w-[140px]",
           className,
         )}
         data-testid="language-switcher"
       >
-        <SelectValue />
+        <SelectValue>
+          {compact
+            ? (compactLabels[i18n.language] ?? i18n.language.toUpperCase())
+            : (languageLabels[i18n.language] ?? i18n.language)}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {supportedLngs.map((lng) => (
