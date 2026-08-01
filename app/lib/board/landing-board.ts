@@ -44,14 +44,26 @@ const OPENING_LINES: ReadonlyArray<readonly [text: string, color: BoardColor]> =
     ["GO ON. YOU DRIVE IT.", "white"],
   ];
 
+/**
+ * What a visitor's own line is painted in.
+ *
+ * The same yellow the invitation used, and that is the point: `design-critic`
+ * round 1 found the typed state arriving in plain white while the message that
+ * asked for it was lit, so the visitor's words rendered *dimmer* than the
+ * product's own. On the real object a writer picks the colour; here the board
+ * lights their line for them.
+ */
+const TYPED_COLOR: BoardColor = "yellow";
+
+/** A row of the message, not of the grid — the compiler turns one into the other. */
+const say = (text: string, color: BoardColor) => ({
+  align: "center" as const,
+  segments: [{ text, color }],
+});
+
 const centered = (
   lines: ReadonlyArray<readonly [string, BoardColor]>
-): BoardMessage => ({
-  rows: lines.map(([text, color]) => ({
-    align: "center" as const,
-    segments: [{ text, color }],
-  })),
-});
+): BoardMessage => ({ rows: lines.map(([text, color]) => say(text, color)) });
 
 /**
  * Module-level constants, not factories: the animator compares grid **identity**
@@ -82,6 +94,10 @@ export interface TypedBoard {
   readonly used: number;
 }
 
+/** How many grid rows a compiled message actually puts glyphs on. */
+const litRows = (grid: BoardGrid): number =>
+  grid.rows.filter((row) => row.some((cell) => cell.char !== " ")).length;
+
 /**
  * The typed text, as the board would show it.
  *
@@ -99,8 +115,33 @@ export const typedBoard = (text: string): TypedBoard => {
     return { grid: null, note: "nothing", used: 0 };
   }
 
+  /*
+    Compiled twice, on purpose, and the second pass is the whole point.
+
+    A single message row lands on grid row 0, so a visitor's line sat pinned to
+    the top of the object with five empty rows under it — 83% dead tiles —
+    while the opening message it replaced was a composed, vertically centred
+    statement. `design-critic` round 1 (P1-a) called that what it is: the one
+    state that exists to prove "you drive it" rendered as a *downgrade* from the
+    state before the visitor touched anything.
+
+    The first pass only asks how many rows the text needs after wrapping; the
+    second pads it with that many blank rows above so it lands where the opening
+    message sat. There is no cheaper way to ask — wrapping is `compile.ts`'s
+    business, and re-deriving it here would be a second, quietly diverging
+    implementation of the invariant this module exists to avoid.
+
+    It is painted in the same yellow the invitation used. A visitor's own words
+    should not arrive dimmer than the words that asked for them.
+  */
+  const measured = compileMessage({ rows: [say(text, TYPED_COLOR)] });
+  const lead = Math.max(0, Math.floor((BOARD_ROWS - litRows(measured.grid)) / 2));
+
   const compiled = compileMessage({
-    rows: [{ align: "center", segments: [{ text, color: "white" }] }],
+    rows: [
+      ...Array.from({ length: lead }, () => say("", TYPED_COLOR)),
+      say(text, TYPED_COLOR),
+    ],
   });
 
   const note: BoardNote =

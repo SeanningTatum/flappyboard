@@ -201,8 +201,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             #121214 with no restated hex anywhere. The board brings its own
             painted-metal mask, which lands a step lighter than the room: canvas →
             plate → flap well is the whole elevation story, no shadows.
+
+            `border-y` is not trim. Forcing the band dark is a no-op when the
+            **page** is already dark, so in dark mode the band measured 1.00:1
+            against the canvas — the full-bleed room that gives the object its
+            edge did not weaken, it vanished, and what was left was a grid
+            floating in undifferentiated black (`design-critic` round 1, P1-d).
+            The hairline is the enclosure that survives both themes.
           */}
-          <div className="dark bg-background px-4 py-4 sm:px-8 sm:py-8">
+          <div className="dark border-y border-border bg-background px-4 py-4 sm:px-8 sm:py-8">
             {/*
               The field is 2:1 by construction, so its height is half whatever
               width it is given. `min(100%, 78vh)` is the trade: wide enough that
@@ -222,15 +229,22 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </div>
 
           {/*
-            One column on a phone, two from `lg` up — and the split is not
-            decoration. Stacked, a laptop puts the text field below the fold, so
-            the page claims you can drive the board and then hides the thing you
-            drive it with. Side by side, the object, the sentence and the field
-            are in one viewport, which is the only arrangement that makes the
-            claim true.
+            Reading order on a phone: **field, then prose, then CTA.** On a
+            laptop: prose left, field and CTA right.
+
+            The phone order is not a preference. Board-then-prose-then-field put
+            385 px between the bottom of the object and the top of the control —
+            46% of a 390 × 844 viewport — so with a keyboard raised, holding the
+            field in view left about 31 pt of board on screen. The page's whole
+            claim is that you drive the board, and the two could not be seen
+            together at the moment you did it (`design-critic` round 1, P1-c).
+
+            The CTA still lands last and `mt-auto` still drops it to the bottom
+            of the first screen, so the primary *action* keeps its thumb position
+            while the *demonstration* moves up under the thing it demonstrates.
           */}
-          <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-5 pt-6 pb-8 sm:gap-8 sm:px-8 sm:pt-8 sm:pb-10 lg:flex-row lg:items-start lg:gap-14">
-            <div className="flex flex-col gap-4 lg:flex-1">
+          <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-5 pt-6 pb-8 sm:gap-8 sm:px-8 sm:pt-8 sm:pb-10 lg:grid lg:grid-cols-[1fr_26rem] lg:items-start lg:gap-x-14 lg:gap-y-6">
+            <div className="order-2 flex flex-col gap-4 lg:order-none lg:col-start-1 lg:row-span-2 lg:row-start-1">
               <h1 className="max-w-[22ch] text-3xl font-semibold tracking-tight text-balance text-text-heading sm:text-4xl">
                 {t("lede.title")}
               </h1>
@@ -242,13 +256,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </p>
             </div>
 
-            {/*
-              The controller. On a phone `mt-auto` drops the field and the CTA
-              into the bottom third of the first screen, where a thumb reaches
-              without the hand moving — the owner's standing constraint, which
-              outranks how the whitespace looks.
-            */}
-            <div className="mt-auto flex flex-col gap-4 lg:mt-0 lg:w-[26rem] lg:shrink-0">
+            {/* The controller — directly under the object on a phone. */}
+            <div className="order-1 flex flex-col gap-4 lg:order-none lg:col-start-2 lg:row-start-1">
               <div className="flex flex-col gap-2">
                 <div className="flex items-baseline justify-between gap-4">
                   <label
@@ -257,9 +266,16 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   >
                     {t("say.label")}
                   </label>
+                  {/*
+                    `shrink-0 whitespace-nowrap`: the counter is three tokens
+                    around a slash and must never be broken across lines. Once
+                    the label grew to name the object ("the board *above*
+                    follows") it wrapped on a phone and took "14 /" with it,
+                    leaving "144" stranded on the next line.
+                  */}
                   <span
                     id="landing-say-count"
-                    className="font-mono text-[11px] tabular-nums text-text-body-subtle"
+                    className="shrink-0 font-mono text-[11px] tabular-nums whitespace-nowrap text-text-body-subtle"
                   >
                     {t("say.counter", { used: typed.used, capacity: BOARD_CAPACITY })}
                   </span>
@@ -273,6 +289,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
                   `rounded-lg` resolves to `--radius` (2 px): the object is 0 px
                   on panels and buttons, 2 px on wells, and this is a well.
+
+                  **The boundary is `--text-body-subtle`, not `--input`.** At
+                  `--input` the well measured 1.14:1 fill and a 1.42:1 edge
+                  against paper — below WCAG 1.4.11's 3:1 floor for a control
+                  boundary, and the same defect class as `/link`'s 1.15:1 field
+                  in phase 3. `design-critic` round 1 (P1-b) put the consequence
+                  plainly: a faint grey well stacked above a solid ink button
+                  *is* the email-capture pattern, so the page read as a
+                  decorative hero with a newsletter box under it. A 6.32:1
+                  hairline is the fix that stays inside the language — the object
+                  draws edges, it does not draw shadows.
                 */}
                 <Input
                   id="landing-say"
@@ -285,18 +312,43 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   spellCheck={false}
                   aria-describedby="landing-say-count landing-say-hint"
                   data-testid="landing-say-input"
-                  className="h-12 rounded-lg border-input bg-input/40 px-3 font-mono text-base tracking-[0.08em] uppercase shadow-none"
+                  className="h-12 rounded-lg border-text-body-subtle bg-input/40 px-3 font-mono text-base tracking-[0.08em] uppercase shadow-none"
                 />
+                {/*
+                  The charset, said **before** the refusal rather than after it.
+
+                  A Chinese visitor was invited to type by a label and a
+                  placeholder in their own language and learned only on the
+                  rebound that the drums are Latin (`design-critic` round 1,
+                  P1-e). The runtime behaviour was already right — the board
+                  holds its last displayable message and announces why — but
+                  being told after you have been turned down is not the same as
+                  being told. Same voice as the hint: a property of the object,
+                  never an apology for it.
+
+                  It swaps out while a hint is showing, so the two never stack
+                  and the layout never jumps.
+                */}
                 <p
                   id="landing-say-hint"
                   aria-live="polite"
                   className="min-h-5 max-w-[60ch] text-xs leading-relaxed text-text-body-subtle"
                   data-testid="landing-say-hint"
                 >
-                  {hint}
+                  {hint || t("say.note")}
                 </p>
               </div>
 
+            </div>
+
+            {/*
+              `mt-auto` keeps the primary action in the bottom third of the first
+              screen on a phone, where a thumb reaches without the hand moving —
+              the owner's standing constraint, which outranks how the whitespace
+              looks. It is a separate element from the field precisely so the
+              field can move up under the board without dragging the CTA with it.
+            */}
+            <div className="order-3 mt-auto lg:order-none lg:col-start-2 lg:row-start-2 lg:mt-0">
               <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:gap-6 sm:pt-5 lg:flex-col lg:items-start lg:gap-2">
                 <Button
                   asChild
@@ -335,18 +387,30 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <p className="max-w-[58ch] text-base leading-relaxed text-text-body">
               {t("tv.body")}
             </p>
-            <div className="mt-8 flex items-start gap-3">
-              {/*
-                The pilot lamp, and the only place `--signal` is spent on this
-                page. It carries no meaning colour alone has to hold: the label
-                beside it says what the address is for, and the lamp is hidden
-                from the accessibility tree rather than announced as decoration.
-              */}
-              <span
-                aria-hidden
-                className="mt-1.5 size-2.5 shrink-0 rounded-lg bg-signal"
-              />
-              <div className="flex min-w-0 flex-col gap-1.5">
+            {/*
+              There was a pilot lamp here — a 10 px `--signal` square before the
+              label — and it is gone on purpose.
+
+              `--signal` is two-valued: the real lamp amber in dark, and a
+              darkened #8f6a00 in light so the app-wide focus ring clears 4.5:1
+              on paper. That is the right call for a ring and the wrong one for a
+              lamp: at lightness 28% next to the board's own 51% yellow four
+              hundred pixels above, the page carried two unrelated yellows and
+              the "lit" instruction read as a bullet (`design-critic` round 1,
+              P2-a). A decorative dot that reads as a bullet is worse than no
+              dot, and the token's *value* is not negotiable — the ring depends
+              on it. So the mono label does the work instead.
+            */}
+            {/*
+              Full width, not a content-sized flex child. With the lamp gone
+              this is a single block, and the old `min-w-0` column sized itself
+              to its own text — so a real deployed host laid out at 864 px
+              inside a 306 px column and `break-all` never got the chance to
+              act. Proven by substituting a workers.dev hostname into the live
+              DOM; `localhost:5251/tv` is 17 characters and hides it.
+            */}
+            <div className="mt-8 w-full max-w-[58ch]">
+              <div className="flex w-full min-w-0 flex-col gap-1.5">
                 <span className="font-mono text-[11px] tracking-[0.16em] text-text-body-subtle uppercase">
                   {t("tv.label")}
                 </span>
@@ -376,9 +440,19 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <tbody>
                 {SPEC_ROWS.map((key) => (
                   <tr key={key} className="border-t border-border align-top">
+                    {/*
+                      `font-mono` on the label column, not just the values. The
+                      EP-133 borrow is carried by the *texture* of letterspaced
+                      mono caps; in the proportional face the column read as
+                      ordinary small text the moment the copy stopped being
+                      Latin (`design-critic` round 1, P2-d). Mono holds the
+                      register in English and gives the CJK labels a consistent
+                      rhythm that tracking alone cannot — CJK ignores
+                      letterspacing and has no case to raise.
+                    */}
                     <th
                       scope="row"
-                      className="w-[38%] py-3 pr-4 text-[11px] font-medium tracking-[0.14em] text-text-body-subtle uppercase sm:w-64"
+                      className="w-[38%] py-3 pr-4 font-mono text-[11px] font-medium tracking-[0.14em] text-text-body-subtle uppercase sm:w-64"
                     >
                       {t(`specs.rows.${key}.label`)}
                     </th>

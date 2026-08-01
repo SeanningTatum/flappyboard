@@ -113,3 +113,64 @@ describe("what a visitor types", () => {
     expect(typedBoard("a".repeat(500)).used).toBe(BOARD_CAPACITY);
   });
 });
+
+/**
+ * The typed state is the page's whole proof — "you drive the board before you
+ * sign up" — and `design-critic` round 1 found it rendering as a *downgrade*
+ * from the untouched state: one white line pinned to row 0 with five empty rows
+ * beneath it, while the message that invited it was centred and lit.
+ *
+ * Nothing in the suite caught that, because nothing asserted where on the object
+ * a line lands or what colour it arrives in. These do.
+ */
+describe("where a typed line lands on the object", () => {
+  /** The indices of grid rows carrying at least one glyph. */
+  const litRows = (grid: { rows: ReadonlyArray<ReadonlyArray<{ char: string }>> }) =>
+    grid.rows.flatMap((row, i) => (row.some((c) => c.char !== " ") ? [i] : []));
+
+  it("centres a one-line message instead of pinning it to the top", () => {
+    const { grid } = typedBoard("DINNER AT EIGHT");
+    expect(grid).not.toBeNull();
+    // Six rows, one lit: the only vertically centred choices are 2 and 3.
+    expect(litRows(grid!)).toEqual([2]);
+  });
+
+  it("keeps a wrapped message centred as one block", () => {
+    // Longer than 24 columns, so the compiler wraps it across several rows.
+    const { grid } = typedBoard(
+      "THE BINS GO OUT ON TUESDAY NIGHT WITHOUT FAIL"
+    );
+    expect(grid).not.toBeNull();
+    const lit = litRows(grid!);
+
+    expect(lit.length).toBeGreaterThan(1);
+    // Contiguous — the padding goes above the block, never through it.
+    expect(lit).toEqual(
+      Array.from({ length: lit.length }, (_, i) => lit[0]! + i)
+    );
+    // Balanced: blank rows above and below differ by at most one.
+    const above = lit[0]!;
+    const below = BOARD_ROWS - 1 - lit[lit.length - 1]!;
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+  });
+
+  it("lights the visitor's own words rather than leaving them plain", () => {
+    const { grid } = typedBoard("HELLO");
+    const painted = new Set(
+      grid!.rows.flatMap((row) =>
+        row.filter((cell) => cell.char !== " ").map((cell) => cell.color)
+      )
+    );
+    expect(painted).toEqual(new Set(["yellow"]));
+  });
+
+  it("never pushes text off the bottom to make room for the padding", () => {
+    // Six rows' worth: the centring must collapse to zero lead, not truncate.
+    const full = Array.from({ length: BOARD_ROWS }, () => "X".repeat(BOARD_COLS)).join(
+      " "
+    );
+    const { grid, note } = typedBoard(full);
+    expect(note).not.toBe("full");
+    expect(litRows(grid!)).toHaveLength(BOARD_ROWS);
+  });
+});
