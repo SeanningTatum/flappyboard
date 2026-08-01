@@ -21,6 +21,21 @@
 
 ---
 
+## 2026-08-01 — front-door shipped. PR #13 opened: https://github.com/SeanningTatum/flappyboard/pull/13 (stacks on #12). Landing page and auth pages both rebuilt; four design-critic rounds across two surfaces, both DO NOT SHIP before both SHIP. Seven pre-existing defects fixed, incl. outline-none in ui/select.tsx (4th component), a 44x36 language switcher on three surfaces, and an auth links export that unhydrated the whole surface while still rendering.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: await review on #12 then #13. Owed and not closeable from a laptop: the physical-TV check (Tizen render of the flap code, legibility at 10 feet). Owner decisions open: whether to re-open the no-imagery lock (the funnel measures 0.226% chromatic on the landing and 0.000% one tap later), and whether to build a password-reset route (none exists; the page now says so).
+
+---
+
+## 2026-08-01 — PR opened for front-door: https://github.com/SeanningTatum/flappyboard/pull/13
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+
+---
+
 ## 2026-08-01 — shipped front-door: Phase 4 of the redesign. The landing page is a controller — a live 24x6 board with a real field under it that drives the
 - branch: `feat/front-door`
 - in-progress feature: none
