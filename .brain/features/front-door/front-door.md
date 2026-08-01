@@ -90,6 +90,30 @@ No new token, and no hex in JSX. Canvas `--background` · headings `--text-headi
 
 **Two traps for anyone editing this page:** `--hw-*` resolve to **empty** at `:root` — the landing is an app surface, so every hardware value has an app-surface equivalent above. And a full-bleed dark band around the board is `className="dark"`, the mechanism the repo already uses, not a restated hex.
 
+### Design critique
+
+`design-critic` judges the render, never the source, and its verdict is blocking.
+
+**Round 1 → DO NOT SHIP, five P1s.** The useful part of the verdict is *where* it failed. **All nine anti-slop tells passed** — zero cards on the page, no default accent, light by default, the product rendered live at full-bleed scale rather than mocked, `--signal` spent exactly twice, the secondary reference held to its two licensed details, and the rejected direction leaving no residue. It also passed the literalism test, which was the likeliest place to fail: the board informs density and register without becoming scenery — no CSS-drawn case, no fake screws, no painted wall shadow.
+
+It failed on this instead: *"its own structural claim is the worst-executed thing on it."*
+
+| # | Finding | The measurement |
+|---|---|---|
+| P1-a | The typed state — the page's proof — is its ugliest frame | Typed, the board collapses to one white line pinned to row 1, five of six rows empty: **83% dead tiles**. The visitor's own message renders *less* composed than the demo that invited them to type it — top-aligned instead of centred, and stripped of the amber the demo was given |
+| P1-b | The control carrying the claim is the least visible thing on the fold | Well fill **1.14:1** against canvas, boundary **1.42:1**. WCAG 1.4.11 wants 3:1 for a control boundary, so it fails a11y outright — the same defect class as `/link`'s 1.15:1 field in phase 3. Verdict: *"as rendered, it reads as a decorative hero with a newsletter box under it"* |
+| P1-c | On the primary viewport the board and the input cannot be seen together | Board ends at 268 CSS px, input starts at 653 — **385px apart, 46% of the viewport**. With an iOS keyboard raised, holding the field in view leaves ~31pt of board on screen. The memorable move happens off-screen at the moment it happens |
+| P1-d | In dark mode the page's primary compositional device is absent | Board-band surround vs canvas: **17.77:1 light, exactly 1.00:1 dark**. Not weakened — gone. The board floats in undifferentiated black and what remains is the generic dark-landing silhouette |
+| P1-e | The `zh` input invites Chinese the board cannot set | Label and placeholder both invite typing, with nothing saying the drums are Latin until after the refusal |
+
+**P1-e was downgraded on evidence the critic did not have.** It flagged that no `zh`-typed screenshot existed, so the outcome was unproven. Captured it: typing 晚饭七点 leaves the board holding its last displayable message and the `aria-live` region announces, in Chinese, that no character has a flap and *"真正的翻页牌卖到哪里，翻出来的都是同一套字母"*. The runtime behaviour was already right. What was actually wrong is narrower — the warning arrives only after the visitor has been refused.
+
+**Its judgement on the brief, worth keeping:** *"premium landed — the spec table, the hairlines, the mono, the measured numbers. Delightful landed in the copy only… the missing joy is not a colour complaint and should not be fixed with colour — it is P1-a, P1-b and P1-c."*
+
+**On identity:** passes, but *"the load is carried entirely by the object: remove the board band and the type, colour and layout system would not identify this page as anything in particular."*
+
+**Recorded, not fixed:** the board takes 25% of the phone fold against 45% on desktop — a real trade for getting headline, prose, input and CTA all above the fold, which the page does achieve.
+
 ### Slop risks named up front
 
 1. **Collapsing the one thing we can render.** Showing the board as a screenshot, or hand-rolling "board-ish" rounded squares, or demoting it to a decorative header strip. *Litmus: if the first viewport survives with the board removed, the board is decoration and the page failed.*
