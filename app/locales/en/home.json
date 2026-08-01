@@ -10,7 +10,7 @@
     "screensaver": "Is it just a screensaver? No. A screensaver has nothing to say. This holds whatever the last person put there, in the room they put it, until somebody changes it."
   },
   "say": {
-    "label": "Type here — the board above follows",
+    "label": "Type — the board above follows",
     "placeholder": "Say something",
     "note": "A–Z, 0–9 and punctuation. The drums are Latin.",
     "counter": "{{used}} / {{capacity}}",

@@ -209,7 +209,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             floating in undifferentiated black (`design-critic` round 1, P1-d).
             The hairline is the enclosure that survives both themes.
           */}
-          <div className="dark border-y border-border bg-background px-4 py-4 sm:px-8 sm:py-8">
+          <div className="dark border-y border-border bg-background px-4 py-3 sm:px-8 sm:py-8">
             {/*
               The field is 2:1 by construction, so its height is half whatever
               width it is given. `min(100%, 78vh)` is the trade: wide enough that
@@ -243,7 +243,14 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             of the first screen, so the primary *action* keeps its thumb position
             while the *demonstration* moves up under the thing it demonstrates.
           */}
-          <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-5 pt-6 pb-8 sm:gap-8 sm:px-8 sm:pt-8 sm:pb-10 lg:grid lg:grid-cols-[1fr_26rem] lg:items-start lg:gap-x-14 lg:gap-y-6">
+          {/*
+            Tight on a phone, roomy from `sm` up. A headless capture reports an
+            844-pixel viewport, but iOS Safari's *content* viewport at that
+            device size is about 745pt once its chrome is subtracted, and the
+            CTA was landing past it (`design-critic` round 2). The vertical
+            rhythm here is the only slack there was.
+          */}
+          <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-5 pt-4 pb-6 sm:gap-8 sm:px-8 sm:pt-8 sm:pb-10 lg:grid lg:grid-cols-[1fr_26rem] lg:items-start lg:gap-x-14 lg:gap-y-6">
             <div className="order-2 flex flex-col gap-4 lg:order-none lg:col-start-1 lg:row-span-2 lg:row-start-1">
               <h1 className="max-w-[22ch] text-3xl font-semibold tracking-tight text-balance text-text-heading sm:text-4xl">
                 {t("lede.title")}
@@ -300,6 +307,18 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   decorative hero with a newsletter box under it. A 6.32:1
                   hairline is the fix that stays inside the language — the object
                   draws edges, it does not draw shadows.
+
+                  `focus-visible:ring-0` and a border that does not change on
+                  focus: ShadCN's `Input` paints a 3px ring *plus* a recoloured
+                  border, which stacked with this one into a five-pixel triple
+                  amber bezel — the single heaviest treatment on a page built
+                  entirely from 1px rules, and it introduced a tan that appears
+                  nowhere else in the system (`design-critic` round 2). The
+                  global `:focus-visible` outline in `app.css` is the indicator,
+                  and it is one 2px band. **Never** reach for `outline-none` to
+                  tidy this: that kills the outline and its forced-colors
+                  fallback, which is the defect this repo has now fixed four
+                  times.
                 */}
                 <Input
                   id="landing-say"
@@ -312,7 +331,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   spellCheck={false}
                   aria-describedby="landing-say-count landing-say-hint"
                   data-testid="landing-say-input"
-                  className="h-12 rounded-lg border-text-body-subtle bg-input/40 px-3 font-mono text-base tracking-[0.08em] uppercase shadow-none"
+                  className="h-12 rounded-lg border-text-body-subtle bg-input/40 px-3 font-mono text-base tracking-[0.08em] uppercase shadow-none focus-visible:border-text-body-subtle focus-visible:ring-0"
                 />
                 {/*
                   The charset, said **before** the refusal rather than after it.
