@@ -9,7 +9,7 @@
   <a href="https://workers.cloudflare.com/"><img src="https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white" alt="Cloudflare Workers"></a>
   <a href="https://reactrouter.com/"><img src="https://img.shields.io/badge/framework-React%20Router%20v7-CA4245?logo=reactrouter&logoColor=white" alt="React Router v7"></a>
   <a href="https://effect.website/"><img src="https://img.shields.io/badge/typed-Effect%20TS-1E1E2C" alt="Effect TS"></a>
-  <img src="https://img.shields.io/badge/tests-1262%20passing-3fb950" alt="1262 tests passing">
+  <img src="https://img.shields.io/badge/tests-1310%20passing-3fb950" alt="1310 tests passing">
 </p>
 
 <p align="center">
@@ -162,6 +162,36 @@ Deleting a board cascades its snapshot history with it, and every grant that poi
 
 ---
 
+## The front door drives the board
+
+<p align="center">
+  <img src="docs/assets/landing.png" alt="The flappyboard landing page: a full-bleed 24x6 split-flap board spelling SAY SOMETHING / TO THE LIVING ROOM / GO ON. YOU DRIVE IT., with the headline and a text field beneath it" width="820">
+</p>
+
+The landing page is a controller. The field under the board is real — type in it and the actual 144-tile animator flips, before there is an account, a socket or a server round trip.
+
+That is deliberate, and it is the one claim this product can make that a real Vestaboard cannot: they can't let a stranger drive a $3,000 mechanical object from their homepage. Ours are software.
+
+<p align="center">
+  <img src="docs/assets/landing-phone.png" alt="The landing page on a phone after typing PIZZA AT EIGHT: the board shows the typed words centred and lit in yellow, with the field directly beneath it" width="300">
+</p>
+
+Everything typed goes through `compileMessage` — the same 6×24 compiler the television runs — so the landing page can't become a second, quietly diverging board. Type Chinese and the board **holds** what it last showed rather than blanking, and says why: the drums are Latin, because a real split-flap shows the same letters wherever it is sold.
+
+---
+
+## Design
+
+Two design systems used to live here and only one of them was any good: stock shadcn neutral on the app, and a researched physical language on the board — a tonal ladder, hairlines instead of blurs, 1px lips instead of shadows, and eight pigments measured off a real Vestaboard with PIL. The second one was hardcoded hex that nothing outside the board could reach.
+
+Now there is one system. The board's language is the token contract, extended app-wide, with a `[data-surface="hardware"]` scope for the console surfaces. Archivo and IBM Plex Mono are self-hosted. Radius is 2px everywhere, because the object is. Amber `#ffcc00` is `--signal` — a state colour, never an action surface, so no CTA is ever amber.
+
+**The split-flap module is the atomic UI primitive, not a picture of one.** It sets the pairing code on the TV, the code field on `/link`, board names on the rack and the headline on the landing page — one idea carried structurally at four scales.
+
+Design work passes two gates that the usual ones cannot replace. `bun run design:audit` measures the render — contrast, overflow, target size, reduced motion, accent economy. Then a `design-critic` sub-agent judges the *pixels* against an anti-slop checklist and never reads the source; a P0 or P1 from it is blocking. It has returned **DO NOT SHIP** four times on this repo, and every time it caught something all the mechanical gates passed happily: a code field measuring 1.15:1 because it holds no text at rest, colour swatches 31px tall that no keyboard walk reaches, a mute switch whose `aria-checked` was correct while its semantics were inverted.
+
+---
+
 ## How it's built
 
 - **The compiler owns the 6×24 invariant.** Writers — phone, socket, model — produce a loose `BoardMessage`; `compileMessage` is the only bridge to a strict `BoardGrid`. It folds the charset, word-wraps to 24, applies alignment, and pads to exactly 144 cells, so no caller can construct an invalid board.
@@ -193,7 +223,7 @@ Built on [cf-saas-starter-react-router](https://github.com/SeanningTatum/cf-saas
 
 ## Verification
 
-`typecheck` 0 · **1,262 tests across 54 files** · `build` 0 · `harness-check` 10/10 · e2e smoke green.
+`typecheck` 0 · **1,310 tests across 59 files** · `build` 0 · `harness-check` 10/10 · e2e smoke green.
 
 Beyond the unit suite, user-visible flows get a **browser walk**: a headless run against the live app that drives the golden path plus an error path, screenshots every step, and writes a verdict doc to `.brain/features/<slug>/verifications/`. Every screenshot in this README came out of one of those runs.
 
