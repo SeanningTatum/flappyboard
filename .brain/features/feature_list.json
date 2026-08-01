@@ -1,6 +1,6 @@
 {
   "$schema": "Machine-readable feature state tracker. Source of truth for status; per-feature MD docs are source of truth for design/runtime.",
-  "updated": "2026-07-31",
+  "updated": "2026-08-01",
   "policy": {
     "one_in_progress_at_a_time": true,
     "definition_of_done": "implementation complete + verify-done passed + feature MD updated + brain coherent"
@@ -331,8 +331,8 @@
         "feat-020",
         "feat-021"
       ],
-      "status": "in-progress",
-      "evidence": "",
+      "status": "shipped",
+      "evidence": "Phase 4 of the redesign. The landing page is a controller — a live 24x6 board with a real field under it that drives the actual 144-tile animator before any account exists, which Vestaboard structurally cannot offer. Auth merged into one surface; a visitor arriving from a scanned TV lands on Create account with their own pairing code in flaps. feature-card.tsx and stack-badge.tsx deleted with the boilerplate. Verified: .brain/features/front-door/verifications/2026-08-01.md (PASS). Four design-critic rounds across two surfaces, both DO NOT SHIP before both SHIP. Gates: typecheck 0, 1314 tests/59 files, e2e 9/9, build 0, harness 10/10.",
       "owners": [
         "sean"
       ]

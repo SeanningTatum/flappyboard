@@ -204,6 +204,20 @@ One rule replaced five patches: **the band is a readout — present when there i
 | 2026-07-31 | Landing page built and shipped. `design-critic` round 1 DO NOT SHIP (five P1s) → round 2 SHIP. `feature-card.tsx` deleted. README refreshed. |
 | 2026-07-31 | Scoped as feat-022. Claimed in-progress; `/design-research` dispatched for the landing surface. |
 
+### Auth critique
+
+**Round 1 → DO NOT SHIP, five P1s.** The board was a decorative header strip on the two states almost everyone sees (`HELLO THERE` / `WELCOME BACK`) — **slop risk #1 named verbatim in this feature's own lock**. Dark measured 1.00:1 band-vs-canvas: the landing's own P1-d, unpropagated one tap downstream, and worse because there was no large board to carry the figure. The 1440 right pane was 87% void with a full-height rule drawn down the middle — *"the two-pane auth shell you deleted has been structurally reinstated with less in it."* Sign-in dead-ended on bad credentials while its spare space held the landing's acquisition copy. And a selected tab and the primary action shared a fill **and** a label — two identical blocks 470px apart both reading "Create account", the two brightest objects on the dark page.
+
+**Round 2 → SHIP.** All five landed, no new P0/P1, and it re-derived the numbers rather than accepting them: the rail sampled at `rgb(65,65,69)`, 6 device px, on canvas `rgb(18,18,20)` = **1.843:1**, matching the claim to two places.
+
+On the boundary, which round 1 had charged with *"wearing the landing's two best components"*: the landing's board is a bare grid inset in the band; the auth board sits in a `FlapPlate` with an extrusion frame and lit lip that appears nowhere on `/`, sets a request-derived string rather than a fixed marketing one, and is conditional on state. *"Shared chassis, auth-owned idea. Round 1's charge no longer stands."*
+
+**Refuted, with the reason:** round 1 claimed the pairing copy lies because the TV renders plain glyphs rather than flaps. It cited a 29 July capture belonging to another feature and correctly caveated it as possibly stale. It is — `/tv` was rebuilt in phase 3 and renders six real tiles.
+
+**Carried, not claimed:** the dark band interior is still exactly 1.00:1. Every tonal step in the dark palette measures 1.18–1.23:1 against the canvas, so a fill would have been *weaker* than the boundary it replaced. The device moved rather than the value, and the critic accepted that as legitimate — but it is recorded as partial.
+
+**The residual, measured:** landing 0.226% chromatic pixels → one tap → sign-up **0.000%**, at every viewport and both themes. The decorative greeting's amber was correctly removed and nothing replaced it. Held at P2 because *"coldness is not sloppiness"*, but the honest answer to "did it get warmer" is no — it was resolved by subtraction. Same brief question as the landing's residual, and the owner's call.
+
 ## Owed
 
 - **A password-reset route does not exist.** The dead `href="#"` link is gone and `/login` now *names* the gap in the visitor's own language rather than leaving silence where a link should be (`locked_out.*`), but a household that forgets its password still has no path back. No route, no token store, no mail transport. Product decision, raised with the owner separately.

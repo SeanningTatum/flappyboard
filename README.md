@@ -9,7 +9,7 @@
   <a href="https://workers.cloudflare.com/"><img src="https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white" alt="Cloudflare Workers"></a>
   <a href="https://reactrouter.com/"><img src="https://img.shields.io/badge/framework-React%20Router%20v7-CA4245?logo=reactrouter&logoColor=white" alt="React Router v7"></a>
   <a href="https://effect.website/"><img src="https://img.shields.io/badge/typed-Effect%20TS-1E1E2C" alt="Effect TS"></a>
-  <img src="https://img.shields.io/badge/tests-1310%20passing-3fb950" alt="1310 tests passing">
+  <img src="https://img.shields.io/badge/tests-1314%20passing-3fb950" alt="1314 tests passing">
 </p>
 
 <p align="center">
@@ -223,7 +223,7 @@ Built on [cf-saas-starter-react-router](https://github.com/SeanningTatum/cf-saas
 
 ## Verification
 
-`typecheck` 0 · **1,310 tests across 59 files** · `build` 0 · `harness-check` 10/10 · e2e smoke green.
+`typecheck` 0 · **1,314 tests across 59 files** · `build` 0 · `harness-check` 10/10 · e2e smoke green.
 
 Beyond the unit suite, user-visible flows get a **browser walk**: a headless run against the live app that drives the golden path plus an error path, screenshots every step, and writes a verdict doc to `.brain/features/<slug>/verifications/`. Every screenshot in this README came out of one of those runs.
 
