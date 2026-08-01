@@ -1,7 +1,7 @@
 {
   "company_name": "Acme 公司",
-  "app_name": "CloudFlare SaaS 起步包",
-  "app_name_short": "CF",
+  "app_name": "Flappyboard",
+  "app_name_short": "FB",
   "nav": {
     "home": "首页",
     "boards": "板子",

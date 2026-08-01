@@ -17,7 +17,7 @@ User → /sign-up                                       (loader: redirect / if s
 
 Key files:
 - [`app/routes/authentication/sign-up.tsx`](../../app/routes/authentication/sign-up.tsx)
-- [`app/routes/authentication/components/signup-form.tsx`](../../app/routes/authentication/components/signup-form.tsx)
+- [`app/routes/authentication/components/sign-up-form.tsx`](../../app/routes/authentication/components/sign-up-form.tsx)
 - [`app/auth/server.ts`](../../app/auth/server.ts), [`app/auth/client.ts`](../../app/auth/client.ts)
 - [`app/lib/schemas/auth.ts`](../../app/lib/schemas/auth.ts) — `SignupSchema` (with confirm-password filter)
 

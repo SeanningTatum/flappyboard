@@ -36,9 +36,10 @@ import flapFont from "@/assets/fonts/inter-flap-600.woff2?url";
 export const handle = { i18n: ["board"] };
 
 /**
- * The flap face is preloaded per-route rather than in `root.tsx` because
- * nothing outside a board renders a tile — there is no reason to spend a round
- * trip on it while someone is reading the landing page.
+ * The flap face is preloaded per-route rather than in `root.tsx` because only
+ * the surfaces that render tiles need it. That is this route, the controller,
+ * and — since 2026-07-31 — the landing page, which drives a live board of its
+ * own and declares the same preload (`routes/home.tsx`).
  *
  * It is declared `font-display: block`, so the alternative to arriving early is
  * 144 tiles painting nothing until it lands. `crossOrigin` is required even

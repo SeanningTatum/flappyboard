@@ -187,14 +187,62 @@ jobs:
 
           ALIAS_URL=$(printf '%s' "$OUT" | grep -oE 'Version Preview Alias URL: https://\S+' | awk '{print $NF}')
           VERSION_URL=$(printf '%s' "$OUT" | grep -oE 'Version Preview URL: https://\S+' | awk '{print $NF}')
-          if [ -z "$ALIAS_URL" ] || [ -z "$VERSION_URL" ]; then
-            echo "::error::Could not extract preview URLs from wrangler output — its format may have changed. See the log above."
-            exit 1
-          fi
+          VERSION_ID=$(printf '%s' "$OUT" | grep -oE 'Worker Version ID: \S+' | awk '{print $NF}')
+
           {
             echo "alias_url=$ALIAS_URL"
             echo "version_url=$VERSION_URL"
+            echo "version_id=$VERSION_ID"
           } >> "$GITHUB_OUTPUT"
+
+          # A missing URL is NOT a failed deploy, and it used to be treated as
+          # one: `exit 1` on an upload that had already succeeded. That turned
+          # every PR red for days across four branches — `feat/brand-system`,
+          # `chore/sync-template`, `feat/app-journey-v2`, `feat/front-door` —
+          # while the worker itself uploaded fine every time. A check that is
+          # always red teaches people to stop reading checks, which costs more
+          # than the missing link does.
+          #
+          # By the time we reach here `wrangler versions upload` has exited 0:
+          # the bundle is built, the assets are uploaded and the version exists
+          # on the account. The only thing absent is a convenience URL, so this
+          # warns and keeps going.
+          #
+          # Why it can be absent even with `preview_urls: true` (verified set,
+          # both in wrangler.jsonc and in the generated build/server/wrangler.json
+          # the upload actually uses): a preview URL hangs off the Worker's
+          # workers.dev subdomain, and that subdomain is only provisioned by a
+          # real `wrangler deploy`. A Worker that has only ever been
+          # version-uploaded has nowhere to serve one from — the same one-time
+          # bootstrap the Durable Object branch above describes, surfacing in a
+          # second way now that the DO migration is applied.
+          if [ -z "$ALIAS_URL" ] || [ -z "$VERSION_URL" ]; then
+            {
+              echo "### Preview uploaded, but no preview URL was returned"
+              echo
+              echo "\`wrangler versions upload\` **succeeded** — version \`${VERSION_ID:-unknown}\`"
+              echo "is on the account. Wrangler printed no \`Version Preview URL\`, so there"
+              echo "is no link to hand you."
+              echo
+              echo "Most likely cause: the \`flappyboard-preview\` Worker has no workers.dev"
+              echo "subdomain yet. A preview URL is served from that subdomain, and only a"
+              echo "real deploy provisions it — \`versions upload\` never can."
+              echo
+              echo "**One-time fix — repo owner, run locally.** CI does not make real"
+              echo "deploys against the live account:"
+              echo
+              echo '```bash'
+              echo "bun run deploy:preview"
+              echo '```'
+              echo
+              echo "If that is already done, check that preview URLs are enabled for the"
+              echo "Worker in the Cloudflare dashboard (Settings → Domains & Routes)."
+              echo
+              echo "This step no longer fails the job for a missing URL: the deploy worked,"
+              echo "and only the convenience link is absent."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Preview version ${VERSION_ID:-unknown} uploaded successfully, but wrangler returned no preview URL — the preview Worker most likely has no workers.dev subdomain yet. One-time fix: 'bun run deploy:preview'. Not failing the job, because the deploy itself succeeded."
+          fi
 
       # The seed summary comes from the seed script itself (--describe), so
       # extending fixtures in scripts/seed-preview.ts automatically updates
@@ -204,9 +252,21 @@ jobs:
           {
             echo "### Preview deployment"
             echo
-            echo "**${{ steps.upload.outputs.alias_url }}**"
-            echo
-            echo "Per-commit version: ${{ steps.upload.outputs.version_url }}"
+            # The URL branch, because a comment reading "**</>**" with an empty
+            # bold and a dangling "Per-commit version:" is worse than saying
+            # plainly that there is no link. See the upload step for why a URL
+            # can be missing on a deploy that succeeded.
+            if [ -n "${{ steps.upload.outputs.alias_url }}" ]; then
+              echo "**${{ steps.upload.outputs.alias_url }}**"
+              echo
+              echo "Per-commit version: ${{ steps.upload.outputs.version_url }}"
+            else
+              echo "Version \`${{ steps.upload.outputs.version_id }}\` uploaded — but"
+              echo "wrangler returned no preview URL, so there is no link to open."
+              echo "The \`flappyboard-preview\` Worker most likely has no workers.dev"
+              echo "subdomain yet; only a real deploy provisions one. One-time fix,"
+              echo "run locally: \`bun run deploy:preview\`."
+            fi
             echo "Commit: \`${{ github.sha }}\`"
             echo
             echo "Data: this PR gets its **own D1 database** (created when the PR"

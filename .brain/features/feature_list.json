@@ -1,6 +1,6 @@
 {
   "$schema": "Machine-readable feature state tracker. Source of truth for status; per-feature MD docs are source of truth for design/runtime.",
-  "updated": "2026-07-31",
+  "updated": "2026-08-01",
   "policy": {
     "one_in_progress_at_a_time": true,
     "definition_of_done": "implementation complete + verify-done passed + feature MD updated + brain coherent"
@@ -298,8 +298,8 @@
       "dependencies": [
         "feat-019"
       ],
-      "status": "in-progress",
-      "evidence": "",
+      "status": "shipped",
+      "evidence": "PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — /dashboard and the six /:lng aliases deleted with redirect shims, /boards reduced to a thin rack, ConsoleShell added (closes the defect where a non-admin could never sign out), admin sidebar gains a Boards entry. Verified: .brain/features/app-ia/verifications/2026-07-31.md (PASS).",
       "owners": [
         "sean"
       ]
@@ -314,8 +314,25 @@
         "feat-019",
         "feat-020"
       ],
-      "status": "planned",
-      "evidence": "",
+      "status": "shipped",
+      "evidence": "PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — resolveAutoLink, the board picker, the <select>, the receipt and /link's manual mode all deleted; /link is ~300 L with no UI on the happy path and its code field set in real flaps; the controller is Content|Settings tabs at the frozen /b/:boardId/c. Verified: .brain/features/console-journey-v2/verifications/2026-07-31.md (PASS), three design-critic rounds ending SHIP.",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-022",
+      "name": "Front Door",
+      "slug": "front-door",
+      "doc": ".brain/features/front-door/front-door.md",
+      "description": "Phase 4 of the redesign. Rewrites the public landing page: home.tsx today returns title \"Cloudflare SaaS Starter\", six cards advertising the stack, a section printing /start-task and .brain/recipes/ paths to end users, and a Quickstart terminal printing bun install. It is replaced by one screen — a live board that spells its own headline and flips once on load, \"Put it on your TV\" -> sign-up, and the instruction the product has never given anywhere: on your TV's browser, go to yourhost/tv. home.json is rewritten in both locales. Login and sign-up merge into one toggled page, defaulting to sign-up when `next` carries a pairing code. feature-card.tsx dies with the old page.",
+      "dependencies": [
+        "feat-019",
+        "feat-020",
+        "feat-021"
+      ],
+      "status": "shipped",
+      "evidence": "Phase 4 of the redesign. The landing page is a controller — a live 24x6 board with a real field under it that drives the actual 144-tile animator before any account exists, which Vestaboard structurally cannot offer. Auth merged into one surface; a visitor arriving from a scanned TV lands on Create account with their own pairing code in flaps. feature-card.tsx and stack-badge.tsx deleted with the boilerplate. Verified: .brain/features/front-door/verifications/2026-08-01.md (PASS). Four design-critic rounds across two surfaces, both DO NOT SHIP before both SHIP. Gates: typecheck 0, 1314 tests/59 files, e2e 9/9, build 0, harness 10/10.",
       "owners": [
         "sean"
       ]

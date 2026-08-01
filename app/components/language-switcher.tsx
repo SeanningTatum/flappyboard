@@ -15,6 +15,15 @@ const languageLabels: Record<string, string> = {
   zh: "中文",
 };
 
+/**
+ * What the trigger says in `compact` mode. The menu still lists the full names —
+ * this is only the closed state, where there is room for a tag and not a word.
+ */
+const compactLabels: Record<string, string> = {
+  en: "EN",
+  zh: "中文",
+};
+
 interface LanguageSwitcherProps {
   className?: string;
   /** Compact pill suitable for top bars. Defaults to false (wide select). */
@@ -55,12 +64,42 @@ export function LanguageSwitcher({
     <Select value={i18n.language} onValueChange={handleLanguageChange} disabled={pending}>
       <SelectTrigger
         className={cn(
-          compact ? "h-8 w-auto gap-1 px-2 text-xs" : "w-[140px]",
+          // `shrink-0` on the value is load-bearing, not tidying. `SelectTrigger`
+          // styles its value slot with `line-clamp-1` *and* `flex`; the `flex`
+          // wins the `display` cascade, which strips `-webkit-box` and leaves
+          // `overflow: hidden` on a flex item that is free to shrink. In a
+          // `w-auto` trigger it collapsed to **6px** — the label read "English"
+          // in the DOM and painted a single "E" on the landing page and both
+          // auth pages. Measured, not inferred.
+          "*:data-[slot=select-value]:shrink-0",
+          // `data-[size=default]:h-11`, not `h-11`. `SelectTrigger`'s base sets
+          // its height behind a `data-[size=default]:` variant, which outranks
+          // a plain utility on specificity — and tailwind-merge does not dedupe
+          // across a variant boundary, so a caller passing `h-11` silently got
+          // 36px. Measured at 44×36 on both the landing page and the auth
+          // pages, under the 44px floor the phone-first constraint sets.
+          // `compact` is the utility-corner variant, and its peer there is the
+          // theme toggle — a bare ghost icon button. This used to be a bordered
+          // box beside it at a different optical height: two peer controls, two
+          // treatments (`design-critic`, P3-a). Bare now, same 44px box, same
+          // hover fill as `Button variant="ghost"`.
+          //
+          // The border goes and the focus indicator does not: the global
+          // `:focus-visible` outline in `app.css` is what marks this control,
+          // which is why `ui/select.tsx` had `outline-none` removed and why it
+          // must never come back.
+          compact
+            ? "h-11 w-auto gap-1 border-0 bg-transparent px-2.5 text-xs shadow-none hover:bg-accent hover:text-accent-foreground data-[size=default]:h-11 dark:bg-transparent dark:hover:bg-accent"
+            : "w-[140px]",
           className,
         )}
         data-testid="language-switcher"
       >
-        <SelectValue />
+        <SelectValue>
+          {compact
+            ? (compactLabels[i18n.language] ?? i18n.language.toUpperCase())
+            : (languageLabels[i18n.language] ?? i18n.language)}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {supportedLngs.map((lng) => (

@@ -73,13 +73,13 @@
     }
   },
   "revoke": {
-    "title": "Unpair every phone from \"{{name}}\"?",
+    "title": "Un-pair every phone from \"{{name}}\"?",
     "description": "Every phone that scanned this board loses control immediately, and the code on your TV stops working until the display refreshes it a few seconds later. The board keeps its name and its history. Anyone who needs it back can scan the new code.",
     "cancel": "Keep them paired",
-    "confirm": "Unpair phones",
-    "revoking": "Unpairing…",
+    "confirm": "Un-pair phones",
+    "revoking": "Un-pairing…",
     "error": {
-      "revoke_failed": "The phones weren't unpaired. Try again."
+      "revoke_failed": "The phones weren't un-paired. Try again."
     }
   },
   "delete": {

@@ -21,6 +21,88 @@
 
 ---
 
+## 2026-08-01 — PR #13 is CLEAN — all five checks green. Resolved the conflicts caused by #12 being squash-merged (rebased the 12 front-door commits onto the squashed main; diff vs the pre-rebase backup tag is empty, zero work lost). Also fixed the Preview Deploy workflow, which had been red on four branches since 2026-07-29: it exit-1'd on a successful upload because it could not scrape a preview URL. Root cause checked rather than assumed — preview_urls is true and survives into the generated config, but a preview URL is served from a workers.dev subdomain that only a real deploy provisions. It now warns with that diagnostic and passes.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: PR #13 awaits review. Owner decisions open: whether to re-open the no-imagery lock (funnel measures 0.226% chromatic on the landing, 0.000% one tap later), and whether to build a password-reset route (none exists; the sign-in page says so plainly). Owed and not closeable from a laptop: the physical-TV check. One-time and owner-only: 'bun run deploy:preview' would give the preview worker a workers.dev subdomain and restore real preview links.
+
+---
+
+## 2026-08-01 — front-door shipped. PR #13 opened: https://github.com/SeanningTatum/flappyboard/pull/13 (stacks on #12). Landing page and auth pages both rebuilt; four design-critic rounds across two surfaces, both DO NOT SHIP before both SHIP. Seven pre-existing defects fixed, incl. outline-none in ui/select.tsx (4th component), a 44x36 language switcher on three surfaces, and an auth links export that unhydrated the whole surface while still rendering.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: await review on #12 then #13. Owed and not closeable from a laptop: the physical-TV check (Tizen render of the flap code, legibility at 10 feet). Owner decisions open: whether to re-open the no-imagery lock (the funnel measures 0.226% chromatic on the landing and 0.000% one tap later), and whether to build a password-reset route (none exists; the page now says so).
+
+---
+
+## 2026-08-01 — PR opened for front-door: https://github.com/SeanningTatum/flappyboard/pull/13
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-08-01 — shipped front-door: Phase 4 of the redesign. The landing page is a controller — a live 24x6 board with a real field under it that drives the
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-08-01 — front-door: landing page and auth pages rebuilt. Landing locked to Panic Playdate (direction C — you drive the board before you sign up); design-critic round 1 DO NOT SHIP with five P1s, round 2 SHIP. Auth merged into one toggled surface; a pairing arrival lands on Create account with its own code in flaps. Deleted feature-card.tsx and stack-badge.tsx. Five pre-existing defects fixed: outline-none in ui/select.tsx (4th component), a 44x36 language switcher on three surfaces, a truncated compact switcher painting a single 'E', a select drop shadow against the elevation contract, and Better Auth's English error leaking onto zh pages. README refreshed: 9 screenshots recaptured, 4 net-new, plus a Design section. Gates: typecheck 0, 1310 tests/59 files, e2e 9/9, build 0, harness 10/10.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: awaiting design-critic on the auth pages; then open the PR. Owed: the physical-TV check (Tizen render of the flap code, legibility at 10 feet) and a password-reset route, which does not exist.
+
+---
+
+## 2026-08-01 — design research: landing page — locked Panic Playdate as primary, direction C 'say something' (drive the board before you sign up). Owner approved extending decision 4: one flip on load, then user-initiated flips only, never a loop. Vestaboard rejected outright on the identity test. Refero degraded (token unset) — five live page fetches substituted. Ledger written to features/front-door/front-door.md.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: implement the landing page via ui-builder, then design:audit + feature-verifier + design-critic; then refresh README screenshots
+
+---
+
+## 2026-07-31 — shipped console-journey-v2: PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — resolveAutoLink, the board picker, the 
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — shipped app-ia: PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — /dashboard and the six /:lng aliases de
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — PR opened for console-journey-v2: https://github.com/SeanningTatum/flappyboard/pull/12
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — PR opened for app-ia: https://github.com/SeanningTatum/flappyboard/pull/12
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — PR #12 opened for app-ia (feat-020) + console-journey-v2 (feat-021). Three design-critic rounds: DO NOT SHIP, DO NOT SHIP, SHIP. Round 2 refuted part of round 1's own fix (the /link caret only painted while focused, so the field measured 1.15:1 at rest). Defects found beyond the brief: non-admin sign-out did not exist, every text input in the app had no focus indicator (input.tsx carried outline-none, the same defect fixed in button.tsx during phase 1), ConsoleField clobbered its own className via prop spread, both auth forms still navigated to the deleted /dashboard, /admin was a dead end, and design:audit had been silently measuring /login for every gated route. Gates: typecheck, 1262 unit, 6/6 e2e, build, harness 10/10, signed-in design:audit HARD pass on three surfaces, keyboard walk 14/14, zh walk clean.
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+- next: await review on PR #12; then phase 4 (front-door) rewrites home.tsx and merges login/sign-up. Owed before shipping to a real household: the physical-TV check (Tizen render of the flap code, legibility at 10 feet).
+
+---
+
 ## 2026-07-31 — app-ia (feat-020) + console-journey-v2 (feat-021) implemented on feat/app-journey-v2 — /dashboard and the six /:lng aliases deleted behind literal forwarding routes (/pricing is a real 404 now), resolveSignedInHome added, /boards rebuilt as a hardware-scoped rack with flap nameplates, resolveAutoLink and the whole picker deleted (/link 678 -> ~300 lines, none rendered on the happy path), /tv pairing code set in six real flaps, controller gained Content|Settings tabs at the frozen path with the old board manager inlined as console controls, and the Content tab reduced from two board renders to one live-or-draft instrument. Three defects found beyond the brief: non-admin sign-out did not exist, /admin was a dead end, and ConsoleField's className was clobbered by its own prop spread. design:audit could not see any signed-in surface and was silently measuring /login; it now takes --sign-in and refuses when --scope matches nothing. Gates: typecheck green, 1262 unit tests, 6 e2e (4 asserting the migration), build green, harness 10/10, signed-in design:audit HARD checks pass on /boards, the controller, /link and /tv. Two verification docs written, both PASS.
 - branch: `feat/app-journey-v2`
 - in-progress feature: none
