@@ -114,6 +114,42 @@ It failed on this instead: *"its own structural claim is the worst-executed thin
 
 **Recorded, not fixed:** the board takes 25% of the phone fold against 45% on desktop — a real trade for getting headline, prose, input and CTA all above the fold, which the page does achieve.
 
+**Round 2 → SHIP.** All five P1s landed, no new P0/P1. Verified independently against the pixels rather than taken on trust — it re-sampled the field border itself and got `#5C5C60` on `#FAF9F6` = 6.32:1 and `#B4B4B8` on `#121214` = 9.05:1, and re-measured the board-to-field gap at 66.5 CSS px against the 65 claimed.
+
+Its judgement on the three that mattered, taken as a set: *"the page now reads as delightful in the interaction, not only in the copy. That is a genuine change of state, not 'less broken'… Three separate fixes converged into one gesture, which is what a designed page does and a patched one does not."*
+
+**It caught two things this side had claimed and the pixels did not support**, which is worth more than the verdict:
+
+1. The label regression reported as fixed **was not**. The counter had stopped wrapping; the label itself still orphaned `FOLLOWS` onto a second line at 390, English only. Shortened, re-measured at one line in both themes.
+2. The `zh`-typed screenshot **was not a typed state** — counter `0 / 144`, placeholder intact, no focus ring, load flip caught mid-travel. The behaviour had been proven separately but the evidence file did not show it. The capture now waits for the flip to settle, uses the field's own testid, and prints value, counter, hint and board label so a bad capture cannot pass silently again. `0 / 144` is the *correct* counter for four CJK characters — zero of them have flaps — which is exactly why it read as untyped.
+
+Also taken from round 2: the focus bezel was ShadCN's 3px ring plus a recoloured border stacked on the field's own, giving a five-pixel triple amber band and a tan found nowhere else in the system — the heaviest treatment on a page built entirely from 1px rules. Now one 2px outline, the global indicator.
+
+**Refuted, with the reason:** round 2 read the CTA as landing below a real iOS content viewport (~745pt) because it measured `y 740–788` in an 844-pixel capture. The section is `min-h-[calc(100svh-3.5rem)]` and the CTA is bottom-pinned to it — `svh` is the *small* viewport unit, defined as the viewport with retractable browser chrome **shown**, so the headless 844 is the worst case rather than an optimistic one. A screenshot cannot show that. The mobile rhythm was tightened anyway, lifting the CTA 48px.
+
+**The residual, recorded as a brief question rather than a defect:** *"the page has no atmosphere… the household is entirely in the copy, and every rendered surface is instrument-grade black, paper, mono, hairline and spec table. Premium is now emphatic; delightful is now real but it is delight in a control, not in a home."* That is a consequence of the no-imagery lock, so it is the owner's call, not a fix.
+
+## The auth pages
+
+Same feature, same lock, extended not re-opened. The landing page's primary CTA lands here in one tap, so the boundary is the thing that had to hold.
+
+What was here: two near-identical pages behind a split-pane shell whose own docstring said the right-hand column existed *"so engineers evaluating the boilerplate immediately see what's powering the auth flow"* — four explanatory rows and pill badges reading Better Auth, Drizzle, D1, Workers, Effect TS. `auth.json` promised *"a real, role-gated dashboard"*; that route was deleted in phase 2. `common.json` still called the product **CloudFlare SaaS Starter**.
+
+Now one surface behind a segmented Sign in / Create account toggle, with `/login` and `/sign-up` both still real URLs.
+
+**The move that carries it:** a visitor who just scanned the QR on their television arrives with **their own pairing code already set in flaps**, defaulted to Create account — because a person holding a code they minted thirty seconds ago has no account to sign into. Standing in front of the TV, the page shows the same six characters the TV does.
+
+**Where that decision lives, and why it is not where it looks like it should be.** It is in `loginRedirectUrl`, not in `/login`'s loader. Built in the loader first, `/login?next=/link?code=…` bounced to `/sign-up` — which made the Sign in toggle a dead control for exactly the person who needs it, a returning owner adding a second television. Only the gate knows a visitor was *sent* rather than *chose*. `safeNextPath` is untouched and re-applied inside `pairingCodeFromNext`. **The e2e suite caught this, not review.**
+
+### Defects found in this lane, all pre-existing
+
+| Defect | Detail |
+|---|---|
+| `ui/select.tsx` carried `outline-none` | The **fourth** component in this repo to do so, after `button.tsx` (phase 1) and `input.tsx` / `textarea.tsx` (phase 3). It emits `outline-style: none`, killing the global `:focus-visible` outline *and* the forced-colors fallback under it, where `box-shadow` is stripped and the outline is the only indicator left. Measured: the focused language switcher reported `outline-style: none` while every other control on the page reported `solid 2px` |
+| The language switcher was **44×36** | On the landing page *and* both auth pages. `SelectTrigger` sets its height behind a `data-[size=default]:` variant, which outranks a plain `h-11` on specificity — and **tailwind-merge does not dedupe across a variant boundary**, so a caller passing `h-11` silently got 36px, under the 44px floor the phone-first constraint sets. Fixed once in `LanguageSwitcher`; 44×44 on all three surfaces, measured |
+| Better Auth's English server string rendered verbatim | A `zh` visitor met "Invalid email or password". Now mapped for the two codes read off the live endpoint, keeping the server's words for anything else |
+| "Forgot password?" pointed at `href="#"` | No reset route exists. The dead link is gone; **the missing capability is a product decision and is recorded as owed, not silently dropped** |
+
 ### Slop risks named up front
 
 1. **Collapsing the one thing we can render.** Showing the board as a screenshot, or hand-rolling "board-ish" rounded squares, or demoting it to a decorative header strip. *Litmus: if the first viewport survives with the board removed, the board is decoration and the page failed.*
@@ -124,4 +160,12 @@ It failed on this instead: *"its own structural claim is the worst-executed thin
 
 | Date | Change |
 |------|--------|
+| 2026-07-31 | Auth pages merged into one toggled surface; the pairing arrival lands on Create account with the code in flaps. Four pre-existing defects fixed, incl. `outline-none` in `ui/select.tsx` (the fourth component) and a 44×36 language switcher on three surfaces. `stack-badge.tsx` deleted. |
+| 2026-07-31 | Landing page built and shipped. `design-critic` round 1 DO NOT SHIP (five P1s) → round 2 SHIP. `feature-card.tsx` deleted. README refreshed. |
 | 2026-07-31 | Scoped as feat-022. Claimed in-progress; `/design-research` dispatched for the landing surface. |
+
+## Owed
+
+- **A password-reset route does not exist.** The dead `href="#"` link is gone, so nothing pretends otherwise, but a household that forgets its password currently has no path back. Product decision.
+- **The physical-TV check**, inherited from phase 3 and still open. `FlapWord` states its size as explicit width/height rather than `aspect-ratio` because the Tizen panel is Chromium 56 — reasoning from a documented constraint, not a measurement on the glass. The pairing code is what a family reads across a room.
+- **Atmosphere.** See the round-2 residual above: the household lives entirely in the copy. A brief question for the owner, not a defect.

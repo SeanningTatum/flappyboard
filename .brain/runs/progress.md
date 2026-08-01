@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-08-01 — front-door: landing page and auth pages rebuilt. Landing locked to Panic Playdate (direction C — you drive the board before you sign up); design-critic round 1 DO NOT SHIP with five P1s, round 2 SHIP. Auth merged into one toggled surface; a pairing arrival lands on Create account with its own code in flaps. Deleted feature-card.tsx and stack-badge.tsx. Five pre-existing defects fixed: outline-none in ui/select.tsx (4th component), a 44x36 language switcher on three surfaces, a truncated compact switcher painting a single 'E', a select drop shadow against the elevation contract, and Better Auth's English error leaking onto zh pages. README refreshed: 9 screenshots recaptured, 4 net-new, plus a Design section. Gates: typecheck 0, 1310 tests/59 files, e2e 9/9, build 0, harness 10/10.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: awaiting design-critic on the auth pages; then open the PR. Owed: the physical-TV check (Tizen render of the flap code, legibility at 10 feet) and a password-reset route, which does not exist.
+
+---
+
 ## 2026-08-01 — design research: landing page — locked Panic Playdate as primary, direction C 'say something' (drive the board before you sign up). Owner approved extending decision 4: one flip on load, then user-initiated flips only, never a loop. Vestaboard rejected outright on the identity test. Refero degraded (token unset) — five live page fetches substituted. Ledger written to features/front-door/front-door.md.
 - branch: `feat/front-door`
 - in-progress feature: none
