@@ -4,8 +4,10 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BoardBand, FlapPlate } from "@/components/board/board-band";
 import { FlapWord } from "@/components/board/flap-word";
 import { DEVICE_CODE_LENGTH } from "@/lib/board/device-code";
+import { addressFitsFlaps } from "@/lib/board/tv-address";
 import type { AuthRouteData } from "../auth-route";
 import { SignInForm } from "./sign-in-form";
 import { SignUpForm } from "./sign-up-form";
@@ -21,48 +23,79 @@ import { SignUpForm } from "./sign-up-form";
  * advertised Better Auth, Drizzle, D1, Workers and Effect TS in pill badges, and
  * the copy promised a visitor they would *"land on a real, role-gated dashboard"*
  * — a page deleted in phase 2. The audience for this product is a family that
- * wants a message board on their television. The landing page shipped this
- * morning; one tap later this was the room behind the front door.
+ * wants a message board on their television.
  *
- * ## The three decisions
+ * ## The one rule this page is built on
  *
- * 1. **One page, a segmented toggle, two real URLs.** The toggle is a pair of
- *    `<Link replace>`s, not local state: the URL is the mode, so a refresh, a
- *    bookmark and the back button all mean what they look like, and `/login` /
- *    `/sign-up` stay addressable for `loginRedirectUrl`, the e2e spec and the
- *    design audit's own sign-in step. `replace` because a mode switch is not a
- *    place you should have to press Back out of.
+ * **The band is a readout. It is present when there is something to read, and
+ * absent when there is not.**
  *
- * 2. **The object, not a column.** What sits above the form is the same
- *    primitive the television is made of — real flaps, in a full-bleed dark room
- *    built the way `/` builds it (`className="dark"`, the mechanism the repo
- *    already uses, so nothing restates a hex). `FlapWord`, not `BoardGridView`:
- *    a short string gets flaps, a board gets a board, and 144 tiles plus an
- *    animator is the wrong weight for a page whose job is a password field.
- *    A changed word is a remount and therefore an instant cut, never a flip —
- *    see `flap-word.tsx`. There is nothing here to gate behind
- *    `prefers-reduced-motion` because nothing travels.
+ * That rule is the whole answer to `design-critic`'s round-1 verdict, which
+ * failed this surface on the slop risk named verbatim in its own lock —
+ * *"demoting it to a decorative header strip."* `WELCOME BACK` and `HELLO THERE`
+ * were a nameplate carrying zero product information, and they failed the lock's
+ * own litmus: delete the band from sign-up and the page loses nothing but its
+ * only colour; delete it from a pairing arrival and the page breaks. The critic
+ * put the editorial consequence plainly — *"a coffee shop or a boutique hotel
+ * could run HELLO THERE in flap yellow over a warm-paper sign-up form
+ * unchanged."*
  *
- * 3. **A pairing arrival is a different page.** When `next` carries a device
- *    code the flaps set **that code**, at the size `/tv` sets it, so the six
- *    characters on the television and the six on the phone can be compared at a
- *    glance — the scan confirming itself. The heading and the aside change with
- *    it, and the arrival lands on **sign-up** rather than sign-in, because
- *    somebody who minted a code thirty seconds ago has no account to sign in to.
- *    That choice is made by `loginRedirectUrl` at the gate, not by this page or
- *    by `/login`'s loader: a `/login` that redirected pairing arrivals onward
- *    would make the toggle below a dead control for a returning owner adding a
- *    second television, which is precisely who taps it.
+ * So the flaps now only ever set a **string the visitor has to carry to their
+ * television**, and there are exactly two:
+ *
+ * | State | Band | Delete it and… |
+ * |---|---|---|
+ * | Pairing arrival | the six-character code, live off their own screen | the scan cannot be confirmed |
+ * | Sign-up | `host/tv` — the address, from the request | the page no longer says the one thing about this product nobody can guess |
+ * | Sign-in | **nothing** | — |
+ *
+ * Sign-in has no band because a returning owner has nothing to carry anywhere.
+ * That is not an omission with a hole where a decoration used to be: the absence
+ * is the information, and refusing to spend the primitive is what stops *"the
+ * product is present three times and used once"* from being true.
+ *
+ * The pigment went with it. `--flap-yellow` was being spent on the greeting
+ * while the pairing code — live data arriving from the visitor's own television,
+ * the emotional peak of the funnel — rendered at 0.00% chroma. Correcting that
+ * inversion does not mean painting the code: `/tv` sets it unlit and white, and
+ * the whole job of those six characters is to match the six on the screen
+ * exactly. It means not spending the pigment on a greeting.
+ *
+ * ## Composition
+ *
+ * One centred column. There was a 45/55 two-pane here with a full-height rule
+ * down the middle and a right pane that was **87% void** at 1440 — *"the
+ * two-pane auth shell you deleted has been structurally reinstated with less in
+ * it."* Both columns sat on the same measure, on the same baseline, so it bought
+ * neither asymmetry nor scale contrast, only a rule pointing at empty space.
+ * The content sets the composition now: header, band, one column, and the
+ * register below the form that used to be the aside.
+ *
+ * ## The mode control, and why there is not one
+ *
+ * A segmented toggle sat above the form with its active half filled in
+ * `--primary`, 470px above a submit button filled in `--primary` — and on
+ * sign-up both of them read **"Create account"**. Two visually identical blocks,
+ * same fill, same label colour, same 2px radius, the two brightest objects on
+ * the dark page and the only two. "Which mode am I in" and "submit this form"
+ * cannot be the same visual object.
+ *
+ * The fix is not a fourth encoding of *selected* — phase 3 fought that exact
+ * battle on the console, found three coexisting encodings and settled on one
+ * (`SegmentTrack` / `segmentStyle`). It is to notice there is nothing to encode:
+ * the mode is the URL, the `<h1>` says it in words, and the other mode is one
+ * inline text link — which is the device `/` already ships one tap upstream
+ * ("Already have one? *Sign in*"). Fewer parts, no collision, no duplicated
+ * label, and the two real URLs, `replace` semantics and `next` propagation the
+ * toggle existed for all survive unchanged.
  *
  * ## Standing constraints
  *
- * No card, anywhere — the composition is three full-bleed registers separated by
- * hairlines, the same rhythm as `/`. No drop shadow. The CTA is `--primary`
- * (ink on paper) and never amber; `--signal` is a pilot lamp and does not appear
- * on this page outside the focus ring. Every control clears 44 px and every
- * control boundary is `--text-body-subtle` (6.32:1 on paper, 9.05:1 in dark) —
- * `--input` measures 1.42:1 and fails WCAG 1.4.11, which is the defect
- * `design-critic` found on `/`'s field and on `/link`'s before it.
+ * No card, anywhere. No drop shadow. The CTA is `--primary` (ink on paper) and
+ * never amber; `--signal` is a pilot lamp and does not appear on this page
+ * outside the focus ring. Every control clears 44px and every control boundary
+ * is `--text-body-subtle` (6.32:1 on paper, 9.05:1 in dark) — `--input` measures
+ * 1.42:1 and fails WCAG 1.4.11.
  */
 
 export type AuthMode = "sign-in" | "sign-up";
@@ -86,49 +119,52 @@ export function AuthPage({ mode, next, code, tv }: AuthPageProps) {
   const { t: tc } = useTranslation("common");
 
   /*
-    `next` rides the toggle. Losing it here would strand a QR-scanning visitor
-    at the top of the app after signing in, one tap after they arrived from
-    their own television.
+    `next` rides the link to the other mode. Losing it here would strand a
+    QR-scanning visitor at the top of the app after signing in, one tap after
+    they arrived from their own television.
   */
   const href = (path: string) =>
     next === null ? path : `${path}?next=${encodeURIComponent(next)}`;
 
   const pairing = code !== null;
+  /*
+    Sign-up prints the address; sign-in prints nothing. See the table above —
+    this boolean *is* the rule.
+  */
+  const showAddress = !pairing && mode === "sign-up";
+  const band = pairing || showAddress;
 
   return (
-    /*
-      A flex column, not a `min-h-svh` block: the two-column region below has to
-      *stretch*, or the hairline dividing form from aside stops wherever the
-      taller column's text happens to end and reads as an unfinished stub rather
-      than as structure. Elevation here is hairlines, so a hairline that only
-      goes halfway is the whole composition going halfway.
-    */
     <div className="flex min-h-svh flex-col bg-background">
-      <header className="border-b border-border">
+      {/*
+        The header rule is the band's own top rail whenever there is a band —
+        a 1px `--border` hairline stacked directly on a 3px aluminium edge is
+        two boundaries doing one boundary's job.
+      */}
+      <header className={cn(band ? undefined : "border-b border-border")}>
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5 sm:px-8">
           <Link
             to="/"
-            className="text-sm font-semibold tracking-[0.18em] text-text-heading uppercase"
+            /*
+              `inline-flex h-11` is not decoration. Measured at **133 × 20** —
+              a 20px-tall target, under WCAG 2.5.8's 24px AA floor let alone the
+              44px this project sets for anything a thumb has to hit. The glyphs
+              do not move; the box grows around them.
+            */
+            className="inline-flex h-11 items-center text-sm font-semibold tracking-[0.18em] text-text-heading uppercase"
             data-testid="auth-brand"
           >
             {tc("app_name")}
           </Link>
           {/*
             Utilities only in the corner — nothing here is on the path to using
-            the product. 44 px is the floor for anything a thumb has to hit.
-
-            `data-[size=default]:h-11` is not belt-and-braces. `SelectTrigger`
-            carries `data-[size=default]:h-9`, an attribute-plus-class selector,
-            and it beats both a plain `h-11` passed through `cn()` (different
-            tailwind-merge group, so the base survives) and the parent's
-            `[&_button]:size-11` descendant rule on specificity. Measured before
-            the fix: **44 × 36**, not 44 × 44 — the same trap is live on `/`.
+            the product. Both controls are bare and both are 44×44; the locale
+            select used to be a bordered box beside a bare icon at a different
+            optical height, which is two treatments for two peers. Fixed inside
+            `LanguageSwitcher` so `/` gets it too.
           */}
           <div className="flex items-center gap-1 [&_button]:size-11">
-            <LanguageSwitcher
-              compact
-              className="h-11 data-[size=default]:h-11"
-            />
+            <LanguageSwitcher compact />
             <ThemeToggle />
           </div>
         </div>
@@ -138,173 +174,245 @@ export function AuthPage({ mode, next, code, tv }: AuthPageProps) {
           contrast against this element's own computed background, and a
           transparent one reads as black. */}
       <main className="flex flex-1 flex-col bg-background" data-testid="auth-main">
+        {band ? (
+          <BoardBand
+            className="flex flex-col items-center gap-3 px-5 py-6 sm:py-8"
+            data-testid="auth-band"
+          >
+            {pairing ? (
+              /*
+                The code, set the way `/tv` sets it: unlit flaps, white glyphs,
+                no pigment. `/tv`'s own note applies unchanged — *"a pigment here
+                would be decoration on a string somebody has to read across a
+                room"* — and it applies twice as hard here, where the whole job
+                of these six characters is to match the six on the screen.
+              */
+              <FlapPlate>
+                <FlapWord
+                  text={code}
+                  cells={DEVICE_CODE_LENGTH}
+                  cellWidth="clamp(30px, 9.5vw, 52px)"
+                  label={t("pairing.flaps_label", { code })}
+                  data-testid="auth-flaps"
+                />
+              </FlapPlate>
+            ) : (
+              <AddressReadout display={tv.display} />
+            )}
+          </BoardBand>
+        ) : null}
+
         {/*
-          The object, in a dark room, full bleed — the band that carries over
-          from `/`. `border-b` is not trim: forcing the band dark is a no-op when
-          the page is already dark, and without a hairline the room that gives
-          the object its edge measures 1.00:1 against the canvas and simply
-          vanishes (`design-critic` round 1 on the landing page, P1-d).
+          One column, centred, `max-w-md` — a measure the form sets rather than
+          a 45/55 split committed to before anyone knew what would go in it.
+          `justify-center` because with the band above and nothing below, the
+          remaining height is the composition: symmetric air reads as intent,
+          a rule down the middle of it reads as a missing column.
         */}
-        <div className="dark flex justify-center border-b border-border bg-background px-5 py-6 sm:py-8">
-          {pairing ? (
-            /*
-              The code, set the way `/tv` sets it: unlit flaps, white glyphs, no
-              pigment. `/tv`'s own note applies unchanged — *"a pigment here
-              would be decoration on a string somebody has to read across a
-              room"* — and it applies twice as hard here, where the whole job of
-              these six characters is to match the six on the screen.
-            */
-            <FlapWord
-              text={code}
-              cells={DEVICE_CODE_LENGTH}
-              cellWidth="clamp(30px, 9.5vw, 52px)"
-              label={t("pairing.flaps_label", { code })}
-              data-testid="auth-flaps"
-            />
-          ) : (
-            /*
-              A fixed Latin string in both locales, and that is honest rather
-              than lazy: `BOARD_CHARS` is Latin by construction, so a translated
-              word folds to nothing and would render as a row of blank flaps
-              (`foldsToFlaps`). A real split-flap shows Latin flaps to a Chinese
-              owner too — the translated sentence lives in the prose beside it.
-              Same decision as the landing board.
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-5 py-10 sm:px-8 sm:py-14">
+          <h1 className="text-2xl font-semibold tracking-tight text-balance text-text-heading sm:text-3xl">
+            {pairing ? t("pairing.title") : t(`${modeKey(mode)}.title`)}
+          </h1>
+          <p className="mt-3 text-base leading-relaxed text-text-body">
+            {pairing ? t("pairing.lede") : t(`${modeKey(mode)}.lede`)}
+          </p>
 
-              Yellow because this is the one lit thing on the page and it is the
-              board speaking. `--flap-yellow` is a pigment, theme-invariant and
-              unrelated to `--signal`; spending it here spends no signal.
-            */
-            <FlapWord
-              text={t(`${modeKey(mode)}.flaps`)}
-              color="yellow"
-              cellWidth="clamp(20px, 5.6vw, 40px)"
-              label={t(`${modeKey(mode)}.flaps_label`)}
-              data-testid="auth-flaps"
-            />
-          )}
-        </div>
-
-        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-5 sm:px-8 lg:grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
-          <div className="min-w-0 py-8 sm:py-10 lg:pr-14">
-            <h1 className="text-2xl font-semibold tracking-tight text-balance text-text-heading sm:text-3xl">
-              {pairing ? t("pairing.title") : t(`${modeKey(mode)}.title`)}
-            </h1>
-            <p className="mt-3 max-w-[46ch] text-base leading-relaxed text-text-body">
-              {pairing ? t("pairing.lede") : t(`${modeKey(mode)}.lede`)}
-            </p>
-
-            {/*
-              The toggle. Links rather than buttons because they navigate, and
-              `aria-current="page"` rather than colour alone because a fill is
-              never allowed to be the only carrier of state.
-
-              `h-11` inside a `p-0.5` track: 44 px of thumb, and the active
-              segment lands at `rounded-md` — which derives to **0 px** at this
-              project's 2 px `--radius`. That is the object's own grammar (0 px
-              panels, 2 px wells), not a rounding accident.
-            */}
-            <div
-              role="group"
-              aria-label={t("mode.legend")}
-              className="mt-6 grid grid-cols-2 rounded-lg border border-text-body-subtle p-0.5"
-              data-testid="auth-mode"
-            >
-              <ModeLink
-                to={href("/login")}
-                active={mode === "sign-in"}
-                testId="auth-mode-sign-in"
-              >
-                {t("mode.sign_in")}
-              </ModeLink>
-              <ModeLink
-                to={href("/sign-up")}
-                active={mode === "sign-up"}
-                testId="auth-mode-sign-up"
-              >
-                {t("mode.sign_up")}
-              </ModeLink>
-            </div>
-
-            <div className="mt-6">
-              {mode === "sign-in" ? (
-                <SignInForm next={next} />
-              ) : (
-                <SignUpForm next={next} />
-              )}
-            </div>
+          <div className="mt-7">
+            {mode === "sign-in" ? (
+              <SignInForm next={next} />
+            ) : (
+              <SignUpForm next={next} />
+            )}
           </div>
 
           {/*
-            Never an empty column. On a pairing arrival this says what the code
-            is about to do; otherwise it prints the one instruction the product
-            cannot leave out — the TV address — which is also the only thing
-            about flappyboard nobody can guess. A ruled column, not a card:
-            removing the rule would cost nothing, which is the test a card
-            always fails.
+            The other mode, as a sentence — `/`'s own device, and deliberately
+            *not* labelled with the submit button's words. The test ids are kept
+            from the segmented control this replaced: `e2e/auth.spec.ts` drives
+            `auth-mode-sign-in` to prove a returning owner adding a second
+            television can still get to sign-in from a pairing arrival with
+            `next` intact, which is the regression guard for a redirect that once
+            made that control dead.
           */}
-          <aside
-            className="min-w-0 border-t border-border py-8 sm:py-10 lg:border-t-0 lg:border-l lg:pl-14"
-            data-testid="auth-aside"
+          <p className="mt-5 text-sm leading-relaxed text-text-body">
+            {mode === "sign-in" ? t("alt.no_account") : t("alt.have_account")}{" "}
+            {/*
+              An inline text link inside a sentence, so WCAG 2.2 SC 2.5.8's
+              inline exception applies — `py-1.5` still buys a ~32px tall hit
+              area rather than the 15px the glyphs occupy.
+            */}
+            <Link
+              to={mode === "sign-in" ? href("/sign-up") : href("/login")}
+              // A mode switch, not a destination: Back should leave the auth
+              // page, not undo a tap on a link that swapped two forms.
+              replace
+              className="inline-block py-1.5 font-medium text-text-heading underline underline-offset-4"
+              data-testid={
+                mode === "sign-in" ? "auth-mode-sign-up" : "auth-mode-sign-in"
+              }
+            >
+              {mode === "sign-in" ? t("alt.no_account_link") : t("alt.have_account_link")}
+            </Link>
+          </p>
+
+          {/*
+            The register that used to be the right-hand pane. Ruled, not carded:
+            removing the rule would cost nothing, which is the test a card always
+            fails.
+
+            **Its content is chosen by audience, not by convenience.** It used to
+            print the TV address and "scan the code on your screen" on the
+            *sign-in* state — acquisition copy aimed at somebody who by
+            definition already has an account, sitting in the exact space where
+            a password-recovery affordance would live and where a person who has
+            just been refused is looking. Now: sign-up gets the instruction,
+            pairing gets what the code is about to do, and sign-in gets the truth
+            about being locked out.
+          */}
+          <div
+            className="mt-10 border-t border-border pt-6"
+            data-testid="auth-note"
           >
-            <h2 className="font-mono text-[11px] tracking-[0.2em] text-text-body-subtle uppercase">
-              {pairing ? t("pairing.aside_title") : t("tv.label")}
-            </h2>
-            {pairing ? (
-              <>
-                <p className="mt-4 max-w-[52ch] text-base leading-relaxed text-text-body">
-                  {t("pairing.aside_body")}
-                </p>
-                <p className="mt-4 max-w-[52ch] text-sm leading-relaxed text-text-body-subtle">
-                  {t("pairing.aside_note")}
-                </p>
-              </>
-            ) : (
-              <>
-                <code
-                  className="mt-4 block font-mono text-xl break-all text-text-heading select-all sm:text-2xl"
-                  data-testid="auth-tv-address"
-                >
-                  {tv.display}
-                </code>
-                <p className="mt-4 max-w-[52ch] text-base leading-relaxed text-text-body">
-                  {t("tv.body")}
-                </p>
-              </>
-            )}
-          </aside>
+            <Eyebrow lamp={pairing}>
+              {pairing
+                ? t("pairing.aside_title")
+                : showAddress
+                  ? t("tv.label")
+                  : t("locked_out.label")}
+            </Eyebrow>
+            <p className="mt-4 text-base leading-relaxed text-text-body">
+              {pairing
+                ? t("pairing.aside_body")
+                : showAddress
+                  ? t("tv.body")
+                  : t("locked_out.body")}
+            </p>
+            <p className="mt-4 text-sm leading-relaxed text-text-body-subtle">
+              {pairing
+                ? t("pairing.aside_note")
+                : showAddress
+                  ? t("tv.note")
+                  : t("locked_out.note")}
+            </p>
+          </div>
         </div>
       </main>
     </div>
   );
 }
 
-function ModeLink({
-  to,
-  active,
-  testId,
+/**
+ * The address, as the board would set it, with the exact string printed under it.
+ *
+ * Two renderings, two jobs, and the second is not redundancy: the drums are
+ * upper-case Latin by construction, so the flaps can only ever show
+ * `LOCALHOST:5173/TV`. That *is* a working address — hostnames are
+ * case-insensitive and React Router matches paths case-insensitively — but a
+ * person about to retype it into a television remote should not have to know
+ * that, and `role="img"` flaps cannot be selected or copied. So the literal
+ * string is printed beneath the readout, the way a barcode prints its own
+ * digits.
+ *
+ * A long host does not overflow, it shrinks — which is its own failure mode. Past
+ * `FLAP_ADDRESS_MAX_CHARS` a 42-character preview hostname lands at an 8px tile
+ * and becomes texture, so `addressFitsFlaps` drops the flaps and promotes the
+ * printed line to display size. Same caller-side contract as `foldsToFlaps`:
+ * when a string does not suit the hardware, fall back to type rather than render
+ * unreadable tiles.
+ */
+function AddressReadout({ display }: { readonly display: string }) {
+  const { t } = useTranslation("auth");
+  const flaps = addressFitsFlaps(display);
+
+  return (
+    <>
+      {flaps ? (
+        <FlapPlate>
+          <FlapWord
+            text={display}
+            /*
+              Sized off the character count so the readout always fits its
+              container without `overflow-x`, with a ceiling so a short address
+              does not become a billboard. 17 characters land at 20px on a 390
+              phone and 40px at 1440. The `1rem` allowance is the plate's own
+              6px of extrusion plus slack for a scrollbar.
+            */
+            cellWidth={`min(2.5rem, calc((100vw - 4rem) / ${display.length}))`}
+            label={t("tv.flaps_label", { address: display })}
+            data-testid="auth-flaps"
+          />
+        </FlapPlate>
+      ) : null}
+      <code
+        className={cn(
+          "block max-w-full font-mono break-all select-all",
+          flaps
+            ? "text-[11px] tracking-[0.12em] text-text-body-subtle"
+            : "text-xl text-text-heading sm:text-2xl"
+        )}
+        data-testid="auth-tv-address"
+      >
+        {display}
+      </code>
+    </>
+  );
+}
+
+/**
+ * A section marker, in the instrument register — and one that survives
+ * translation.
+ *
+ * 11px letterspaced mono caps is the device the whole surface borrows from the
+ * EP-133 spec table, and in `zh` it collapsed: CJK has no case to raise, the
+ * mono face falls back to a CJK family that carries none of the texture, and
+ * 11px is genuinely below the floor for a Han glyph. The result was ordinary
+ * small grey caption text — *"the one instrument-grade typographic device below
+ * the fold does not survive translation for half the audience."*
+ *
+ * `:lang(zh)` matches on inherited language, so this reads `<html lang>` with no
+ * prop threading. The letterspacing is kept — CSS `letter-spacing` does apply
+ * between Han glyphs, and loose-set CJK reads as deliberate rather than as
+ * default — and only the size is corrected. Same class of finding, and the same
+ * fix in spirit, as the spec table's label column on `/`.
+ *
+ * ## The lamp
+ *
+ * `lamp` is the **only** chroma on this surface and it is spent on exactly one
+ * state: a pairing arrival. It is not a new device — it is the one `/tv` already
+ * draws beside `PAIR THIS SCREEN` (`tv.tsx:262`), a static `--signal` square,
+ * `aria-hidden` because the words carry the meaning and colour is never the only
+ * carrier.
+ *
+ * Spending it here rather than on a greeting is the point. `design-critic`
+ * measured the inversion: the decorative flap band got the product's yellow
+ * while the pairing state — live data arriving off the visitor's own television,
+ * the peak of the funnel — rendered at 0.00% chroma. Correcting it does **not**
+ * mean painting the code: `/tv` sets those six characters unlit and white and
+ * their entire job is to match the six on the screen. It means the greeting
+ * loses the pigment and the live state gets the lamp, so that a person standing
+ * in front of their television sees the same amber square on both screens.
+ *
+ * Static, for the reason `/tv` gives: amber is a *state*, and a pulsing lamp is
+ * web decoration — hardware does not breathe. Nothing here needs a
+ * `prefers-reduced-motion` gate because nothing moves.
+ */
+function Eyebrow({
   children,
+  lamp = false,
 }: {
-  to: string;
-  active: boolean;
-  testId: string;
-  children: React.ReactNode;
+  readonly children: React.ReactNode;
+  readonly lamp?: boolean;
 }) {
   return (
-    <Link
-      to={to}
-      // A mode switch, not a destination: Back should leave the auth page, not
-      // undo a tap on a segmented control.
-      replace
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex h-11 items-center justify-center rounded-md px-4 text-sm font-medium transition-colors",
-        active
-          ? "bg-primary text-primary-foreground"
-          : "text-text-body hover:text-text-heading"
-      )}
-      data-testid={testId}
-    >
+    <h2 className="flex items-center gap-2 font-mono text-[11px] tracking-[0.2em] text-text-body-subtle uppercase [&:lang(zh)]:text-[13px] [&:lang(zh)]:tracking-[0.14em]">
+      {lamp ? (
+        <span
+          aria-hidden
+          className="inline-block size-[6px] shrink-0 bg-signal"
+          data-testid="auth-lamp"
+        />
+      ) : null}
       {children}
-    </Link>
+    </h2>
   );
 }

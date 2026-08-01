@@ -141,6 +141,45 @@ Now one surface behind a segmented Sign in / Create account toggle, with `/login
 
 **Where that decision lives, and why it is not where it looks like it should be.** It is in `loginRedirectUrl`, not in `/login`'s loader. Built in the loader first, `/login?next=/link?code=…` bounced to `/sign-up` — which made the Sign in toggle a dead control for exactly the person who needs it, a returning owner adding a second television. Only the gate knows a visitor was *sent* rather than *chose*. `safeNextPath` is untouched and re-applied inside `pairingCodeFromNext`. **The e2e suite caught this, not review.**
 
+### Auth critique — round 1 → DO NOT SHIP, five P1s
+
+The verdict's useful part: the auth pages and the landing page read as *"one product, decisively"* — five separate carriers make the tap seamless. The charge was that **the continuity was borrowed**: *"achieved by wearing the landing's two best components, not by the auth page owning the boundary with an idea of its own."*
+
+| # | Finding | The measurement |
+|---|---|---|
+| P1-a | The board was a decorative header strip on the two states almost everyone sees | `WELCOME BACK` / `HELLO THERE` carried **zero product information**. Applying this feature's own litmus: delete the band from sign-up and the page loses nothing but its only colour; delete it from a pairing arrival and the page breaks. *"A coffee shop or a boutique hotel could run HELLO THERE in flap yellow over a warm-paper sign-up form unchanged."* This is **slop risk #1, named verbatim in this lock** |
+| P1-b | In dark mode the compositional device was gone — the landing's own fix, unpropagated | Header, band and canvas all `(18,18,20)`. Band-vs-canvas **1.00:1**, hairline **1.29:1**. Worse than on `/`, which at least has a 144-tile plate to carry the figure: *"the entire dark page is one flat value plus a 60px yellow strip"* |
+| P1-c | At 1440 the right pane was **87% void**, with a rule drawn down the middle pointing at it | Content ended at y=393 in a pane running to y=900; full-height hairline at x=656; perfect 45/55 symmetry, both columns on the same ~460px measure and the same top baseline. *"The two-pane auth shell you deleted has been structurally reinstated with less in it"* |
+| P1-d | Sign-in dead-ended, and its spare space held the wrong audience's copy | No recovery affordance anywhere, including on the error state — and the space where one would live printed the TV address and "scan the code on your screen", acquisition copy aimed at somebody who by definition already has an account |
+| P1-e | A selected tab and the primary action shared a treatment **and** a label | On sign-up two visually identical blocks 470px apart both read "Create account": same fill (`(31,31,34)` light / `(238,238,242)` dark), same label colour, same 2px radius. In dark they were the two brightest objects on the page and the only two |
+
+**Round 2 — what changed, and the numbers.**
+
+One rule replaced five patches: **the band is a readout — present when there is something to read, absent when there is not.** The flaps now only ever set a string the visitor has to carry to their television.
+
+| State | Band | Delete it and… |
+|---|---|---|
+| Pairing arrival | the six-character code, live off their own screen | the scan cannot be confirmed |
+| Sign-up | `host/tv`, from the request, in flaps with the exact string printed beneath | the page no longer says the one thing about this product nobody can guess |
+| Sign-in | **nothing** | — |
+
+- **P1-a.** The greeting is gone and so is the pigment it was spending. Sign-in has no band, because a returning owner has nothing to carry anywhere — refusing to spend the primitive is what stops *"the product is present three times and used once"* being true. A guard was added to the locale parity test: no translatable string may be set in flaps again. The address is capped by `addressFitsFlaps` — past 21 characters a 42-char preview hostname lands at an 8px tile and becomes texture, so the flaps drop and the printed line is promoted, the same caller-side contract as `foldsToFlaps`.
+- **P1-b.** The band's edge is now the object's own **aluminium extrusion** (`#414145`, `board-frame.tsx:73`), 3px, and the readout sits in a `FlapPlate` — the frame `BoardFrame` puts around the mask, with its lit top lip. Measured: **1.29:1 → 1.84:1** in dark, 9.65:1 in light, and the plate gives the page the figure it was measured as missing. **The band interior is still 1.00:1 in dark and that is not fixed** — every tonal step available in this palette is 1.18–1.23:1, so a step would have been *worse* than the hairline it replaced. The honest position: the boundary and the object carry it, the interior does not. `BoardBand` is shared with `/` so the two surfaces cannot drift again — which is exactly how this defect reached here.
+- **P1-c.** One centred `max-w-md` column. No split, no rule, no aside.
+- **P1-d.** Sign-in's register is now `IF YOU CANNOT GET IN`: no password reset exists, said plainly, with no link pretending otherwise — and the two things that *are* true meanwhile (boards untouched; a linked television keeps showing its last message, `DEFAULT_GRANT_TTL_SECONDS`, 30 days, renewed on every socket upgrade). **Password reset was not built** — it is a product decision and stays in Owed.
+- **P1-e.** The segmented control is **deleted**, not restyled. There was nothing to encode: the mode is the URL, the `<h1>` says it in words, and the other mode is one inline text link — the device `/` already ships. No fourth encoding of *selected* was invented; `SegmentTrack` / `segmentStyle` remain the console's one archetype. `auth-mode-sign-in` / `auth-mode-sign-up` test ids moved to the links, so the e2e regression guard for a pairing arrival reaching sign-in with `next` intact still drives them.
+- **P2-a.** `--destructive` was `#E7000B`, Tailwind `red-600` — the last framework hex in a palette whose spec table advertises pigments *"measured off a real unit"*, and the only chromatic thing on the auth surface. Now `var(--flap-red)` in light and `#e8695f` in dark, the same derivation `hardware-theme.css` made for the console scope. Measured: **5.16:1** on paper, **5.90:1** on the dark canvas, both as border and as icon against a 3:1 floor; white-on-fill improves from 4.79:1 to 5.43:1.
+- **P2-c.** The inversion is corrected by *removing* the decorative yellow, not by painting the code — `/tv` sets those six characters unlit and white and their whole job is to match the six on the screen. The pairing state instead gets `/tv`'s **own** pilot lamp: a static `--signal` square before the eyebrow, the same device at `tv.tsx:262`, so both screens carry the same amber at the same moment. Measured: 36px², **1 of 29 painted elements chromatic = 3.4%**, under the 4% accent ceiling; 4.72:1 on paper, 12.38:1 in dark.
+- **P2-d.** The eyebrow is one component with `[&:lang(zh)]:text-[13px]` — `:lang()` matches on inherited language, so it reads `<html lang>` with no prop threading. 11px is below the floor for a Han glyph; the letterspacing is kept, because CSS `letter-spacing` does apply between Han glyphs and loose-set CJK reads as deliberate. **Partially fixed, honestly:** the mono *texture* still does not survive, because the CJK fallback face is not IBM Plex Mono. Size and tracking are what could be fixed without shipping a CJK mono.
+- **P3-a.** The compact `LanguageSwitcher` is bare — no border, no fill, `hover:bg-accent`, 44×44 — so it and the theme toggle are two peers with one treatment. Fixed in the component, so `/` gets it too.
+
+**Two defects found while measuring, both pre-existing and neither reported:**
+
+1. The wordmark link measured **133 × 20** on both the landing page and the auth pages — a 20px-tall target, under WCAG 2.5.8's 24px AA floor, never mind the 44px this project sets. `inline-flex h-11` on both.
+2. `authLinks` (the flap-font preload) was first declared in `auth-route.ts`. `links` is a *client* export, so React Router pulled that module — and `i18n.server` with it — into the browser and took the whole auth surface down with `Server-only module referenced by client`. In a dev server that still renders and still screenshots. It lives in `auth-links.ts` now, and the capture script asserts a route-specific testid **and** `document.fonts.check` before it writes any file, because a hung Worker serves an error page with a silent console.
+
+**Refuted, with evidence.** Round 1's P2-b claimed the pairing copy (*"Those six flaps are the code on your screen"*) lied, because `/tv` renders the code as letterspaced Archivo — citing a screenshot the critic itself caveated as dated 29 July and belonging to another feature. It is stale: `/tv` was rebuilt in phase 3 and renders the code as six real flap tiles on a lipped plate (`docs/assets/tv-pairing.png`). The copy is unchanged.
+
 ### Defects found in this lane, all pre-existing
 
 | Defect | Detail |
@@ -160,12 +199,14 @@ Now one surface behind a segmented Sign in / Create account toggle, with `/login
 
 | Date | Change |
 |------|--------|
+| 2026-08-01 | Auth critique round 1 (DO NOT SHIP, five P1s) answered. The band became a readout — the TV address in flaps on sign-up, the code on a pairing arrival, nothing on sign-in — the segmented control was deleted, the two-pane shell became one centred column, sign-in got an honest locked-out register, and `--destructive` was re-derived from the measured flap red. `BoardBand` / `FlapPlate` are shared with `/`. |
 | 2026-07-31 | Auth pages merged into one toggled surface; the pairing arrival lands on Create account with the code in flaps. Four pre-existing defects fixed, incl. `outline-none` in `ui/select.tsx` (the fourth component) and a 44×36 language switcher on three surfaces. `stack-badge.tsx` deleted. |
 | 2026-07-31 | Landing page built and shipped. `design-critic` round 1 DO NOT SHIP (five P1s) → round 2 SHIP. `feature-card.tsx` deleted. README refreshed. |
 | 2026-07-31 | Scoped as feat-022. Claimed in-progress; `/design-research` dispatched for the landing surface. |
 
 ## Owed
 
-- **A password-reset route does not exist.** The dead `href="#"` link is gone, so nothing pretends otherwise, but a household that forgets its password currently has no path back. Product decision.
+- **A password-reset route does not exist.** The dead `href="#"` link is gone and `/login` now *names* the gap in the visitor's own language rather than leaving silence where a link should be (`locked_out.*`), but a household that forgets its password still has no path back. No route, no token store, no mail transport. Product decision, raised with the owner separately.
+- **The `zh` eyebrow has no mono texture.** Size and tracking were fixed; the face was not, because the CJK fallback is not IBM Plex Mono and shipping a CJK mono is a font-budget decision. See P2-d above.
 - **The physical-TV check**, inherited from phase 3 and still open. `FlapWord` states its size as explicit width/height rather than `aspect-ratio` because the Tizen panel is Chromium 56 — reasoning from a documented constraint, not a measurement on the glass. The pairing code is what a family reads across a room.
 - **Atmosphere.** See the round-2 residual above: the household lives entirely in the copy. A brief question for the owner, not a defect.

@@ -1,8 +1,11 @@
 import type { Route } from "./+types/sign-up";
 import { AuthPage } from "./components/auth-page";
 import { authRouteData } from "./auth-route";
+import { authLinks } from "./auth-links";
 
 export const handle = { i18n: ["auth"] };
+
+export const links = authLinks;
 
 export const meta: Route.MetaFunction = ({ data }) => [
   { title: data?.title ?? "Flappyboard" },

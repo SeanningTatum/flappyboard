@@ -78,8 +78,18 @@ export function LanguageSwitcher({
           // across a variant boundary, so a caller passing `h-11` silently got
           // 36px. Measured at 44×36 on both the landing page and the auth
           // pages, under the 44px floor the phone-first constraint sets.
+          // `compact` is the utility-corner variant, and its peer there is the
+          // theme toggle — a bare ghost icon button. This used to be a bordered
+          // box beside it at a different optical height: two peer controls, two
+          // treatments (`design-critic`, P3-a). Bare now, same 44px box, same
+          // hover fill as `Button variant="ghost"`.
+          //
+          // The border goes and the focus indicator does not: the global
+          // `:focus-visible` outline in `app.css` is what marks this control,
+          // which is why `ui/select.tsx` had `outline-none` removed and why it
+          // must never come back.
           compact
-            ? "w-auto gap-1 px-2 text-xs data-[size=default]:h-11"
+            ? "h-11 w-auto gap-1 border-0 bg-transparent px-2.5 text-xs shadow-none hover:bg-accent hover:text-accent-foreground data-[size=default]:h-11 dark:bg-transparent dark:hover:bg-accent"
             : "w-[140px]",
           className,
         )}

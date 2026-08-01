@@ -44,11 +44,10 @@ const KEYS: ReadonlyArray<{ key: string; vars?: ReadonlyArray<string> }> = [
   { key: "meta.sign_in_title" },
   { key: "meta.sign_up_title" },
   { key: "meta.description" },
-  { key: "mode.legend" },
-  { key: "mode.sign_in" },
-  { key: "mode.sign_up" },
-  { key: "sign_in.flaps" },
-  { key: "sign_in.flaps_label" },
+  { key: "alt.have_account" },
+  { key: "alt.have_account_link" },
+  { key: "alt.no_account" },
+  { key: "alt.no_account_link" },
   { key: "sign_in.title" },
   { key: "sign_in.lede" },
   { key: "sign_in.email_label" },
@@ -56,8 +55,6 @@ const KEYS: ReadonlyArray<{ key: string; vars?: ReadonlyArray<string> }> = [
   { key: "sign_in.password_label" },
   { key: "sign_in.submit" },
   { key: "sign_in.submitting" },
-  { key: "sign_up.flaps" },
-  { key: "sign_up.flaps_label" },
   { key: "sign_up.title" },
   { key: "sign_up.lede" },
   { key: "sign_up.name_label" },
@@ -76,7 +73,12 @@ const KEYS: ReadonlyArray<{ key: string; vars?: ReadonlyArray<string> }> = [
   { key: "pairing.aside_body" },
   { key: "pairing.aside_note" },
   { key: "tv.label" },
+  { key: "tv.flaps_label", vars: ["address"] },
   { key: "tv.body" },
+  { key: "tv.note" },
+  { key: "locked_out.label" },
+  { key: "locked_out.body" },
+  { key: "locked_out.note" },
   // Resolved through `authErrorMessage`, which maps Better Auth's English
   // server constants onto these before anything reaches the alert.
   { key: "errors.invalid_credentials" },
@@ -90,8 +92,25 @@ const BUNDLES: ReadonlyArray<readonly [string, unknown]> = [
   ["zh", zh],
 ];
 
-/** The two strings that are set in real flaps rather than typeset. */
-const FLAP_KEYS = ["sign_in.flaps", "sign_up.flaps"] as const;
+/**
+ * The greeting words that used to be set in flaps above every sign-in and
+ * sign-up — a nameplate carrying zero product information, and the slop risk
+ * this feature's own lock named in advance ("demoting it to a decorative header
+ * strip"). `design-critic` applied the lock's litmus and failed the surface on
+ * it: delete the band from sign-up and the page loses nothing but its only
+ * colour.
+ *
+ * Nothing in the bundle is set in flaps any more. The band only ever renders
+ * runtime data — the pairing code from the visitor's own television, or the TV
+ * address from the request — so a *translatable string* appearing on the drums
+ * again is the regression, and this is the guard for it.
+ */
+const BANNED_FLAP_KEYS = [
+  "sign_in.flaps",
+  "sign_up.flaps",
+  "sign_in.flaps_label",
+  "sign_up.flaps_label",
+] as const;
 
 describe("the auth surface's copy", () => {
   for (const [name, bundle] of BUNDLES) {
@@ -120,29 +139,31 @@ describe("the auth surface's copy", () => {
     expect([...paths(zh)].sort()).toEqual([...paths(en)].sort());
   });
 
-  /**
-   * The flap strings are **deliberately identical in every locale**. Not an
-   * oversight: `BOARD_CHARS` is Latin by construction, a property of the
-   * physical object rather than of the app, so a translated word folds to
-   * nothing and `FlapWord` would paint a row of blank flaps. The translated
-   * sentence lives in `flaps_label` and in the prose beside the board.
-   */
-  it("keeps the flap words identical across locales", () => {
-    for (const key of FLAP_KEYS) {
-      expect(lookup(zh, key), key).toBe(lookup(en, key));
+  it("sets no translatable string in flaps", () => {
+    for (const [name, bundle] of BUNDLES) {
+      for (const key of BANNED_FLAP_KEYS) {
+        expect(lookup(bundle, key), `${name}: ${key} is back`).toBeUndefined();
+      }
+      const copy = JSON.stringify(bundle);
+      for (const greeting of ["WELCOME BACK", "HELLO THERE"]) {
+        expect(copy, `${name} still greets in flaps`).not.toContain(greeting);
+      }
     }
   });
 
-  it("keeps the flap words settable on a real board", () => {
-    for (const key of FLAP_KEYS) {
-      const word = lookup(en, key) as string;
-      // Survives the charset fold unchanged — no character silently dropped.
-      expect(normalizeText(word), key).toBe(word);
-      // And fits one row, so the band never wraps mid-word.
-      expect(word.length, `${key} must fit ${BOARD_COLS} columns`).toBeLessThanOrEqual(
-        BOARD_COLS
-      );
-    }
+  /**
+   * The two things the band *does* set are runtime data, and both have to
+   * survive the fold onto `BOARD_CHARS` — which is Latin, upper case and
+   * punctuation-poor by construction, a property of the physical object rather
+   * than of the app. The code is generated from a subset of the charset by
+   * `device-code.ts`; the address is checked at the call site by
+   * `addressFitsFlaps`. This pins the assumption underneath both: that the
+   * charset still carries what a `host:port/tv` is made of.
+   */
+  it("keeps a TV address settable on real flaps", () => {
+    const address = "LOCALHOST:5173/TV";
+    expect(normalizeText(address)).toBe(address);
+    expect(address.length).toBeLessThanOrEqual(BOARD_COLS);
   });
 
   /**

@@ -203,7 +203,24 @@ body {
   --muted-foreground: oklch(0.4762 0.0064 286.16); /* 6.32:1 on paper */
   --accent: oklch(0.9575 0.0067 97.35);
   --accent-foreground: oklch(0.2405 0.0057 285.97);
-  --destructive: oklch(0.577 0.245 27.325);
+  /*
+   * The alarm, measured off the object like every other pigment here.
+   *
+   * This was `oklch(0.577 0.245 27.325)` — Tailwind's `red-600`, #E7000B — and
+   * it was the last framework hex in a palette whose whole claim, printed in the
+   * landing page's own spec table, is that the colours were measured off a real
+   * unit. On the auth surface it was also the *only* chromatic thing rendered,
+   * so the one saturated pixel a visitor met was the framework's, not ours.
+   *
+   * `--flap-red` is the red flap (#c3352d). Reusing it rather than restating it
+   * keeps the alarm pinned to the pigment parity test. `app/routes/board/
+   * hardware-theme.css` made this move first for the console scope; this is the
+   * same derivation for the app surface.
+   *
+   * Measured: 5.16:1 on paper as text, 5.43:1 with white on it as a fill — both
+   * over `red-600`'s 4.79:1 fill and comfortably over the 4.5:1 floor.
+   */
+  --destructive: var(--flap-red);
   --border: oklch(0.9124 0.0097 93.58);
   --input: oklch(0.8729 0.0126 91.53);
 
@@ -277,7 +294,17 @@ body {
   --muted-foreground: oklch(0.7711 0.0056 286.27); /* 9.05:1 */
   --accent: oklch(0.2536 0.0075 285.86);
   --accent-foreground: oklch(0.9503 0.0053 286.3);
-  --destructive: oklch(0.704 0.191 22.216);
+  /*
+   * The same red flap, lightened until it clears AA as small text on #121214 —
+   * NOT Tailwind's `red-400`. Identical value and identical reasoning to
+   * `hardware-theme.css`, which derived it first; the two surfaces must not meet
+   * a person with two different alarms.
+   *
+   * Measured: 5.89:1 on the dark canvas, against `red-400`'s 6.63:1. The trade
+   * is deliberate and the same one the console made — provenance over maximum
+   * contrast, with the floor still cleared by a margin.
+   */
+  --destructive: #e8695f;
   --border: oklch(0.2903 0.0054 286.06);
   --input: oklch(0.3239 0.0123 285.69);
 

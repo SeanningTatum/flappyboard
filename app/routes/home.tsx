@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BoardBand } from "@/components/board/board-band";
 import { BoardGridView } from "@/components/board/board-grid-view";
 import {
   BLANK_GRID,
@@ -164,11 +165,16 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="min-h-svh bg-background">
-      <header className="border-b border-border">
+      {/* No `border-b`: the band's own aluminium rail sits immediately below
+          and is this header's bottom edge. Two boundaries stacked — a 1px
+          hairline on a 3px extrusion — is two rules doing one rule's job. */}
+      <header>
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5 sm:px-8">
           <Link
             to="/"
-            className="text-sm font-semibold tracking-[0.18em] text-text-heading uppercase"
+            // 44px of target around a 20px wordmark — see the note on
+            // `auth-brand`; the same link measured 133 × 20 on both surfaces.
+            className="inline-flex h-11 items-center text-sm font-semibold tracking-[0.18em] text-text-heading uppercase"
             data-testid="landing-brand"
           >
             {t("brand")}
@@ -196,20 +202,18 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           {/*
             The object, in a dark room, full bleed.
 
-            `className="dark"` is the mechanism the repo already uses for this —
-            the tokens inside resolve to their dark values, so the band is
-            #121214 with no restated hex anywhere. The board brings its own
-            painted-metal mask, which lands a step lighter than the room: canvas →
-            plate → flap well is the whole elevation story, no shadows.
+            The room, its edge and the reasoning for both now live in
+            `BoardBand`, shared with `/login` and `/sign-up`. That is not tidying:
+            the `border-y` fix made here for round 1's P1-d **did not reach the
+            auth surface one tap downstream**, where the same 1.00:1 band-vs-canvas
+            defect was still live in round 1 of the auth critique — and worse,
+            because that page has no 144-tile plate to carry the figure. Two
+            hand-rolled bands cannot both be right for long.
 
-            `border-y` is not trim. Forcing the band dark is a no-op when the
-            **page** is already dark, so in dark mode the band measured 1.00:1
-            against the canvas — the full-bleed room that gives the object its
-            edge did not weaken, it vanished, and what was left was a grid
-            floating in undifferentiated black (`design-critic` round 1, P1-d).
-            The hairline is the enclosure that survives both themes.
+            The hairline is also gone from both, in favour of the object's own
+            aluminium extrusion: 1.29:1 → 1.84:1 in dark. See `BoardBand`.
           */}
-          <div className="dark border-y border-border bg-background px-4 py-3 sm:px-8 sm:py-8">
+          <BoardBand className="px-4 py-3 sm:px-8 sm:py-8">
             {/*
               The field is 2:1 by construction, so its height is half whatever
               width it is given. `min(100%, 78vh)` is the trade: wide enough that
@@ -226,7 +230,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               */}
               <BoardGridView grid={grid} variant="inline" />
             </div>
-          </div>
+          </BoardBand>
 
           {/*
             Reading order on a phone: **field, then prose, then CTA.** On a
