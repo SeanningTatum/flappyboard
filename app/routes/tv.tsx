@@ -5,8 +5,12 @@ import { useRevalidator } from "react-router";
 import QRCode from "qrcode";
 
 import type { Route } from "./+types/tv";
-import { DEVICE_CODE_TTL_SECONDS } from "@/lib/board/device-code";
+import {
+  DEVICE_CODE_LENGTH,
+  DEVICE_CODE_TTL_SECONDS,
+} from "@/lib/board/device-code";
 import { CONSOLE, PLATE_LIP } from "@/components/board/console";
+import { FlapWord } from "@/components/board/flap-word";
 // The scoped token override for the console surfaces. See the header of that
 // file for why this route runs its own visual language.
 import "./board/hardware-theme.css";
@@ -131,7 +135,7 @@ function TvQr({ url, alt }: { readonly url: string; readonly alt: string }) {
     <img
       src={dataUrl}
       alt={alt}
-      className="size-[38vmin] rounded-[1vmin] bg-white p-[1.5vmin]"
+      className="size-[38vmin] rounded-[2px] bg-white p-[1.5vmin]"
       data-testid="tv-qr-image"
       data-link-url={url}
     />
@@ -298,32 +302,43 @@ export default function TvPairing({ loaderData }: Route.ComponentProps) {
           </p>
 
           {/*
-            The fallback as a recessed readout — the digital display on the
-            unit, not a headline. Mono with tabular figures, because a code is
-            data: fixed advance, nothing shuffles when it rotates.
+            The fallback code, set in the board's own flaps.
+
+            It was a mono readout, and mono was the right instinct for the wrong
+            reason: a code is data, so it wanted a fixed advance. But this screen
+            is a split-flap display showing a six-character string, and the
+            product already owns hardware that does exactly that — a flap has a
+            fixed advance by construction, and it is the one thing on this
+            television that tells a visitor what they are about to own.
+
+            Six unlit flaps with white glyphs: the board's default state, not a
+            colour statement. A pigment here would be decoration on a string
+            somebody has to read across a room.
+
+            `FlapWord`, not the board — no socket, no animator, no 144 tiles.
+            See that file for why a rotation is an instant cut rather than a
+            flip.
           */}
-          <p
-            className="flex items-baseline gap-[2vmin] px-[2.5vmin] py-[1.2vmin] font-mono"
-            style={{
-              backgroundColor: CONSOLE.track,
-              boxShadow:
-                "inset 0 1px 0 rgba(0,0,0,0.55), inset 0 0 0 1px rgba(0,0,0,0.4)",
-              color: CONSOLE.ink,
-            }}
-          >
+          <div className="flex flex-col items-center gap-[1.4vmin]">
             <span
               className="text-[1.8vmin] uppercase"
               style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
             >
               {t("tv.codeLabel")}
             </span>
-            <span
-              className="text-[5.5vmin] leading-none font-bold tracking-[0.25em] tabular-nums"
-              data-testid="tv-code"
+            <div
+              className="p-[1vmin]"
+              style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
             >
-              {code}
-            </span>
-          </p>
+              <FlapWord
+                text={code}
+                cellWidth="6.5vmin"
+                cells={DEVICE_CODE_LENGTH}
+                label={code}
+                data-testid="tv-code"
+              />
+            </div>
+          </div>
         </>
       )}
     </main>

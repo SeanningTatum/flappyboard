@@ -74,7 +74,16 @@
   --accent-foreground: #eeeef2;
   --border: #2b2b2e; /* 1px separator, a step above the track on both sides */
   --input: #0e0e10; /* the bottom of a hole */
-  --destructive: oklch(0.704 0.191 22.216);
+  /* Derived from the measured red flap (`#c3352d` in `TILE_COLORS`), lightened
+     until it clears AA as small text on the panel — NOT Tailwind's `red-400`.
+     The stock token was the one framework hex left in a palette whose whole
+     claim is that it was measured off the object, and it was the colour a
+     person met at the two highest-stakes moments in the product: the refused
+     pairing code, and the key that deletes every message a board ever showed.
+     Measured 5.75:1 on `--hw-panel` and 6.62:1 on the field — slightly under
+     `red-400`'s 6.32/7.27 and comfortably over the 4.5:1 floor. The trade is
+     deliberate: provenance, not maximum contrast. */
+  --destructive: #e8695f;
 
   /* The pilot lamp. 12.08:1 on the panel, so unlike the app's light theme this
      one needs no darkening — and it stays a STATE signal, never an action fill.

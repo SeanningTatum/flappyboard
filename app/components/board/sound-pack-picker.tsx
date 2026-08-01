@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { IconVolume, IconVolumeOff } from "@tabler/icons-react";
 
 import { cn } from "@/lib/utils";
-import { Switch } from "@/components/ui/switch";
 import {
   CONSOLE,
   ConsoleLabel,
@@ -53,16 +52,26 @@ export function SoundPackPicker({
     <section className={cn("flex flex-col gap-2", className)}>
       <ConsoleLabel>{t("control.sound.title")}</ConsoleLabel>
 
-      <div
-        className="flex flex-col rounded-none"
-        style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
-      >
-        <div className="p-2">
+      {/*
+        No plate. Both controls below are recessed tracks that carry their own
+        background, so a raised rectangle around them added a third surface
+        level for nothing — the caps label above already names the group.
+      */}
+      <div className="flex flex-col gap-2">
+        <div>
           {/*
-            Muting the board disables the pack selector, so the whole track drops
-            to its `off` treatment — see `segmentStyle`. `disabled:opacity-100`
-            because the off styling already says "not available"; stacking the
-            default 40% dim on top of it just made it unreadable.
+            Muting no longer disables this row, and that fixes a design defect
+            as well as an annoyance.
+
+            The disabled state used `segmentStyle`'s `off` treatment — a hairline
+            instead of the off-white plate — which put TWO different encodings of
+            "this one is selected" twelve pixels apart in the same panel: a
+            hairline CLASSIC above a filled MUTED. A viewer could not tell
+            whether lit meant "current" or "press me".
+
+            And the dependency was never real: the chosen pack is what plays
+            when sound comes back, so choosing one while muted is a perfectly
+            sensible thing to do.
           */}
           <SegmentTrack
             role="radiogroup"
@@ -77,15 +86,11 @@ export function SoundPackPicker({
                   type="button"
                   // 44px tall: reachable one-handed, and nothing here depends on
                   // hover.
-                  className={cn(
-                    segmentClass(active),
-                    "h-11 flex-1 basis-0",
-                    muted && "disabled:opacity-100"
-                  )}
-                  style={segmentStyle(active, muted)}
+                  className={cn(segmentClass(active), "h-11 flex-1 basis-0 touch-manipulation")}
+                  style={segmentStyle(active)}
                   role="radio"
                   aria-checked={active}
-                  disabled={pending || muted}
+                  disabled={pending}
                   onClick={() => onChange({ soundPack: pack.id })}
                   data-testid={`control-sound-pack-${pack.id}`}
                 >
@@ -96,39 +101,54 @@ export function SoundPackPicker({
           </SegmentTrack>
         </div>
 
-        {/* A scored line in the plate, not a border around a new box. */}
-        <div
-          aria-hidden
-          className="h-px w-full"
-          style={{ backgroundColor: CONSOLE.hairline }}
-        />
 
-        <label
-          className="flex h-12 items-center justify-between gap-3 px-3"
-          data-testid="control-mute-row"
-        >
-          <span
-            className="flex items-center gap-2 text-[11px] font-medium uppercase"
-            style={{
-              color: muted ? CONSOLE.amber : CONSOLE.inkDim,
-              letterSpacing: "0.16em",
-            }}
-          >
-            {muted ? (
-              <IconVolumeOff className="size-4 shrink-0" aria-hidden />
-            ) : (
-              <IconVolume className="size-4 shrink-0" aria-hidden />
-            )}
-            {muted ? t("control.sound.muted") : t("control.sound.unmuted")}
-          </span>
-          <Switch
-            checked={muted}
-            disabled={pending}
-            onCheckedChange={(next) => onChange({ muted: next })}
+        {/*
+          A two-position rocker, not a switch — and this replaced a shadcn
+          `Switch` for two separate reasons, both raised by the design review.
+
+          **It was the only pill and the only circle in the product.** Every
+          other control on the console measures 0px radius against a contract
+          that says a pill would be a lie, and the white track made it the
+          loudest object on the panel — brighter than the amber lamp beside it.
+
+          **And it read backwards.** `checked` meant *muted*, so the affirmative
+          state — track lit, knob to the right — meant the board makes no sound.
+          A rocker has no affirmative state to get wrong: each half says what it
+          does, and the lit half is the one in force.
+        */}
+        <div>
+          <SegmentTrack
+            role="radiogroup"
             aria-label={t("control.sound.mute_label")}
             data-testid="control-mute"
-          />
-        </label>
+          >
+            {([false, true] as const).map((isMuted) => {
+              const active = muted === isMuted;
+              const Icon = isMuted ? IconVolumeOff : IconVolume;
+              return (
+                <button
+                  key={String(isMuted)}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  disabled={pending}
+                  className={cn(
+                    segmentClass(active),
+                    "h-11 flex-1 basis-0 gap-2 touch-manipulation"
+                  )}
+                  style={segmentStyle(active)}
+                  onClick={() => onChange({ muted: isMuted })}
+                  data-testid={`control-mute-${isMuted ? "on" : "off"}`}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden />
+                  {isMuted
+                    ? t("control.sound.muted")
+                    : t("control.sound.unmuted")}
+                </button>
+              );
+            })}
+          </SegmentTrack>
+        </div>
       </div>
     </section>
   );

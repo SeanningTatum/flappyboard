@@ -30,7 +30,7 @@ export const safeNextPath = (raw: string | null): string | null => {
 /**
  * `/login?next=<path+query>` for the URL being gated, so a visitor who was
  * headed somewhere real (a QR scan landing on `/link?code=…`) resumes there
- * after signing in instead of landing on the dashboard.
+ * after signing in instead of landing on their board.
  */
 export const loginRedirectUrl = (request: Request): string => {
   const url = new URL(request.url);
@@ -57,7 +57,7 @@ export async function requireSession(
 
 /**
  * Loader auth gate: resolves the current session and requires `role === "admin"`,
- * redirecting non-admins to `/dashboard` (and unauthenticated users to `/login`
+ * redirecting non-admins to `/boards` (and unauthenticated users to `/login`
  * via `requireSession`).
  */
 export async function requireAdmin(
@@ -65,19 +65,47 @@ export async function requireAdmin(
   context: AppLoadContext
 ): Promise<Session> {
   const session = await requireSession(request, context);
-  if (session.user.role !== "admin") throw redirect("/dashboard");
+  if (session.user.role !== "admin") throw redirect("/boards");
   return session;
 }
 
 /**
- * Loader guard for public-only routes (home, login, sign-up): redirects an
- * already-authenticated visitor to `to` (default `/dashboard`) instead of
- * rendering the route.
+ * Where a signed-in visitor lands when they open the app with nowhere
+ * particular to be — the answer to "there is no dashboard any more, so what is
+ * home?".
+ *
+ * **One board goes straight to its controller.** That is the whole point: a
+ * household with one television has exactly one thing to do here, and making
+ * them tap a list of length one to reach it is the friction the redesign
+ * removed. Zero boards or several boards land on the rack, which either teaches
+ * the TV address or asks which screen.
+ *
+ * Takes the boards rather than the `boardCount` the plan named, because a count
+ * cannot address a controller — `/b/:boardId/c` needs the id, and a helper that
+ * answers "the rack, or somewhere I can't tell you" would push the interesting
+ * half back to every caller.
+ *
+ * Pure, and called from exactly one place (`routes/home.tsx`'s loader): it is
+ * the only surface that both knows there is a session and can afford to list
+ * boards server-side. The client-side auth forms navigate to `/` and let it
+ * decide, so the rule lives in one file rather than in every form.
+ */
+export const resolveSignedInHome = (
+  boards: ReadonlyArray<{ readonly id: string }>
+): string =>
+  boards.length === 1
+    ? `/b/${encodeURIComponent(boards[0]!.id)}/c`
+    : "/boards";
+
+/**
+ * Loader guard for public-only routes (login, sign-up): redirects an
+ * already-authenticated visitor to `to` (default `/`, which resolves the real
+ * destination via `resolveSignedInHome`) instead of rendering the route.
  */
 export async function redirectIfAuthenticated(
   request: Request,
   context: AppLoadContext,
-  to = "/dashboard"
+  to = "/"
 ): Promise<void> {
   const session = await context.auth.api.getSession({
     headers: request.headers,

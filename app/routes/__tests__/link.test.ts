@@ -1,21 +1,13 @@
 import { describe, it, expect } from "vitest";
 
-import { defaultBoardName, resolveAutoLink } from "../link";
+import { defaultBoardName } from "../link";
 
-describe("resolveAutoLink", () => {
-  it("creates a board when the account has none", () => {
-    expect(resolveAutoLink(0)).toBe("create");
-  });
-
-  it("pairs the one board when the account has exactly one", () => {
-    expect(resolveAutoLink(1)).toBe("single");
-  });
-
-  it("asks when the account has several boards — guessing pairs the wrong TV", () => {
-    expect(resolveAutoLink(2)).toBe("pick");
-    expect(resolveAutoLink(12)).toBe("pick");
-  });
-});
+/*
+  `resolveAutoLink` and its three tests were deleted with the board-count branch
+  they described. There is no decision left to make: scanning a television's
+  code always creates the board that television will show, so 0 / 1 / many
+  accounts all take the same path. See the header of `../link.tsx`.
+*/
 
 describe("defaultBoardName", () => {
   it("is English for English and unknown locales", () => {

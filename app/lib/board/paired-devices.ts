@@ -628,3 +628,28 @@ export const overflowVictims = (
     .slice(0, excess)
     .map((record) => record.nonce);
 };
+
+/**
+ * How long ago a phone last drove the board, as a translation key and a count.
+ *
+ * Buckets rather than an exact duration, and deliberately coarse. The question
+ * this answers is "is this the phone I think it is?", which "yesterday" settles
+ * and "23 hours and 14 minutes" does not.
+ *
+ * Pure, and fed a caller-supplied `now` so it can be tested without a fake
+ * clock. (Lived in `components/boards/board-devices.tsx` until the device list
+ * moved onto the controller — a helper with no unit test, which is one of the
+ * five non-negotiables.)
+ */
+export const lastSeenKey = (
+  lastSeenAt: number,
+  now: number
+): { key: string; count: number } => {
+  const elapsed = Math.max(0, now - lastSeenAt);
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 2) return { key: "devices.justNow", count: 0 };
+  if (minutes < 60) return { key: "devices.minutesAgo", count: minutes };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { key: "devices.hoursAgo", count: hours };
+  return { key: "devices.daysAgo", count: Math.floor(hours / 24) };
+};

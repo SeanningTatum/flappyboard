@@ -105,18 +105,121 @@ describe("the editor's copy", () => {
 });
 
 /**
- * The `boards` namespace keys the revoke control renders. Same argument as above,
- * and one more: revoke is the only way to take a controller grant back, so an
- * owner who cannot read the dialog cannot use the security control.
+ * The `boards` namespace, in full — every key the rack, the shell, the
+ * controller's Settings tab and `/link` render.
+ *
+ * This list used to be seven keys covering only the revoke dialog, which left
+ * every navigation, tab and rack string unguarded at exactly the moment they
+ * were all being moved. The original argument stands and generalises: revoke is
+ * the only way to take a controller grant back, so an owner who cannot read the
+ * dialog cannot use the security control — and a household that cannot read the
+ * word "Settings" cannot reach the dialog in the first place.
+ *
+ * Grouped by surface so a deletion here is visibly a deletion of a surface.
  */
 const BOARDS_KEYS: ReadonlyArray<{ key: string; vars?: ReadonlyArray<string> }> = [
-  { key: "card.revoke" },
+  // The shell — the only place a non-admin can sign out.
+  { key: "shell.menu" },
+  { key: "shell.signOut" },
+  { key: "shell.signingOut" },
+  { key: "shell.admin" },
+  { key: "shell.boards" },
+
+  // The rack.
+  { key: "title" },
+  { key: "subtitle" },
+  { key: "rack.open", vars: ["name"] },
+  { key: "rack.revision", vars: ["revision"] },
+  { key: "rack.never_written" },
+  { key: "rack.devices_one", vars: ["count"] },
+  { key: "rack.devices_other", vars: ["count"] },
+  { key: "rack.empty.title" },
+  { key: "rack.empty.body" },
+  { key: "rack.address.label" },
+  { key: "rack.address.hint" },
+
+  // The controller's two tabs and everything under Settings.
+  { key: "controller.back" },
+  { key: "controller.tabs.content" },
+  { key: "controller.tabs.settings" },
+  { key: "controller.settings.display.title" },
+  { key: "controller.settings.display.description" },
+  { key: "controller.settings.name.title" },
+  { key: "controller.settings.name.label" },
+  { key: "controller.settings.name.save" },
+  { key: "controller.settings.name.saving" },
+  { key: "controller.settings.name.saved" },
+  { key: "controller.settings.thisDevice.title" },
+  { key: "controller.settings.thisDevice.description" },
+  { key: "controller.settings.thisDevice.placeholder" },
+  { key: "controller.settings.thisDevice.unnamed" },
+  { key: "controller.settings.danger.title" },
+  { key: "controller.settings.ownerOnly" },
+
+  // The TV address readout, shared by the rack's empty state and Settings.
+  { key: "card.tv_label" },
+  { key: "card.copy" },
+  { key: "card.copied" },
+  { key: "card.copy_manual" },
+  { key: "card.open" },
+  { key: "card.control" },
+
+  // Rename, still an owner-only control — now inline in Settings.
+  { key: "rename.title" },
+  { key: "rename.error.name_too_long", vars: ["max"] },
+  { key: "rename.error.name_empty" },
+  { key: "rename.error.rename_failed" },
+
+  // Revoke — the original seven, minus the card button that moved.
   { key: "revoke.title", vars: ["name"] },
   { key: "revoke.description" },
   { key: "revoke.cancel" },
   { key: "revoke.confirm" },
   { key: "revoke.revoking" },
   { key: "revoke.error.revoke_failed" },
+
+  // Delete.
+  { key: "delete.title", vars: ["name"] },
+  { key: "delete.description" },
+  { key: "delete.cancel" },
+  { key: "delete.confirm" },
+  { key: "delete.deleting" },
+  { key: "delete.error.delete_failed" },
+
+  // Per-device un-pairing.
+  { key: "devices.title" },
+  { key: "devices.count" },
+  { key: "devices.description" },
+  { key: "devices.empty" },
+  { key: "devices.unnamed" },
+  { key: "devices.lastSeen", vars: ["when"] },
+  { key: "devices.justNow" },
+  { key: "devices.minutesAgo", vars: ["count"] },
+  { key: "devices.hoursAgo", vars: ["count"] },
+  { key: "devices.daysAgo", vars: ["count"] },
+  { key: "devices.unpair" },
+  { key: "devices.unpairing" },
+  { key: "devices.unpairOne", vars: ["name"] },
+  { key: "devices.unpairOneBody" },
+  { key: "devices.unpairDisplays" },
+  { key: "devices.unpairDisplaysTitle", vars: ["name"] },
+  { key: "devices.unpairDisplaysBody" },
+  { key: "devices.unpairDisplaysConfirm" },
+  { key: "devices.error.revoke_device_failed" },
+  { key: "devices.error.revoke_displays_failed" },
+
+  // `/link`, after the picker was deleted: a code field and named refusals.
+  { key: "link.title" },
+  { key: "link.subtitle" },
+  { key: "link.codeLabel" },
+  { key: "link.codePlaceholder" },
+  { key: "link.submit" },
+  { key: "link.submitting" },
+  { key: "link.failure.invalid-code" },
+  { key: "link.failure.create_failed" },
+  { key: "link.failure.not-found" },
+  { key: "link.failure.rate-limited" },
+  { key: "link.failure.failed" },
 ];
 
 const BOARDS_BUNDLES: ReadonlyArray<readonly [string, unknown]> = [

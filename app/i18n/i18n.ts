@@ -7,7 +7,6 @@ export const namespaces = [
   "common",
   "auth",
   "admin",
-  "dashboard",
   "home",
   "validation",
   "upload",

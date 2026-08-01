@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import type { BoardColor } from "@/lib/schemas/board";
@@ -158,13 +158,42 @@ export const FLAP_NOTCH_MINI =
  * `className="dark"` is load-bearing too. The app's dark variant is
  * `&:is(.dark *)`, so this makes every shadcn primitive *inside* the field
  * resolve its dark tokens — the Switch, the Spinner, `FormMessage`'s
- * destructive red — without touching `<html>`, which the TV route and the
- * dashboard share.
+ * destructive red — without touching `<html>`, which the public routes share.
+ *
+ * ## Why the attribute is also written to `<html>`
+ *
+ * A Radix overlay — `Select`, `DropdownMenu`, `AlertDialog` — renders into a
+ * portal appended to `document.body`, which is **outside this `<main>`**. Custom
+ * properties inherit, so a portal takes its tokens from `<html>`: the language
+ * switcher opened on a console route would drop a white popover onto a black
+ * console, in exactly the room the dark field exists to protect.
+ *
+ * So the scope is mirrored onto the document element for as long as a console
+ * surface is mounted. An effect rather than a render is correct here: there is
+ * no portal to style during SSR (Radix mounts its content on interaction), and
+ * `<html>` belongs to `root.tsx`. Nested/overlapping console routes are counted
+ * rather than toggled, so a transition from one console route to another cannot
+ * leave the attribute off — React runs the incoming mount effect before the
+ * outgoing cleanup in some transitions, and a naive remove would win.
  */
+let consoleSurfaces = 0;
+
 export function ConsoleField({
   children,
+  className,
   ...rest
 }: React.ComponentProps<"main">) {
+  useEffect(() => {
+    consoleSurfaces += 1;
+    document.documentElement.setAttribute("data-surface", "hardware");
+    return () => {
+      consoleSurfaces -= 1;
+      if (consoleSurfaces === 0) {
+        document.documentElement.removeAttribute("data-surface");
+      }
+    };
+  }, []);
+
   return (
     <>
       <div
@@ -179,7 +208,17 @@ export function ConsoleField({
         // `.dark` precisely because these two selectors tie on specificity when
         // they land together, which is exactly here.
         data-surface="hardware"
-        className="dark mx-auto flex min-h-dvh max-w-md flex-col px-4 py-5"
+        // `cn`, not a bare literal followed by `{...rest}`. Spreading rest over
+        // a hardcoded `className` **replaces** it, so any caller passing so much
+        // as `className="gap-6"` silently lost the layout, the max width, the
+        // padding and the `dark` class that every shadcn primitive inside this
+        // field resolves its tokens from. That is exactly what happened on
+        // `/boards` — a full-bleed, gapless page whose sections overlapped —
+        // and `RescanPrompt` only escaped it by restating the whole string.
+        className={cn(
+          "dark mx-auto flex min-h-dvh max-w-md flex-col px-4 py-5",
+          className
+        )}
         style={{ backgroundColor: CONSOLE.field, color: CONSOLE.ink }}
         {...rest}
       >
@@ -203,7 +242,10 @@ export function ConsoleLabel({
   return (
     <h2
       className={cn(
-        "flex items-center gap-2 px-1 text-[10px] leading-none font-medium uppercase",
+        // No `px-1`. The label used to sit 4px inside the surface it names,
+        // which put three different left gutters in one Settings stack once the
+        // panel fills came off. Silkscreen lines up with the control.
+        "flex items-center gap-2 text-[10px] leading-none font-medium uppercase",
         className
       )}
       style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
@@ -374,7 +416,10 @@ export function FlapSwatch({
   return (
     <span
       aria-hidden
-      className="relative block h-8 w-full"
+      // `h-full`, not a fixed 32px. The swatch used to sit in the middle of a
+      // 44px button leaving 12px of dead target above and below, so the control
+      // measured smaller than it was and read smaller still.
+      className="relative block h-full w-full"
       style={{
         backgroundColor: CONSOLE.well,
         borderRadius: "2px",

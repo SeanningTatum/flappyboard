@@ -2,12 +2,24 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/*
+ * Two departures from the stock shadcn card, both enforcing the brand contract
+ * rather than expressing a preference:
+ *
+ * 1. `rounded-xl` → `rounded-lg`. `rounded-xl` is `--radius + 4px`, which hard-
+ *    codes a card at 6px on a product whose object has 2px corners. `rounded-lg`
+ *    IS `--radius`, so a card now tracks the token instead of out-running it.
+ * 2. `shadow-sm` removed. The reference lock's named trait (Oxide Computer) is
+ *    "elevation via tonal shift and hairlines, never drop shadows" — and the
+ *    card already carries `border`, which is that hairline. A blur under every
+ *    card was the single most-repeated violation on the app surface.
+ */
 function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
       className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-lg border py-6",
         className
       )}
       {...props}

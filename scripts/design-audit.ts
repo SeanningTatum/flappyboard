@@ -24,6 +24,8 @@ interface Args {
   scope: string;
   accent?: string;
   json: boolean;
+  /** `<email>:<password>` — sign in before auditing. See `signIn`. */
+  signIn?: string;
 }
 
 function parseArgs(): Args {
@@ -35,7 +37,8 @@ function parseArgs(): Args {
   const url = get("--url");
   if (!url) {
     console.error(
-      "usage: bun run design:audit -- --url <url> [--scope <selector>] [--accent <#hex>] [--json]"
+      "usage: bun run design:audit -- --url <url> [--scope <selector>] [--accent <#hex>]" +
+        " [--sign-in <email>:<password>] [--json]"
     );
     process.exit(2);
   }
@@ -44,7 +47,42 @@ function parseArgs(): Args {
     scope: get("--scope") ?? "body",
     accent: get("--accent"),
     json: argv.includes("--json"),
+    signIn: get("--sign-in"),
   };
+}
+
+/**
+ * Sign in through the real login form before auditing.
+ *
+ * Without this the audit could only ever see public routes — and it silently
+ * measured the *login page* instead of the route asked for, because a gated
+ * loader answers a redirect and the `--scope` selector then falls back to
+ * `body`. That is worse than refusing: `/boards` and `/link` reported
+ * byte-identical numbers, both of them actually describing `/login`, and both
+ * of them "passing".
+ *
+ * The form rather than an API call, deliberately: it is the same path a person
+ * takes, it needs no knowledge of Better Auth's endpoint shape, and if the login
+ * form is broken the audit should fail rather than quietly audit a session it
+ * obtained some other way.
+ */
+async function signIn(page: Page, url: string, credentials: string) {
+  const separator = credentials.indexOf(":");
+  if (separator < 0) {
+    console.error("--sign-in expects <email>:<password>");
+    process.exit(2);
+  }
+  const email = credentials.slice(0, separator);
+  const password = credentials.slice(separator + 1);
+
+  const origin = new URL(url).origin;
+  await page.goto(`${origin}/login`, { waitUntil: "networkidle" });
+  await page.fill('[data-testid="login-email"]', email);
+  await page.fill('[data-testid="login-password"]', password);
+  await page.click('[data-testid="login-submit"]');
+  await page.waitForURL((current) => !current.pathname.startsWith("/login"), {
+    timeout: 20_000,
+  });
 }
 
 /**
@@ -206,8 +244,30 @@ page.on("console", (m) => {
   if (m.type() === "error") jsErrors.push(m.text());
 });
 
+if (args.signIn !== undefined) await signIn(page, args.url, args.signIn);
+
 await page.goto(args.url, { waitUntil: "networkidle" });
 await page.waitForTimeout(600);
+
+/*
+  Refuse rather than measure the wrong page. A gated route answers a redirect
+  when there is no session, and every number below would then describe `/login`
+  while carrying the requested URL in the header — a passing report about a page
+  nobody asked about.
+*/
+if (args.scope !== "body") {
+  const scoped = await page.locator(args.scope).count();
+  if (scoped === 0) {
+    console.error(
+      `design-audit: scope ${args.scope} matched nothing at ${page.url()}` +
+        (args.signIn === undefined
+          ? " — if this route needs a session, pass --sign-in <email>:<password>"
+          : "")
+    );
+    await browser.close();
+    process.exit(2);
+  }
+}
 
 const desktop = (await measure(page, args)) as Record<string, any>;
 

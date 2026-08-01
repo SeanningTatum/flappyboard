@@ -4,6 +4,7 @@
   "app_name_short": "CF",
   "nav": {
     "home": "Home",
+    "boards": "Boards",
     "users": "Users",
     "kitchen_sink": "Kitchen Sink",
     "settings": "Settings",

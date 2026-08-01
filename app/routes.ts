@@ -33,22 +33,23 @@ export default [
   route("/login", "routes/authentication/login.tsx"),
   route("/sign-up", "routes/authentication/sign-up.tsx"),
 
-  // Public routes with locale prefix (for SEO)
-  ...prefix(":lng", [
-    index("routes/home.tsx", { id: "lng-home" }),
-    route("/login", "routes/authentication/login.tsx", { id: "lng-login" }),
-    route("/sign-up", "routes/authentication/sign-up.tsx", { id: "lng-sign-up" }),
-  ]),
-
-  // Board management — auth-protected, no locale prefix (same as /dashboard)
+  // Board management — auth-protected, no locale prefix (same as /admin):
+  // copy is translated client-side from the `boards` namespace.
   route("/boards", "routes/boards/_index.tsx"),
 
-  // Dashboard routes — auth-protected, client-side i18n only
-  ...prefix("dashboard", [
-    layout("routes/dashboard/_layout.tsx", [
-      route("/", "routes/dashboard/_index.tsx"),
-    ]),
-  ]),
+  /*
+    Forwarding addresses for the URLs the IA redesign removed — `/dashboard`
+    and the six locale-prefixed aliases. Six LITERAL routes, deliberately:
+    `...prefix(":lng", [...])` matched any single segment, so `/pricing`
+    rendered the marketing page with a 200. See `legacy-redirect.ts`.
+  */
+  route("/dashboard", "routes/legacy-redirect.ts", { id: "shim-dashboard" }),
+  route("/en", "routes/legacy-redirect.ts", { id: "shim-en" }),
+  route("/en/login", "routes/legacy-redirect.ts", { id: "shim-en-login" }),
+  route("/en/sign-up", "routes/legacy-redirect.ts", { id: "shim-en-sign-up" }),
+  route("/zh", "routes/legacy-redirect.ts", { id: "shim-zh" }),
+  route("/zh/login", "routes/legacy-redirect.ts", { id: "shim-zh-login" }),
+  route("/zh/sign-up", "routes/legacy-redirect.ts", { id: "shim-zh-sign-up" }),
 
   // Admin routes — client-side i18n only, no locale prefix
   ...prefix("admin", [

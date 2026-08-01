@@ -1,43 +1,65 @@
 {
-  "eyebrow": "Boards",
   "title": "Your boards",
-  "subtitle": "A board is a split-flap display you leave open on a TV and drive from your phone — type your own message, or let the AI write one.",
-  "back": "Dashboard",
-  "list": {
-    "title": "On this account"
+  "subtitle": "One board per television.",
+  "shell": {
+    "menu": "Account",
+    "signOut": "Sign out",
+    "signingOut": "Signing out…",
+    "admin": "Admin",
+    "boards": "Boards"
   },
-  "empty": {
-    "title": "No boards yet",
-    "body": "A board is a split-flap display you open on your TV and drive from your phone — type your own message, or let the AI write one."
+  "rack": {
+    "open": "Open {{name}}",
+    "revision": "Rev {{revision}}",
+    "never_written": "Nothing on it yet",
+    "devices_one": "{{count}} phone",
+    "devices_other": "{{count}} phones",
+    "empty": {
+      "title": "No boards yet",
+      "body": "Open your television's browser and go to the address below. Scan the code it shows, and the board appears here."
+    },
+    "address": {
+      "label": "On your TV, go to",
+      "hint": "Every television you point there becomes its own board."
+    }
   },
-  "create": {
-    "title": "New board",
-    "description": "Give it a name so you can tell your boards apart. Blank is fine.",
-    "name_label": "Board name",
-    "name_placeholder": "Kitchen",
-    "name_hint": "Optional — a blank name becomes \"flappyboard\".",
-    "submit": "Create board",
-    "first_submit": "Create your first board",
-    "submitting": "Creating…",
-    "error": {
-      "name_too_long": "That name is too long — keep it to {{max}} characters.",
-      "create_failed": "The board wasn't created. Try again."
+  "controller": {
+    "back": "Boards",
+    "tabs": {
+      "content": "Content",
+      "settings": "Settings"
+    },
+    "settings": {
+      "display": {
+        "title": "This board on a TV",
+        "description": "Type this into a television's browser to show this board on it."
+      },
+      "name": {
+        "title": "Board name",
+        "label": "What this board is called",
+        "save": "Save",
+        "saving": "Saving…",
+        "saved": "Saved"
+      },
+      "thisDevice": {
+        "title": "This phone",
+        "description": "The name the owner sees in the list below.",
+        "placeholder": "e.g. Kai's phone",
+        "unnamed": "Not named yet"
+      },
+      "danger": {
+        "title": "Careful"
+      },
+      "ownerOnly": "Only the owner of this board can change these."
     }
   },
   "card": {
-    "new": "Just created",
-    "revision": "Revision {{revision}}",
-    "never_written": "Nothing on it yet",
-    "created": "Created {{date}}",
     "tv_label": "Type this into your TV's browser",
     "copy": "Copy",
     "copied": "Copied",
     "copy_manual": "Selected — copy it with your keyboard",
     "open": "Open display",
-    "control": "Control from phone",
-    "rename": "Rename",
-    "revoke": "Unpair phones",
-    "delete": "Delete"
+    "control": "Control from phone"
   },
   "rename": {
     "title": "Rename board",
@@ -72,35 +94,22 @@
   },
   "link": {
     "title": "Link a TV",
-    "subtitle": "Scan the QR on the TV — or type the code it shows.",
+    "subtitle": "Type the code your television is showing.",
     "codeLabel": "Code on the TV",
     "codePlaceholder": "K7Q2XM",
-    "boardLabel": "What should the TV show?",
-    "pickExisting": "Existing board",
-    "pickNew": "New board",
-    "newBoardPlaceholder": "Living Room",
     "submit": "Pair the TV",
     "submitting": "Pairing…",
-    "success": "Paired. The TV is now showing {{name}}.",
-    "openController": "Open the controller",
     "failure": {
       "invalid-code": "That is not a valid code. It is 6 characters, exactly as shown on the TV.",
-      "no-board": "Pick which board the TV should show.",
-      "no-name": "Give the new board a name.",
-      "name_too_long": "That board name is too long.",
-      "create_failed": "Could not create the board. Try again in a moment.",
+      "create_failed": "Could not set the board up. Try again in a moment.",
       "not-found": "No TV is waiting on that code. Check it, or reload the TV for a new one.",
       "rate-limited": "Too many attempts. Wait a few minutes and try again.",
       "failed": "Could not pair the TV. Try again in a moment."
-    },
-    "auto": {
-      "created": "All set — we made “{{name}}” for you and the TV is showing it. Rename it anytime in Boards.",
-      "paired": "All set — the TV is now showing {{name}}.",
-      "manage": "Manage boards"
     }
   },
   "devices": {
     "title": "Paired devices",
+    "count": "Paired",
     "description": "Phones that can drive this board, and the TVs showing it.",
     "empty": "No phones are paired yet. Scan the code on the board to pair one.",
     "unnamed": "Unnamed phone",
@@ -121,12 +130,5 @@
       "revoke_device_failed": "That device wasn't un-paired. Try again.",
       "revoke_displays_failed": "The TVs weren't un-paired. Try again."
     }
-  },
-  "dashboard": {
-    "nav": "Boards",
-    "title": "Your boards",
-    "description": "Create a split-flap board, open its address on a TV, and drive it from your phone.",
-    "cta": "Open boards",
-    "link_cta": "Link a TV"
   }
 }

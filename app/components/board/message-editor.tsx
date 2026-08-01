@@ -2,9 +2,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { Schema } from "effect";
-import { IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconX } from "@tabler/icons-react";
 
 import { cn } from "@/lib/utils";
+import { BoardGridView } from "@/components/board/board-grid-view";
 import { effectResolver } from "@/lib/effect-form";
 import {
   Form,
@@ -30,7 +31,7 @@ import {
   segmentClass,
   segmentStyle,
 } from "@/components/board/console";
-import { compileMessage } from "@/lib/board/compile";
+import { BLANK_CELL, compileMessage } from "@/lib/board/compile";
 import { paintCell, paintCells, type CellEdit } from "@/lib/board/cell-paint";
 import {
   addStrokeCell,
@@ -617,7 +618,7 @@ function RowWell({
                 // An empty row's placeholder must read as an empty slot, not as
                 // content: six bright "ROW 3" strings look like a board that
                 // already says something.
-                "placeholder:text-[#5a5a5c] focus-visible:ring-0 dark:bg-transparent"
+                "placeholder:text-[#89898d] focus-visible:ring-0 dark:bg-transparent"
               )}
               style={{
                 backgroundColor: CONSOLE.well,
@@ -711,8 +712,14 @@ function ColorStrip({
 
   return (
     <div className="flex items-center gap-2">
+      {/*
+        FOUR across, two rows — the same fix as the paint palette, and this is
+        the row the design review actually measured: eight in one line on a
+        390px phone gave each pigment ~31x32px with a 5px gap, which mis-picks
+        under a thumb in a dim room.
+      */}
       <div
-        className="flex min-w-0 flex-1 items-stretch gap-1"
+        className="grid min-w-0 flex-1 grid-cols-4 gap-2"
         role="radiogroup"
         aria-label={
           first
@@ -743,7 +750,7 @@ function ColorStrip({
               // Full height is the touch target; the window inside it is smaller
               // than the target, as a key on a real panel is smaller than the
               // finger.
-              className="flex h-11 min-w-0 flex-1 basis-0 items-center justify-center disabled:opacity-40"
+              className="flex h-12 min-w-0 touch-manipulation items-center justify-center disabled:opacity-40"
               data-testid={segmentTestId(
                 rowIndex,
                 segmentIndex,
@@ -827,7 +834,8 @@ function RowDetail({ form, index, row, pending, locked }: RowDetailProps) {
         </ConsoleLabel>
         <button
           type="button"
-          className="h-8 shrink-0 rounded-none px-2 text-[10px] font-medium uppercase disabled:opacity-40"
+          // 44px, like every other target on this screen. It was 32.
+          className="h-11 shrink-0 touch-manipulation rounded-none px-3 text-[10px] font-medium uppercase disabled:opacity-40"
           style={{
             color: CONSOLE.inkDim,
             letterSpacing: "0.14em",
@@ -851,7 +859,9 @@ function RowDetail({ form, index, row, pending, locked }: RowDetailProps) {
               disabled={pending}
               className={cn(
                 segmentClass(active),
-                "h-9 min-w-0 flex-1 basis-0 px-0.5"
+                // 44px: four alignment keys share one track, so each is already
+                // narrow — losing height as well put them at 36.
+                "h-11 min-w-0 flex-1 basis-0 touch-manipulation px-0.5"
               )}
               style={segmentStyle(active)}
               onClick={() =>
@@ -965,12 +975,37 @@ function RowDetail({ form, index, row, pending, locked }: RowDetailProps) {
  */
 const DEFAULT_PAINT_COLOR = "red" as const satisfies BoardColor;
 
+/**
+ * Whether a compiled grid says nothing at all — every cell blank, no paint.
+ *
+ * Drives the one-instrument swap below. Deliberately not `formState.isDirty`:
+ * painting writes its result back through `form.reset`, which clears RHF's dirty
+ * flag, so a fully painted board would have reported itself untouched.
+ */
+const gridIsBlank = (grid: BoardGrid): boolean =>
+  grid.rows.every((row) =>
+    row.every(
+      (cell) =>
+        cell.char === BLANK_CELL.char && cell.color === BLANK_CELL.color
+    )
+  );
+
 export interface MessageEditorProps {
+  /**
+   * The board as it is on the wall right now, straight off the controller's
+   * socket. Shown in the instrument whenever there is no draft — see the swap
+   * at the render site.
+   */
+  readonly liveGrid: BoardGrid;
   readonly onSend: (message: BoardMessage) => void;
   readonly pending: boolean;
 }
 
-export function MessageEditor({ onSend, pending }: MessageEditorProps) {
+export function MessageEditor({
+  liveGrid,
+  onSend,
+  pending,
+}: MessageEditorProps) {
   const { t } = useTranslation("board");
 
   const form = useForm<MessageEditorValues>({
@@ -981,6 +1016,8 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
 
   const [painting, setPainting] = useState(false);
   const [paintColor, setPaintColor] = useState<BoardColor>(DEFAULT_PAINT_COLOR);
+  /** Whether the six typing wells are showing. See the note at the disclosure. */
+  const [rowsOpen, setRowsOpen] = useState(true);
   /** Which row the detail plate is describing. Row 1 until a caret says otherwise. */
   const [activeRow, setActiveRow] = useState(0);
 
@@ -1068,6 +1105,13 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
 
   const activeRowValues = values.rows[activeRow] ?? values.rows[0];
 
+  /**
+   * Which board the instrument is showing. Paint forces the draft even on an
+   * empty form — arming paint with nothing composed has to give the finger a
+   * canvas, not the wall's current message with taps that go nowhere.
+   */
+  const showingLive = !painting && gridIsBlank(compiled.grid);
+
   return (
     <Form {...form}>
       {/*
@@ -1077,41 +1121,26 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
       <form
         method="post"
         onSubmit={form.handleSubmit((data) => onSend(layoutToMessage(data)))}
-        className="flex flex-col gap-4"
+        className="flex flex-col gap-4 pb-2"
         data-testid="control-editor"
       >
         {/*
-          The primary action of this screen, and it has no controls in it at all.
-          Six wells, one plate, the keyboard.
-        */}
-        <section className="flex flex-col gap-2">
-          <ConsoleLabel>{t("control.editor.title")}</ConsoleLabel>
-          <div
-            className="flex flex-col gap-1.5 rounded-none p-2"
-            style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
-            data-testid="control-editor-rows"
-          >
-            {values.rows.map((row, index) => (
-              <RowWell
-                key={index}
-                form={form}
-                index={index}
-                active={index === activeRow}
-                segments={row.segments.length}
-                pending={pending}
-                locked={painting}
-                onFocus={() => setActiveRow(index)}
-                onEnter={() => {
-                  if (index < BOARD_ROWS - 1) focusRow(index + 1);
-                }}
-              />
-            ))}
-          </div>
-        </section>
+          THE INSTRUMENT — first on the screen, and the same rectangle whether it
+          is reporting or receiving.
 
-        {/*
-          Directly under the wells, because it is the answer to them: type, look
-          down, see the board. Nothing is allowed between the two.
+          It used to sit *under* six text wells as a preview of them, with the
+          live board rendered again as a separate section above. That was two
+          boards a hand's width apart on a 390px phone and a preview that only
+          existed once you had already typed. Now there is one grid in one place:
+
+          - **Nothing composed** → the live board off the socket, animated, flaps
+            actually travelling. "What does it say right now" is answered before
+            anybody asks.
+          - **Something composed, or paint armed** → the compiled draft, which is
+            also the canvas paint lands on.
+
+          The swap is on `gridIsBlank(compiled.grid)`, so clearing the form hands
+          the screen back to the live board with no extra control to press.
         */}
         <section className="flex flex-col gap-2">
           {/*
@@ -1121,7 +1150,9 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
             of the thing it was captioning.
           */}
           <div className="flex items-center justify-between gap-2">
-            <ConsoleLabel>{t("control.preview.title")}</ConsoleLabel>
+            <ConsoleLabel>
+              {showingLive ? t("control.mirror.title") : t("control.preview.title")}
+            </ConsoleLabel>
             {compiled.truncated && (
               <span
                 className="flex items-center gap-1.5 px-1 text-[10px] font-medium uppercase"
@@ -1147,7 +1178,7 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
             <SegmentTrack className="ml-auto shrink-0">
               <button
                 type="button"
-                className={cn(segmentClass(painting), "h-9 px-3")}
+                className={cn(segmentClass(painting), "h-11 touch-manipulation px-3")}
                 style={segmentStyle(painting)}
                 onClick={() => setPainting((on) => !on)}
                 aria-pressed={painting}
@@ -1165,8 +1196,15 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
             the job and there is nothing to share the line with.
           */}
           {painting && (
+            /*
+              FOUR across, not eight. Eight in one row on a 390px phone gave
+              each pigment a 31x32px target with a 5px gap — the most
+              finger-driven control on the main screen, in the stated use case
+              of one hand in a dim room, at a size that mis-picks. Two rows of
+              four is ~83px wide and 48px tall each.
+            */
             <div
-              className="flex items-stretch gap-1"
+              className="grid grid-cols-4 gap-2"
               role="radiogroup"
               aria-label={t("control.paint.color_label")}
             >
@@ -1182,7 +1220,7 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
                     title={t(`control.colors.${color}`)}
                     onClick={() => setPaintColor(color)}
                     disabled={pending}
-                    className="flex h-11 min-w-0 flex-1 basis-0 items-center justify-center disabled:opacity-40"
+                    className="flex h-12 min-w-0 touch-manipulation items-center justify-center disabled:opacity-40"
                     data-testid={`control-paint-color-${color}`}
                   >
                     <FlapSwatch color={color} active={active} />
@@ -1202,16 +1240,87 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
             </p>
           )}
 
-          <BoardPreview
-            grid={compiled.grid}
-            onPaintCell={painting ? paint : undefined}
-            onPaintStroke={painting ? paintStroke : undefined}
-            onPaintRow={painting ? paintRow : undefined}
-            paintColor={painting ? paintColor : undefined}
-            cellLabel={cellLabel}
-            rowLabel={rowLabel}
-            disabled={pending}
-          />
+          {showingLive ? (
+            /*
+              The real thing, with the real animator — 144 tiles fed by the
+              controller's socket. Silent: the clatter belongs to the room the
+              television is in, not to the phone in someone's hand.
+            */
+            <div
+              className="p-2"
+              style={{ backgroundColor: CONSOLE.panel, boxShadow: PLATE_LIP }}
+              data-testid="control-board-mirror"
+            >
+              <BoardGridView grid={liveGrid} variant="inline" />
+            </div>
+          ) : (
+            <BoardPreview
+              grid={compiled.grid}
+              onPaintCell={painting ? paint : undefined}
+              onPaintStroke={painting ? paintStroke : undefined}
+              onPaintRow={painting ? paintRow : undefined}
+              paintColor={painting ? paintColor : undefined}
+              cellLabel={cellLabel}
+              rowLabel={rowLabel}
+              disabled={pending}
+            />
+          )}
+        </section>
+
+        {/*
+          The six typing wells, now BELOW the grid and behind a disclosure.
+
+          The plan called for them to be "behind a toggle for precise edits", and
+          this is that with one deliberate difference: the disclosure **defaults
+          open**. Collapsing the only text input on the screen by default would
+          hide the primary path behind a tap in order to promote the secondary
+          one, which is the opposite of what promoting the grid was for. What the
+          toggle actually buys is the *paint* workflow — arm paint, fold the
+          keyboard's worth of wells away, and the board is the whole screen.
+        */}
+        <section className="flex flex-col gap-2">
+          <button
+            type="button"
+            aria-expanded={rowsOpen}
+            onClick={() => setRowsOpen((open) => !open)}
+            // Flush with the block below it — no `px-1`. This label is a
+            // button, and its inset put MESSAGE on a different left rule from
+            // LIVE BOARD and VOICE on the same screen.
+            className="flex min-h-11 touch-manipulation items-center justify-between text-[10px] leading-none font-medium uppercase"
+            style={{ color: CONSOLE.inkMute, letterSpacing: "0.2em" }}
+            data-testid="control-editor-rows-toggle"
+          >
+            {t("control.editor.title")}
+            <IconChevronDown
+              aria-hidden
+              className={cn("size-4 transition-transform", rowsOpen && "rotate-180")}
+            />
+          </button>
+          {rowsOpen && (
+            <div
+              // No plate: six wells that are each already a hole in the panel
+              // do not need a raised rectangle behind them. Removing it also
+              // stops the wells reading as cards-inside-a-card.
+              className="flex flex-col gap-1.5 rounded-none"
+              data-testid="control-editor-rows"
+            >
+              {values.rows.map((row, index) => (
+                <RowWell
+                  key={index}
+                  form={form}
+                  index={index}
+                  active={index === activeRow}
+                  segments={row.segments.length}
+                  pending={pending}
+                  locked={painting}
+                  onFocus={() => setActiveRow(index)}
+                  onEnter={() => {
+                    if (index < BOARD_ROWS - 1) focusRow(index + 1);
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         {/*
@@ -1230,7 +1339,24 @@ export function MessageEditor({ onSend, pending }: MessageEditorProps) {
           />
         )}
 
-        <div className="flex items-stretch gap-2">
+        {/*
+          STICKY. The one control the whole product exists for was ~650px down a
+          ~1600px page, so sending a message meant scrolling past the voice key,
+          the sound panel and the history strip every single time. Pinned to the
+          bottom of the viewport it is always under the thumb — which is also the
+          one place a phone-first surface is allowed to pin something, unlike a
+          top corner.
+
+          `-mx-4 px-4` bleeds it to the field edges and the field colour behind
+          it stops the history strip showing through.
+        */}
+        <div
+          className="sticky bottom-0 z-10 -mx-4 flex items-stretch gap-2 px-4 py-3"
+          style={{
+            backgroundColor: CONSOLE.field,
+            boxShadow: `inset 0 1px 0 ${CONSOLE.hairline}`,
+          }}
+        >
           {/* Ghost: a hairline and nothing else. Destructive-ish, so it must not
               compete with the one action that reaches someone's living room. */}
           <button

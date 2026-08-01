@@ -225,7 +225,7 @@ export default function Layout({ loaderData }: Route.ComponentProps) {
 
 ### Rules
 
-- **Auth gate first** — via the [`app/lib/session.ts`](../../app/lib/session.ts) helpers: `requireSession(request, context)` (redirects to `/login` if no session), `requireAdmin(request, context)` (redirects to `/login` if no session, `/dashboard` if not admin), `redirectIfAuthenticated(request, context, to?)` (public-only routes — redirects an already-authenticated visitor away). Don't inline `context.auth.api.getSession({ headers }) + if (!session) return redirect(...)` in a new loader — call the helper. See [`library.md`](library.md) "Loader auth gating".
+- **Auth gate first** — via the [`app/lib/session.ts`](../../app/lib/session.ts) helpers: `requireSession(request, context)` (redirects to `/login` if no session), `requireAdmin(request, context)` (redirects to `/login` if no session, `/boards` if not admin), `redirectIfAuthenticated(request, context, to?)` (public-only routes — redirects an already-authenticated visitor away; `to` defaults to `/`, which resolves the real destination with the pure `resolveSignedInHome(boards)`). Don't inline `context.auth.api.getSession({ headers }) + if (!session) return redirect(...)` in a new loader — call the helper. See [`library.md`](library.md) "Loader auth gating".
 - **`context.trpc.*`** for server-side data fetching — same router, no HTTP roundtrip
 - **`context.runtime.runPromise(Effect.gen(...))`** for direct Effect calls in loaders (rare; prefer tRPC)
 - **Parallel fetches**: `Promise.all([...])`
@@ -265,7 +265,7 @@ await mutation.mutateAsync({ id, patch });
 ```typescript
 import { useNavigate, Link } from "react-router";
 const navigate = useNavigate();
-<Link to="/dashboard">Dashboard</Link>
+<Link to="/boards">Boards</Link>
 <button onClick={() => navigate("/settings")}>Settings</button>
 ```
 
@@ -274,7 +274,7 @@ const navigate = useNavigate();
 | Surface | Pattern |
 |---------|---------|
 | Loader (protected) | `requireSession(request, context)` from `@/lib/session` — redirects to `/login` if no session |
-| Loader (admin) | `requireAdmin(request, context)` from `@/lib/session` — redirects to `/login` (no session) or `/dashboard` (non-admin) |
+| Loader (admin) | `requireAdmin(request, context)` from `@/lib/session` — redirects to `/login` (no session) or `/boards` (non-admin) |
 | Loader (public-only) | `redirectIfAuthenticated(request, context, to?)` from `@/lib/session` — redirects an authenticated visitor away from home/login/sign-up |
 | tRPC public | `publicProcedure` (no guarantee) |
 | tRPC user | `protectedProcedure` (`ctx.auth.user` non-null) |
