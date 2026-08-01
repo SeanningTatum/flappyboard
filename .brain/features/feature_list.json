@@ -298,8 +298,8 @@
       "dependencies": [
         "feat-019"
       ],
-      "status": "in-progress",
-      "evidence": "",
+      "status": "shipped",
+      "evidence": "PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — /dashboard and the six /:lng aliases deleted with redirect shims, /boards reduced to a thin rack, ConsoleShell added (closes the defect where a non-admin could never sign out), admin sidebar gains a Boards entry. Verified: .brain/features/app-ia/verifications/2026-07-31.md (PASS).",
       "owners": [
         "sean"
       ]
@@ -314,7 +314,24 @@
         "feat-019",
         "feat-020"
       ],
-      "status": "planned",
+      "status": "shipped",
+      "evidence": "PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — resolveAutoLink, the board picker, the <select>, the receipt and /link's manual mode all deleted; /link is ~300 L with no UI on the happy path and its code field set in real flaps; the controller is Content|Settings tabs at the frozen /b/:boardId/c. Verified: .brain/features/console-journey-v2/verifications/2026-07-31.md (PASS), three design-critic rounds ending SHIP.",
+      "owners": [
+        "sean"
+      ]
+    },
+    {
+      "id": "feat-022",
+      "name": "Front Door",
+      "slug": "front-door",
+      "doc": ".brain/features/front-door/front-door.md",
+      "description": "Phase 4 of the redesign. Rewrites the public landing page: home.tsx today returns title \"Cloudflare SaaS Starter\", six cards advertising the stack, a section printing /start-task and .brain/recipes/ paths to end users, and a Quickstart terminal printing bun install. It is replaced by one screen — a live board that spells its own headline and flips once on load, \"Put it on your TV\" -> sign-up, and the instruction the product has never given anywhere: on your TV's browser, go to yourhost/tv. home.json is rewritten in both locales. Login and sign-up merge into one toggled page, defaulting to sign-up when `next` carries a pairing code. feature-card.tsx dies with the old page.",
+      "dependencies": [
+        "feat-019",
+        "feat-020",
+        "feat-021"
+      ],
+      "status": "in-progress",
       "evidence": "",
       "owners": [
         "sean"

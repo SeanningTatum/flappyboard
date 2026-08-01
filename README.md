@@ -9,7 +9,7 @@
   <a href="https://workers.cloudflare.com/"><img src="https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white" alt="Cloudflare Workers"></a>
   <a href="https://reactrouter.com/"><img src="https://img.shields.io/badge/framework-React%20Router%20v7-CA4245?logo=reactrouter&logoColor=white" alt="React Router v7"></a>
   <a href="https://effect.website/"><img src="https://img.shields.io/badge/typed-Effect%20TS-1E1E2C" alt="Effect TS"></a>
-  <img src="https://img.shields.io/badge/tests-849%20passing-3fb950" alt="849 tests passing">
+  <img src="https://img.shields.io/badge/tests-1262%20passing-3fb950" alt="1262 tests passing">
 </p>
 
 <p align="center">
@@ -30,29 +30,55 @@ It is the family-message-board / departures-board / passive-aggressive-roommate-
 
 ## How it works
 
-### 1. The TV opens a URL and never touches it again
+### 1. Point a TV at `/tv`. It shows a code.
 
 <p align="center">
-  <img src="docs/assets/tv-qr.png" alt="The TV display showing a live board with a QR code overlay in the bottom-right corner labelled SCAN TO CONTROL" width="700">
+  <img src="docs/assets/tv-pairing.png" alt="The TV pairing screen: a large QR code above the instruction to scan it, and below that the six-character pairing code set in real split-flap tiles reading XAN3XK" width="700">
 </p>
 
-Six rows, twenty-four columns, full-bleed, every cell with its own character *and* its own colour. A QR code sits in the corner. That is the whole TV-side interaction — you type the URL once with the remote and you are done forever.
+This is the one instruction the product cannot infer for you: **on your TV's browser, go to `yourhost/tv`.** Type it once with the remote and never touch that TV again.
 
-### 2. Your phone scans the QR and becomes the keyboard
+The code underneath the QR is not a mono readout of a code — it is six **real flap tiles**, the same component that draws the board. The split-flap module is the product's atomic UI primitive, so it shows up wherever a short string matters, at whatever scale that surface needs.
+
+### 2. Scan it with your phone. That's the whole setup.
 
 <p align="center">
-  <img src="docs/assets/phone-controller.png" alt="The phone controller: six numbered text inputs for the six board rows, a live preview grid beneath them, and per-row alignment and colour controls" width="330">
+  <img src="docs/assets/link-code.png" alt="The Link a TV page on a phone: the six-character code field rendered as six split-flap tiles with K7Q typed into the first three, a lit slot bar marking the next cell, and a PAIR THE TV key beneath" width="300">
+</p>
+
+Scan, sign in, done — you land on the controller for that TV, with nothing to answer. **A board *is* a TV**, so scanning always makes one and names it for you. There is no "create a board" step, no picker, and no board-count branch anywhere in the flow.
+
+If the phone can't scan (or the QR has expired), the same page takes the code by hand — and the field is the flap tiles themselves.
+
+### 3. The TV becomes the board
+
+<p align="center">
+  <img src="docs/assets/tv-qr.png" alt="The TV display showing a live board reading DINNER 7:30 in yellow, MILK EGGS BREAD with MILK in green, and BIN NIGHT with BIN in blue, with a QR code overlay in the bottom-right corner labelled SCAN TO CONTROL" width="820">
+</p>
+
+Six rows, twenty-four columns, full-bleed, every cell with its own character *and* its own colour. A QR code sits in the corner so anyone else in the room can join by pointing a camera at it.
+
+### 4. The phone is the controller
+
+<p align="center">
+  <img src="docs/assets/phone-controller.png" alt="The phone controller: a LIVING ROOM nameplate with a revision counter, Content and Settings tabs, a live preview of the board, and six numbered row wells below it" width="300">
   &nbsp;&nbsp;
-  <img src="docs/assets/row-paint.png" alt="Paint mode on the phone: tapping cells in the preview grid to colour them individually" width="330">
+  <img src="docs/assets/row-paint.png" alt="Paint mode on the phone: an eight-swatch colour palette above the preview grid, with DINNER painted yellow, MILK green and BIN blue" width="300">
 </p>
 
-**Six bare text inputs — one per row.** Type, hit send, watch the TV. That's the fast path, and it's the whole thing for most messages.
+**The board itself is the instrument.** One rectangle sits at the top: when nothing is composed it shows the live board off the socket, and the moment you type it becomes the draft. Six numbered wells sit under it, one per row — type, hit send, watch the TV.
 
-Underneath is a live preview of the actual grid, which doubles as the colouring surface: switch to **Paint** and tap cells to colour them, or set a whole row at once. Alignment is per-row — left, centre, right, or spread.
+That same rectangle is the colouring surface: switch to **Paint**, pick one of the eight pigments, and tap cells or drag across a run. Alignment is per-row — left, centre, right, or spread.
+
+**Settings** is the second tab, on the same screen: the TV's address, paired devices with a count, rename, un-pair, delete. Destructive actions arm in place rather than opening a dialog — the key swaps to a consequence sentence and a confirm, in the same slot your thumb is already on.
+
+<p align="center">
+  <img src="docs/assets/phone-settings.png" alt="The Settings tab on the phone: the TV address in mono with a copy button, a board name field with a Save key, paired devices showing a count of zero, un-pair controls, and a Delete board key outlined in red under a CAREFUL label" width="300">
+</p>
 
 The phone that scanned the QR gets a **12-hour grant** to write to that one board. It never sees your account. You can revoke every outstanding grant from the owner's side at any time, and the QR itself is single-use — a token that's already been redeemed is refused.
 
-### 3. Or hold the button and just talk
+### 5. Or hold the button and just talk
 
 Hold the push-to-talk button, say *"put up tonight's dinner plan and make it sarcastic"*, let go.
 
@@ -95,7 +121,7 @@ bun run db:seed             # admin/user fixtures + a demo board
 bun run dev                 # http://localhost:5173
 ```
 
-Sign in, go to `/boards`, create one, and open its URL in a second window — that's your "TV". The QR in the corner points at the controller.
+Open `http://localhost:5173/tv` in a second window — that's your "TV". Scan the QR with your phone, or type the code it shows into `/link` in a third window. Either way you land on the controller with a board already made.
 
 The AI features need an `ANTHROPIC_API_KEY` in `.dev.vars`; everything else works without one.
 
@@ -122,13 +148,15 @@ wrangler secret put ANTHROPIC_API_KEY --env preview
 
 ---
 
-## Managing boards
+## More than one TV
 
 <p align="center">
-  <img src="docs/assets/boards-page.png" alt="The boards page: a create-board form and cards for each board showing its TV URL with a copy button, plus Open display and Control from phone actions" width="760">
+  <img src="docs/assets/boards-rack.png" alt="The boards rack on a phone: three rows, each showing a board's name set in coloured split-flap tiles — LIVING ROOM in orange, KITCHEN in violet, STUDIO in green — with its revision beneath, and a panel at the bottom giving the TV address with a copy button" width="330">
 </p>
 
-One account, many boards — kitchen, office, the one you point at your flatmate. Each card hands you the URL to type into that TV's browser, a copy button, and direct links to the display and the controller.
+One account, many TVs — kitchen, office, the one you point at your flatmate. The rack is a **switcher, not a destination**: each board wears its own name in real flaps, in a pigment derived from its id, so you recognise the row you want by colour before you've read it. Everything you can *do* to a board lives on that board's controller, not here.
+
+Adding another TV is one action with nothing to answer: open `/tv` on it and scan.
 
 Deleting a board cascades its snapshot history with it, and every grant that pointed at it stops working in the same instant — a grant is verified against the board row, so once the row is gone there is nothing left to verify against.
 
@@ -165,7 +193,7 @@ Built on [cf-saas-starter-react-router](https://github.com/SeanningTatum/cf-saas
 
 ## Verification
 
-`typecheck` 0 · **849 tests across 44 files** · `build` 0 · `harness-check` 7/7 · e2e smoke green.
+`typecheck` 0 · **1,262 tests across 54 files** · `build` 0 · `harness-check` 10/10 · e2e smoke green.
 
 Beyond the unit suite, user-visible flows get a **browser walk**: a headless run against the live app that drives the golden path plus an error path, screenshots every step, and writes a verdict doc to `.brain/features/<slug>/verifications/`. Every screenshot in this README came out of one of those runs.
 
@@ -173,12 +201,14 @@ Beyond the unit suite, user-visible flows get a **browser walk**: a headless run
 
 ## Status
 
-**MVP.** Everything above works and is verified. Known gaps, honestly:
+**MVP, redesigned.** Everything above works and is verified. Known gaps, honestly:
 
-- 🔴 **[Issue #1](https://github.com/SeanningTatum/flappyboard/issues/1) — no rate limiting on the two paid endpoints.** `board.generate` and `/api/transcribe` both cost money per call and are reachable by anyone holding a 12-hour grant. **Do not deploy with a real API key until this lands.**
+- 🟡 **The display has never been walked on a real living-room TV** — only at TV resolution in a headless browser. This is the one owed check that matters most: the pairing code is meant to be read across a room, and the panel a 2017 Samsung ships is Chromium 56, so the flap sizing deliberately avoids `aspect-ratio` on reasoning from a documented constraint rather than a measurement on the glass.
 - The voice path hasn't been driven on a real phone yet — `mediaDevices` needs a secure context, so that's an HTTPS-deploy test.
-- The display hasn't been walked on the actual living-room TV, only at TV resolution in a headless browser.
+- Desktop composition is deferred by choice. The phone is the controller, so every surface is built phone-first; at 1440 the console is a narrow column in a lot of black.
 - Two sound packs ship (`classic`, `soft`), switchable from the phone. The registry takes more.
+
+[Issue #1](https://github.com/SeanningTatum/flappyboard/issues/1) — no rate limiting on the two endpoints that spend money — is **closed**. Both `board.generate` and `/api/transcribe` are bounded now.
 
 ---
 
@@ -226,12 +256,17 @@ bun run sfx:generate        # regenerate the flap sound pack
 
 ```
 app/
-├── components/board/   FlapTile, BoardGridView, QrOverlay, PushToTalkButton
+├── components/board/   FlapTile, BoardGridView, QrOverlay, PushToTalkButton,
+│                       FlapWord (a short string in real flaps), console.tsx
+│                       (the hardware surface kit), ConsoleShell, ControllerSettings
 ├── lib/board/          compile.ts (the 6×24 compiler), repair.ts, flap-travel.ts,
 │                       pairing.ts (the HMAC primitive), sfx.ts
 ├── lib/schemas/        Effect Schema — BoardMessage, BoardGrid, palette, charset
-├── routes/board/       display.tsx (the TV), control.tsx (the phone)
-├── routes/boards/      board management
+├── routes/board/       display.tsx (the TV), control.tsx (the phone — two tabs),
+│                       hardware-theme.css (the [data-surface="hardware"] scope)
+├── routes/boards/      the rack — a switcher, not a manager
+├── routes/tv.tsx       the pairing screen a television shows
+├── routes/link.tsx     scan or type a code; no UI at all on the happy path
 ├── repositories/       Drizzle-backed Effect.Service repos
 ├── services/           board-agent.ts (LLM), transcription.ts (Whisper), board-room.ts
 ├── trpc/routes/        board.ts — get, setMessage, generate, history, pairing

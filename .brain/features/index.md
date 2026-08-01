@@ -63,8 +63,9 @@ features/
 | Live Weather | [`live-weather/live-weather.md`](live-weather/live-weather.md) | planned | — |
 | OpenTelemetry Span Tracing | [`otel-tracing/otel-tracing.md`](otel-tracing/otel-tracing.md) | shipped (synced from template) | — (upstream-verified only) |
 | Brand System | [`brand-system/brand-system.md`](brand-system/brand-system.md) | shipped | [2026-07-31 ✅ PASS](brand-system/verifications/2026-07-31.md) |
-| App IA & Navigation | [`app-ia/app-ia.md`](app-ia/app-ia.md) | in-progress | — |
-| Console Journey v2 | [`console-journey-v2/console-journey-v2.md`](console-journey-v2/console-journey-v2.md) | planned | — |
+| App IA & Navigation | [`app-ia/app-ia.md`](app-ia/app-ia.md) | shipped | [2026-07-31 ✅ PASS](app-ia/verifications/2026-07-31.md) |
+| Console Journey v2 | [`console-journey-v2/console-journey-v2.md`](console-journey-v2/console-journey-v2.md) | shipped | [2026-07-31 ✅ PASS](console-journey-v2/verifications/2026-07-31.md) |
+| Front Door | [`front-door/front-door.md`](front-door/front-door.md) | in-progress | — |
 
 > **This table mirrors `feature_list.json`, which is the source of truth
 > `brain check` enforces.** It drifted once before and stayed wrong for two

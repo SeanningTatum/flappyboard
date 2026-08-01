@@ -21,6 +21,50 @@
 
 ---
 
+## 2026-08-01 — design research: landing page — locked Panic Playdate as primary, direction C 'say something' (drive the board before you sign up). Owner approved extending decision 4: one flip on load, then user-initiated flips only, never a loop. Vestaboard rejected outright on the identity test. Refero degraded (token unset) — five live page fetches substituted. Ledger written to features/front-door/front-door.md.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: implement the landing page via ui-builder, then design:audit + feature-verifier + design-critic; then refresh README screenshots
+
+---
+
+## 2026-07-31 — shipped console-journey-v2: PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — resolveAutoLink, the board picker, the 
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — shipped app-ia: PR #12 (open, mergeable): https://github.com/SeanningTatum/flappyboard/pull/12 — /dashboard and the six /:lng aliases de
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — PR opened for console-journey-v2: https://github.com/SeanningTatum/flappyboard/pull/12
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — PR opened for app-ia: https://github.com/SeanningTatum/flappyboard/pull/12
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+
+---
+
+## 2026-07-31 — PR #12 opened for app-ia (feat-020) + console-journey-v2 (feat-021). Three design-critic rounds: DO NOT SHIP, DO NOT SHIP, SHIP. Round 2 refuted part of round 1's own fix (the /link caret only painted while focused, so the field measured 1.15:1 at rest). Defects found beyond the brief: non-admin sign-out did not exist, every text input in the app had no focus indicator (input.tsx carried outline-none, the same defect fixed in button.tsx during phase 1), ConsoleField clobbered its own className via prop spread, both auth forms still navigated to the deleted /dashboard, /admin was a dead end, and design:audit had been silently measuring /login for every gated route. Gates: typecheck, 1262 unit, 6/6 e2e, build, harness 10/10, signed-in design:audit HARD pass on three surfaces, keyboard walk 14/14, zh walk clean.
+- branch: `feat/app-journey-v2`
+- in-progress feature: none
+- run note: none
+- next: await review on PR #12; then phase 4 (front-door) rewrites home.tsx and merges login/sign-up. Owed before shipping to a real household: the physical-TV check (Tizen render of the flap code, legibility at 10 feet).
+
+---
+
 ## 2026-07-31 — app-ia (feat-020) + console-journey-v2 (feat-021) implemented on feat/app-journey-v2 — /dashboard and the six /:lng aliases deleted behind literal forwarding routes (/pricing is a real 404 now), resolveSignedInHome added, /boards rebuilt as a hardware-scoped rack with flap nameplates, resolveAutoLink and the whole picker deleted (/link 678 -> ~300 lines, none rendered on the happy path), /tv pairing code set in six real flaps, controller gained Content|Settings tabs at the frozen path with the old board manager inlined as console controls, and the Content tab reduced from two board renders to one live-or-draft instrument. Three defects found beyond the brief: non-admin sign-out did not exist, /admin was a dead end, and ConsoleField's className was clobbered by its own prop spread. design:audit could not see any signed-in surface and was silently measuring /login; it now takes --sign-in and refuses when --scope matches nothing. Gates: typecheck green, 1262 unit tests, 6 e2e (4 asserting the migration), build green, harness 10/10, signed-in design:audit HARD checks pass on /boards, the controller, /link and /tv. Two verification docs written, both PASS.
 - branch: `feat/app-journey-v2`
 - in-progress feature: none
