@@ -21,6 +21,14 @@
 
 ---
 
+## 2026-08-01 — PR #13 is CLEAN — all five checks green. Resolved the conflicts caused by #12 being squash-merged (rebased the 12 front-door commits onto the squashed main; diff vs the pre-rebase backup tag is empty, zero work lost). Also fixed the Preview Deploy workflow, which had been red on four branches since 2026-07-29: it exit-1'd on a successful upload because it could not scrape a preview URL. Root cause checked rather than assumed — preview_urls is true and survives into the generated config, but a preview URL is served from a workers.dev subdomain that only a real deploy provisions. It now warns with that diagnostic and passes.
+- branch: `feat/front-door`
+- in-progress feature: none
+- run note: none
+- next: PR #13 awaits review. Owner decisions open: whether to re-open the no-imagery lock (funnel measures 0.226% chromatic on the landing, 0.000% one tap later), and whether to build a password-reset route (none exists; the sign-in page says so plainly). Owed and not closeable from a laptop: the physical-TV check. One-time and owner-only: 'bun run deploy:preview' would give the preview worker a workers.dev subdomain and restore real preview links.
+
+---
+
 ## 2026-08-01 — front-door shipped. PR #13 opened: https://github.com/SeanningTatum/flappyboard/pull/13 (stacks on #12). Landing page and auth pages both rebuilt; four design-critic rounds across two surfaces, both DO NOT SHIP before both SHIP. Seven pre-existing defects fixed, incl. outline-none in ui/select.tsx (4th component), a 44x36 language switcher on three surfaces, and an auth links export that unhydrated the whole surface while still rendering.
 - branch: `feat/front-door`
 - in-progress feature: none
